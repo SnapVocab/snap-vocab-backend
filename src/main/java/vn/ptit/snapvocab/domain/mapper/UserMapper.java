@@ -7,5 +7,4 @@ import vn.ptit.snapvocab.domain.dto.UserDTO;
 @Mapper(componentModel = "spring")
 public interface UserMapper extends EntityMapper<UserDTO, User> {
 
-	UserDTO toDto(User u);
 }
