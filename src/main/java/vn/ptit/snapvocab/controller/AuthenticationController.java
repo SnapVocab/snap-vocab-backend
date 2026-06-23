@@ -11,8 +11,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import vn.ptit.snapvocab.domain.dto.RequestLoginDTO;
 import vn.ptit.snapvocab.domain.dto.RequestRegisterDTO;
+import vn.ptit.snapvocab.domain.dto.ResendCodeRequest;
 import vn.ptit.snapvocab.domain.dto.ResponseLoginDTO;
 import vn.ptit.snapvocab.domain.dto.ResponseRegisterDTO;
+import vn.ptit.snapvocab.domain.dto.VerifyMailRequest;
 import vn.ptit.snapvocab.service.AuthenticationService;
 
 @RestController
@@ -38,6 +40,23 @@ public class AuthenticationController {
 		LOG.info("POST /auth/register email={}", requestRegisterDTO.getEmail());
 
 		return ResponseEntity.ok(this.authenticationService.register(requestRegisterDTO));
+	}
+
+	@PostMapping("/verify")
+	public ResponseEntity<ResponseLoginDTO> verifyCode(
+			@Valid @RequestBody VerifyMailRequest verifyMailRequest) {
+		LOG.info("POST /auth/verify for email={} with code={}", verifyMailRequest.getEmail(),
+				verifyMailRequest.getCode());
+
+		return ResponseEntity.ok(this.authenticationService.verifyCode(verifyMailRequest));
+	}
+
+	@PostMapping("/resend-code")
+	public ResponseEntity<?> resendCode(@RequestBody ResendCodeRequest resendCodeRequest) {
+		LOG.info("POST /auth/resend-code to email={}", resendCodeRequest.email());
+
+		this.authenticationService.resendCode(resendCodeRequest);
+		return ResponseEntity.ok().build();
 	}
 
 }

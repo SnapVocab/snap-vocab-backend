@@ -43,7 +43,9 @@ public class SecurityConfiguration {
 				"/api/auth/activate",
 				"/v3/api-docs/**",
 				"/swagger-ui/**",
-				"/swagger-ui.html"
+				"/swagger-ui.html",
+				"/api/auth/verify",
+				"/api/auth/resend-code"
 		};
 
 		http
