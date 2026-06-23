@@ -38,7 +38,5 @@ public class UserDTO {
 
 	private Instant lastStudiedAt;
 
-	private String imageUrl;
-
 	private String email;
 }

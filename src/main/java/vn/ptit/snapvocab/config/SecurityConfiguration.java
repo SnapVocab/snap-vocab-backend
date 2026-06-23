@@ -47,7 +47,8 @@ public class SecurityConfiguration {
 				"/api/auth/verify",
 				"/api/auth/resend-code",
 				"/api/auth/forgot-password",
-				"/api/auth/reset-password"
+				"/api/auth/reset-password",
+				"/api/auth/refresh"
 		};
 
 		http

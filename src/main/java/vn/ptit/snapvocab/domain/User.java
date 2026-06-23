@@ -56,8 +56,8 @@ public class User {
 	@Column(length = 254, unique = true)
 	private String email;
 
-	@Column(name = "image_url", columnDefinition = "MEDIUMTEXT")
-	private String imageUrl;
+	@Column(name = "avatar_url", columnDefinition = "MEDIUMTEXT")
+	private String avatar_url;
 
 	@ManyToMany
 	@JoinTable(

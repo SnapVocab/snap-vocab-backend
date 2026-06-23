@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import vn.ptit.snapvocab.domain.dto.ForgotPasswordRequest;
+import vn.ptit.snapvocab.domain.dto.RefreshTokenRequest;
 import vn.ptit.snapvocab.domain.dto.RequestLoginDTO;
 import vn.ptit.snapvocab.domain.dto.RequestRegisterDTO;
 import vn.ptit.snapvocab.domain.dto.ResendCodeRequest;
@@ -77,5 +78,13 @@ public class AuthenticationController {
 
 		this.authenticationService.resetPassword(resetPasswordRequest);
 		return ResponseEntity.ok().build();
+	}
+
+	@PostMapping("/refresh")
+	public ResponseEntity<ResponseLoginDTO> refresh(
+			@Valid @RequestBody RefreshTokenRequest refreshTokenRequest) {
+		LOG.info("POST /auth/refresh");
+
+		return ResponseEntity.ok(this.authenticationService.refreshToken(refreshTokenRequest));
 	}
 }
