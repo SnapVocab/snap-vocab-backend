@@ -10,7 +10,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import vn.ptit.snapvocab.domain.dto.RequestLoginDTO;
+import vn.ptit.snapvocab.domain.dto.RequestRegisterDTO;
 import vn.ptit.snapvocab.domain.dto.ResponseLoginDTO;
+import vn.ptit.snapvocab.domain.dto.ResponseRegisterDTO;
 import vn.ptit.snapvocab.service.AuthenticationService;
 
 @RestController
@@ -28,5 +30,13 @@ public class AuthenticationController {
 		LOG.info("POST /auth/login email={}", requestLoginDTO.getEmail());
 
 		return ResponseEntity.ok(this.authenticationService.login(requestLoginDTO));
+	}
+
+	@PostMapping("/register")
+	public ResponseEntity<ResponseRegisterDTO> register(
+			@Valid @RequestBody RequestRegisterDTO requestRegisterDTO) {
+		LOG.info("POST /auth/register email={}", requestRegisterDTO.getEmail());
+
+		return ResponseEntity.ok(this.authenticationService.register(requestRegisterDTO));
 	}
 }

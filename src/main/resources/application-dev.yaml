@@ -13,7 +13,19 @@ spring:
       port: 6380
       password:
       database: 0
-
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: thanhthbm@gmail.com
+    password: ppgb sobl eedl veil
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+  
+  
   jpa:
     hibernate:
       ddl-auto: update

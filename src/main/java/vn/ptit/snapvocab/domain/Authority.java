@@ -15,8 +15,8 @@ import lombok.Setter;
 @Setter
 public class Authority {
 
-	@NotNull
-	@Size(max = 50)
+	@NotNull(message = "Authority name must not be null")
+	@Size(max = 50, message = "Authority name must not exceed 50 characters")
 	@Id
 	@Column(name = "name", length = 50, nullable = false)
 	private String name;
