@@ -45,7 +45,9 @@ public class SecurityConfiguration {
 				"/swagger-ui/**",
 				"/swagger-ui.html",
 				"/api/auth/verify",
-				"/api/auth/resend-code"
+				"/api/auth/resend-code",
+				"/api/auth/forgot-password",
+				"/api/auth/reset-password"
 		};
 
 		http

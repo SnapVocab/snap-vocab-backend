@@ -28,9 +28,11 @@ import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.stereotype.Service;
 import vn.ptit.snapvocab.domain.Authority;
 import vn.ptit.snapvocab.domain.User;
+import vn.ptit.snapvocab.domain.dto.ForgotPasswordRequest;
 import vn.ptit.snapvocab.domain.dto.RequestLoginDTO;
 import vn.ptit.snapvocab.domain.dto.RequestRegisterDTO;
 import vn.ptit.snapvocab.domain.dto.ResendCodeRequest;
+import vn.ptit.snapvocab.domain.dto.ResetPasswordRequest;
 import vn.ptit.snapvocab.domain.dto.ResponseLoginDTO;
 import vn.ptit.snapvocab.domain.dto.ResponseRegisterDTO;
 import vn.ptit.snapvocab.domain.dto.VerifyMailRequest;
@@ -40,6 +42,7 @@ import vn.ptit.snapvocab.repository.UserRepository;
 import vn.ptit.snapvocab.security.AuthoritiesConstants;
 import vn.ptit.snapvocab.security.DomainUserDetailsService.UserWithId;
 import vn.ptit.snapvocab.security.SecurityUtils;
+import vn.ptit.snapvocab.util.constant.OtpPurpose;
 import vn.ptit.snapvocab.util.exception.BadRequestAlertException;
 import vn.ptit.snapvocab.util.exception.ResourceAlreadyExistException;
 
@@ -162,7 +165,7 @@ public class AuthenticationService {
 				.build();
 
 		LOG.debug("Sending verification code to email {} with TTL = 5", createdUser.getEmail());
-		String code = otpService.saveOtp(createdUser.getEmail());
+		String code = otpService.saveOtp(createdUser.getEmail(), OtpPurpose.SIGNUP_VERIFY);
 		LOG.debug("Sending code {} to email {}", code, createdUser.getEmail());
 		try {
 			mailService.sendVerificationEmail(createdUser.getEmail(), code, Duration.ofMinutes(5));
@@ -176,7 +179,7 @@ public class AuthenticationService {
 	@Transactional
 	public ResponseLoginDTO verifyCode(VerifyMailRequest verifyMailRequest) {
 		boolean valid = this.otpService.verifyOtp(verifyMailRequest.getEmail(),
-				verifyMailRequest.getCode());
+				verifyMailRequest.getCode(), OtpPurpose.SIGNUP_VERIFY);
 
 		if (!valid) {
 			throw new BadRequestAlertException("Verify code is invalid or has expired.");
@@ -201,7 +204,7 @@ public class AuthenticationService {
 			throw new BadRequestAlertException("User " + resendCodeRequest.email() + " was activated");
 		}
 
-		String code = otpService.saveOtp(resendCodeRequest.email());
+		String code = otpService.saveOtp(resendCodeRequest.email(), OtpPurpose.SIGNUP_VERIFY);
 
 		try {
 			this.mailService.sendVerificationEmail(resendCodeRequest.email(), code,
@@ -209,5 +212,47 @@ public class AuthenticationService {
 		} catch (MessagingException e) {
 			LOG.debug("Failed to send code {} to email {}", code, resendCodeRequest.email());
 		}
+	}
+
+	public void forgotPassword(ForgotPasswordRequest forgotPasswordRequest) {
+		LOG.debug("Forgot password for email={}", forgotPasswordRequest.email());
+
+		User u = userRepository.findOneByEmailIgnoreCase(forgotPasswordRequest.email())
+				.orElseThrow(() -> new UsernameNotFoundException(
+						"User " + forgotPasswordRequest.email() + " not found"));
+
+		if (!u.isActivated()) {
+			throw new BadRequestAlertException(
+					"User " + forgotPasswordRequest.email() + " has not been activated");
+		}
+
+		String code = otpService.saveOtp(forgotPasswordRequest.email(), OtpPurpose.FORGOT_PASSWORD);
+
+		try {
+			mailService.sendPasswordResetEmail(forgotPasswordRequest.email(), code,
+					Duration.ofMinutes(5));
+		} catch (MessagingException e) {
+			LOG.debug("Failed to send password reset email to {}: {}", forgotPasswordRequest.email(),
+					e.getMessage());
+		}
+	}
+
+	@Transactional
+	public void resetPassword(ResetPasswordRequest resetPasswordRequest) {
+		LOG.debug("Reset password for email={}", resetPasswordRequest.email());
+
+		boolean valid = otpService.verifyOtp(resetPasswordRequest.email(),
+				resetPasswordRequest.code(), OtpPurpose.FORGOT_PASSWORD);
+
+		if (!valid) {
+			throw new BadRequestAlertException("Reset code is invalid or has expired.");
+		}
+
+		User u = userRepository.findOneByEmailIgnoreCase(resetPasswordRequest.email())
+				.orElseThrow(() -> new UsernameNotFoundException(
+						"User " + resetPasswordRequest.email() + " not found"));
+
+		u.setPassword(passwordEncoder.encode(resetPasswordRequest.newPassword()));
+		userRepository.save(u);
 	}
 }

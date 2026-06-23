@@ -5,6 +5,7 @@ import java.util.concurrent.TimeUnit;
 import lombok.RequiredArgsConstructor;
 import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
+import vn.ptit.snapvocab.util.constant.OtpPurpose;
 
 @Service
 @RequiredArgsConstructor
@@ -14,16 +15,23 @@ public class OTPService {
 	private static final int OTP_TTL = 5;
 	private final RedissonClient redissonClient;
 
-	public String saveOtp(String email) {
+	public String saveOtp(String email, OtpPurpose otpPurpose) {
+		String key = buildKey(email, otpPurpose);
 		SecureRandom secureRandom = new SecureRandom();
 		int otp = 100000 + secureRandom.nextInt(900000);
 		String code = String.valueOf(otp);
-		redissonClient.<String>getBucket(OTP_PREFIX + email).set(code, OTP_TTL, TimeUnit.MINUTES);
+		redissonClient.<String>getBucket(key).set(code, OTP_TTL, TimeUnit.MINUTES);
 		return code;
 	}
 
-	public boolean verifyOtp(String email, String code) {
-		String savedOtp = redissonClient.<String>getBucket(OTP_PREFIX + email).get();
+	private String buildKey(String email, OtpPurpose otpPurpose) {
+		//key format: otp:SIGNUP_VERIFY:email,
+		return OTP_PREFIX + otpPurpose + ":" + email;
+	}
+
+	public boolean verifyOtp(String email, String code, OtpPurpose otpPurpose) {
+		String key = buildKey(email, otpPurpose);
+		String savedOtp = redissonClient.<String>getBucket(key).get();
 
 		if (savedOtp == null) {
 			return false;
@@ -33,7 +41,7 @@ public class OTPService {
 			return false;
 		}
 
-		redissonClient.<String>getBucket(OTP_PREFIX + email).delete();
+		redissonClient.<String>getBucket(key).delete();
 
 		return true;
 	}
