@@ -19,8 +19,6 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
-import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
 import vn.ptit.snapvocab.security.SecurityUtils;
 
@@ -42,6 +40,10 @@ public class SecurityConfiguration {
 				"/api/auth/login",
 				"/api/auth/register",
 				"/api/auth/refresh",
+				"/api/auth/activate",
+				"/v3/api-docs/**",
+				"/swagger-ui/**",
+				"/swagger-ui.html"
 		};
 
 		http

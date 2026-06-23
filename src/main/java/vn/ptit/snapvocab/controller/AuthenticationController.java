@@ -39,4 +39,5 @@ public class AuthenticationController {
 
 		return ResponseEntity.ok(this.authenticationService.register(requestRegisterDTO));
 	}
+
 }
