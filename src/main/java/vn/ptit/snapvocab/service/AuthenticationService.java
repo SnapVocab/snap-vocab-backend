@@ -29,6 +29,7 @@ import org.springframework.stereotype.Service;
 import vn.ptit.snapvocab.domain.Authority;
 import vn.ptit.snapvocab.domain.User;
 import vn.ptit.snapvocab.domain.dto.ForgotPasswordRequest;
+import vn.ptit.snapvocab.domain.dto.RefreshTokenRequest;
 import vn.ptit.snapvocab.domain.dto.RequestLoginDTO;
 import vn.ptit.snapvocab.domain.dto.RequestRegisterDTO;
 import vn.ptit.snapvocab.domain.dto.ResendCodeRequest;
@@ -254,5 +255,17 @@ public class AuthenticationService {
 
 		u.setPassword(passwordEncoder.encode(resetPasswordRequest.newPassword()));
 		userRepository.save(u);
+	}
+
+	public ResponseLoginDTO refreshToken(RefreshTokenRequest refreshTokenRequest) {
+		String username = this.refreshTokenService.getUsernameFromToken(
+				refreshTokenRequest.refreshToken());
+
+		this.refreshTokenService.revokeToken(refreshTokenRequest.refreshToken());
+
+		User u = this.userRepository.findOneByEmailIgnoreCase(username).orElseThrow(
+				() -> new UsernameNotFoundException("User with email " + username + " was not found"));
+
+		return generateAuthResponse(u);
 	}
 }

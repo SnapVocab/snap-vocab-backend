@@ -14,6 +14,7 @@ public class RefreshTokenService {
 
 	private final String REFRESH_TOKEN_PREFIX = "refresh_token:";
 	private final RedissonClient redissonClient;
+
 	@Value("${jwt.refresh-expiration}")
 	private Long refreshValidityInSeconds;
 
@@ -29,7 +30,7 @@ public class RefreshTokenService {
 	public String getUsernameFromToken(String token) {
 		String username = redissonClient.<String>getBucket(REFRESH_TOKEN_PREFIX + token).get();
 
-		if (username.isEmpty()) {
+		if (username == null || username.isEmpty()) {
 			throw new BadRequestAlertException("Token invalid or expired");
 		}
 
