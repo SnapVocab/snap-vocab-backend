@@ -51,4 +51,33 @@ public class MailService {
 
 		javaMailSender.send(message);
 	}
+
+	@Async
+	public void sendPasswordResetEmail(
+			String to,
+			String code,
+			Duration ttl
+	) throws MessagingException {
+
+		Context context = new Context();
+		context.setVariable("code", code);
+		context.setVariable("ttl", ttl.toMinutes() + " minutes");
+		context.setVariable("year", Year.now().getValue());
+
+		String html = templateEngine.process("passwordResetEmail", context);
+
+		MimeMessage message = javaMailSender.createMimeMessage();
+
+		MimeMessageHelper helper = new MimeMessageHelper(
+				message,
+				MimeMessageHelper.MULTIPART_MODE_MIXED_RELATED,
+				StandardCharsets.UTF_8.name());
+
+		helper.setFrom(from);
+		helper.setTo(to);
+		helper.setSubject("SnapVocab - Reset your password");
+		helper.setText(html, true);
+
+		javaMailSender.send(message);
+	}
 }

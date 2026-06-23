@@ -5,6 +5,7 @@ import jakarta.transaction.Transactional;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Collection;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -16,7 +17,9 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
@@ -25,16 +28,21 @@ import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.stereotype.Service;
 import vn.ptit.snapvocab.domain.Authority;
 import vn.ptit.snapvocab.domain.User;
+import vn.ptit.snapvocab.domain.dto.ForgotPasswordRequest;
 import vn.ptit.snapvocab.domain.dto.RequestLoginDTO;
 import vn.ptit.snapvocab.domain.dto.RequestRegisterDTO;
+import vn.ptit.snapvocab.domain.dto.ResendCodeRequest;
+import vn.ptit.snapvocab.domain.dto.ResetPasswordRequest;
 import vn.ptit.snapvocab.domain.dto.ResponseLoginDTO;
 import vn.ptit.snapvocab.domain.dto.ResponseRegisterDTO;
+import vn.ptit.snapvocab.domain.dto.VerifyMailRequest;
 import vn.ptit.snapvocab.domain.mapper.UserMapper;
 import vn.ptit.snapvocab.repository.AuthorityRepository;
 import vn.ptit.snapvocab.repository.UserRepository;
 import vn.ptit.snapvocab.security.AuthoritiesConstants;
 import vn.ptit.snapvocab.security.DomainUserDetailsService.UserWithId;
 import vn.ptit.snapvocab.security.SecurityUtils;
+import vn.ptit.snapvocab.util.constant.OtpPurpose;
 import vn.ptit.snapvocab.util.exception.BadRequestAlertException;
 import vn.ptit.snapvocab.util.exception.ResourceAlreadyExistException;
 
@@ -76,13 +84,26 @@ public class AuthenticationService {
 					"User with username " + requestLoginDTO.getEmail() + " was not found");
 		}
 
-		String accessToken = this.createToken(authentication);
-		String refreshToken = this.refreshTokenService.createRefreshToken(requestLoginDTO.getEmail());
+		return generateAuthResponse(userOptional.get());
+	}
+
+	private ResponseLoginDTO generateAuthResponse(User user) {
+		Collection<GrantedAuthority> authorities = user.getAuthorities().stream()
+				.map(auth -> new SimpleGrantedAuthority(
+						auth.getName())).collect(Collectors.toUnmodifiableList());
+		Authentication authentication = new UsernamePasswordAuthenticationToken(
+				(Object) user.getEmail(),
+				null,
+				authorities
+		);
+
+		String accessToken = createToken(authentication);
+		String refreshToken = refreshTokenService.createRefreshToken(user.getEmail());
 
 		return ResponseLoginDTO.builder()
 				.accessToken(accessToken)
 				.refreshToken(refreshToken)
-				.userDTO(userMapper.toDto(userOptional.get()))
+				.userDTO(userMapper.toDto(user))
 				.build();
 	}
 
@@ -144,7 +165,7 @@ public class AuthenticationService {
 				.build();
 
 		LOG.debug("Sending verification code to email {} with TTL = 5", createdUser.getEmail());
-		String code = otpService.saveOtp(createdUser.getEmail());
+		String code = otpService.saveOtp(createdUser.getEmail(), OtpPurpose.SIGNUP_VERIFY);
 		LOG.debug("Sending code {} to email {}", code, createdUser.getEmail());
 		try {
 			mailService.sendVerificationEmail(createdUser.getEmail(), code, Duration.ofMinutes(5));
@@ -153,5 +174,85 @@ public class AuthenticationService {
 		}
 
 		return responseRegisterDTO;
+	}
+
+	@Transactional
+	public ResponseLoginDTO verifyCode(VerifyMailRequest verifyMailRequest) {
+		boolean valid = this.otpService.verifyOtp(verifyMailRequest.getEmail(),
+				verifyMailRequest.getCode(), OtpPurpose.SIGNUP_VERIFY);
+
+		if (!valid) {
+			throw new BadRequestAlertException("Verify code is invalid or has expired.");
+		}
+
+		User u = this.userRepository.findOneByEmailIgnoreCase(verifyMailRequest.getEmail()).orElseThrow(
+				() -> new UsernameNotFoundException("User " + verifyMailRequest.getEmail() + " not found")
+		);
+
+		u.setActivated(true);
+		this.userRepository.save(u);
+
+		return this.generateAuthResponse(u);
+	}
+
+	public void resendCode(ResendCodeRequest resendCodeRequest) {
+		User u = this.userRepository.findOneByEmailIgnoreCase(resendCodeRequest.email()).orElseThrow(
+				() -> new UsernameNotFoundException("User " + resendCodeRequest.email() + " not found")
+		);
+
+		if (u.isActivated()) {
+			throw new BadRequestAlertException("User " + resendCodeRequest.email() + " was activated");
+		}
+
+		String code = otpService.saveOtp(resendCodeRequest.email(), OtpPurpose.SIGNUP_VERIFY);
+
+		try {
+			this.mailService.sendVerificationEmail(resendCodeRequest.email(), code,
+					Duration.ofMinutes(5));
+		} catch (MessagingException e) {
+			LOG.debug("Failed to send code {} to email {}", code, resendCodeRequest.email());
+		}
+	}
+
+	public void forgotPassword(ForgotPasswordRequest forgotPasswordRequest) {
+		LOG.debug("Forgot password for email={}", forgotPasswordRequest.email());
+
+		User u = userRepository.findOneByEmailIgnoreCase(forgotPasswordRequest.email())
+				.orElseThrow(() -> new UsernameNotFoundException(
+						"User " + forgotPasswordRequest.email() + " not found"));
+
+		if (!u.isActivated()) {
+			throw new BadRequestAlertException(
+					"User " + forgotPasswordRequest.email() + " has not been activated");
+		}
+
+		String code = otpService.saveOtp(forgotPasswordRequest.email(), OtpPurpose.FORGOT_PASSWORD);
+
+		try {
+			mailService.sendPasswordResetEmail(forgotPasswordRequest.email(), code,
+					Duration.ofMinutes(5));
+		} catch (MessagingException e) {
+			LOG.debug("Failed to send password reset email to {}: {}", forgotPasswordRequest.email(),
+					e.getMessage());
+		}
+	}
+
+	@Transactional
+	public void resetPassword(ResetPasswordRequest resetPasswordRequest) {
+		LOG.debug("Reset password for email={}", resetPasswordRequest.email());
+
+		boolean valid = otpService.verifyOtp(resetPasswordRequest.email(),
+				resetPasswordRequest.code(), OtpPurpose.FORGOT_PASSWORD);
+
+		if (!valid) {
+			throw new BadRequestAlertException("Reset code is invalid or has expired.");
+		}
+
+		User u = userRepository.findOneByEmailIgnoreCase(resetPasswordRequest.email())
+				.orElseThrow(() -> new UsernameNotFoundException(
+						"User " + resetPasswordRequest.email() + " not found"));
+
+		u.setPassword(passwordEncoder.encode(resetPasswordRequest.newPassword()));
+		userRepository.save(u);
 	}
 }
