@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Index;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Lob;
@@ -16,11 +17,15 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "word_definition")
 @Getter
 @Setter
 @AllArgsConstructor
 @NoArgsConstructor
+@Table(name = "word_definition", indexes = {
+		@Index(name = "idx_word_definition_word_id", columnList = "word_id"),
+		@Index(name = "idx_word_definition_definition_id", columnList = "definition_id"),
+		@Index(name = "idx_word_definition_source_id", columnList = "source_id")
+})
 public class WordDefinition {
 
 	@Id

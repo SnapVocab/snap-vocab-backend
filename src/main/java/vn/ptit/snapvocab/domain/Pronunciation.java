@@ -7,6 +7,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -17,7 +18,10 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "pronunciation")
+@Table(name = "pronunciation", indexes = {
+		@Index(name = "idx_pronunciation_word_id", columnList = "word_id"),
+		@Index(name = "idx_pronunciation_unique", columnList = "word_id, ipa, region", unique = true)
+})
 @Getter
 @Setter
 @AllArgsConstructor

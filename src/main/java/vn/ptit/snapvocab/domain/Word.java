@@ -7,6 +7,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
@@ -19,7 +20,9 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "word")
+@Table(name = "word", indexes = {
+		@Index(name = "idx_word_en", columnList = "word, lang_code")
+})
 @Getter
 @Setter
 @AllArgsConstructor
@@ -32,7 +35,7 @@ public class Word {
 
 	@NotNull
 	@Size
-	@Column(name = "word", length = 255, nullable = false)
+	@Column(name = "word", length = 191, nullable = false)
 	private String word;
 
 	@NotNull
@@ -51,6 +54,10 @@ public class Word {
 	@OneToMany(fetch = FetchType.LAZY, mappedBy = "word")
 	@JsonIgnoreProperties(value = {"word", "definition"}, allowSetters = true)
 	private Set<WordDefinition> wordDefinitions = new HashSet<>();
+
+	@OneToMany(fetch = FetchType.LAZY, mappedBy = "word")
+	@JsonIgnoreProperties(value = {"word"}, allowSetters = true)
+	private Set<WordRelation> wordRelations = new HashSet<>();
 
 	@OneToMany(fetch = FetchType.LAZY, mappedBy = "word")
 	@JsonIgnoreProperties(value = {"reviewLogs", "word", "deck"}, allowSetters = true)
