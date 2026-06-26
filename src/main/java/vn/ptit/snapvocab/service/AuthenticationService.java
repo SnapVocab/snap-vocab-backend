@@ -159,7 +159,7 @@ public class AuthenticationService {
 				.isActivated(createdUser.isActivated())
 				.lastName(createdUser.getLastName())
 				.firstName(createdUser.getFirstName())
-				.email(createdUser.getLastName())
+				.email(createdUser.getEmail())
 				.exp(createdUser.getExp())
 				.coin(createdUser.getCoin())
 				.streakDays(createdUser.getStreakDays())
@@ -240,7 +240,7 @@ public class AuthenticationService {
 
 	@Transactional
 	public void resetPassword(ResetPasswordRequest resetPasswordRequest) {
-		LOG.debug("Reset password for email={}", resetPasswordRequest.email());
+		LOG.info("Reset password for email={}", resetPasswordRequest.email());
 
 		boolean valid = otpService.verifyOtp(resetPasswordRequest.email(),
 				resetPasswordRequest.code(), OtpPurpose.FORGOT_PASSWORD);
