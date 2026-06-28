@@ -44,7 +44,7 @@ public class DomainUserDetailsService implements UserDetailsService {
 
 	private Object createSpringSecurityUser(String lowerCaseUsername, User user) {
 		if (!user.isActivated()) {
-			throw new UserNotActivatedException("User " + lowerCaseUsername + " was not activated");
+			throw new UserNotActivatedException("USER_NOT_ACTIVATED");
 		}
 		return UserWithId.fromUser(user);
 	}
