@@ -26,7 +26,7 @@ public class OTPService {
 
 	private String buildKey(String email, OtpPurpose otpPurpose) {
 		//key format: otp:SIGNUP_VERIFY:email,
-		return OTP_PREFIX + otpPurpose + ":" + email;
+		return OTP_PREFIX + otpPurpose.toString() + ":" + email;
 	}
 
 	public boolean verifyOtp(String email, String code, OtpPurpose otpPurpose) {
