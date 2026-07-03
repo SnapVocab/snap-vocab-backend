@@ -21,6 +21,12 @@ public class UserDTO {
 	@Size(max = 10)
 	private String nativeLanguage;
 
+	@Size(max = 50)
+	private String firstName;
+
+	@Size(max = 50)
+	private String lastName;
+
 	@Size(max = 10)
 	private String learningLanguage;
 
