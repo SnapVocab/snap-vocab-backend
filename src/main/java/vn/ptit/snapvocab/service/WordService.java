@@ -7,13 +7,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.ptit.snapvocab.domain.Word;
+import vn.ptit.snapvocab.domain.dto.BatchLookupRequest;
 import vn.ptit.snapvocab.domain.dto.LookupResultDTO;
-import vn.ptit.snapvocab.domain.dto.PronunciationLookupDTO;
-import vn.ptit.snapvocab.domain.dto.RelationLookupDTO;
-import vn.ptit.snapvocab.domain.dto.TranslationLookupDTO;
-import vn.ptit.snapvocab.domain.enumeration.CodeLabelMapper;
-import vn.ptit.snapvocab.domain.enumeration.RelationLabel;
-import vn.ptit.snapvocab.domain.mapper.MeaningMapper;
+import vn.ptit.snapvocab.domain.mapper.LookupResultMapper;
 import vn.ptit.snapvocab.repository.WordRepository;
 import vn.ptit.snapvocab.util.exception.ResourceNotFoundException;
 
@@ -22,38 +18,25 @@ import vn.ptit.snapvocab.util.exception.ResourceNotFoundException;
 @RequiredArgsConstructor
 public class WordService {
 
-    private final Logger LOG = LoggerFactory.getLogger(WordService.class);
+	private final Logger LOG = LoggerFactory.getLogger(WordService.class);
 
-    private final WordRepository wordRepository;
-    private final MeaningMapper meaningMapper;
+	private final WordRepository wordRepository;
+	private final LookupResultMapper lookupResultMapper;
 
-    public LookupResultDTO getWordByEnglish(String englishWord) {
-        LOG.info("Fetching word by english text: {}", englishWord);
-        Word word = wordRepository.findByWordAndLangCodeEn(englishWord)
-                .orElseThrow(() -> new ResourceNotFoundException("Word not found: " + englishWord));
+	public LookupResultDTO getWordByEnglish(String englishWord) {
+		LOG.info("Fetching word by english text: {}", englishWord);
+		Word word = wordRepository.findByWordAndLangCodeEn(englishWord)
+				.orElseThrow(() -> new ResourceNotFoundException("Word not found: " + englishWord));
+		return lookupResultMapper.toLookupResult(word);
+	}
 
-        List<PronunciationLookupDTO> pronunciations = word.getPronunciations().stream()
-                .map(p -> new PronunciationLookupDTO(p.getIpa(), p.getRegion()))
-                .toList();
+	public List<LookupResultDTO> getWordsByEnglish(BatchLookupRequest batchLookupRequest) {
+		return wordRepository.findWordsByLangCodeEn(batchLookupRequest.words()).stream()
+				.map(this::convertToLookupResult)
+				.toList();
+	}
 
-        List<TranslationLookupDTO> translations = word.getTranslations().stream()
-                .filter(t -> "vi".equals(t.getLangCode()))
-                .map(t -> new TranslationLookupDTO(t.getLangCode(), t.getTranslation()))
-                .toList();
-
-        List<RelationLookupDTO> relations = word.getWordRelations().stream()
-                .map(r -> new RelationLookupDTO(r.getRelatedWord(), CodeLabelMapper.fromCode(r.getRelationType(), RelationLabel.class)))
-                .toList();
-
-        return LookupResultDTO.builder()
-                .exists(true)
-                .word(word.getWord())
-                .langCode("vi")
-                .langName("Tiếng Việt")
-                .pronunciations(pronunciations)
-                .meanings(word.getWordDefinitions().stream().map(meaningMapper::toDto).toList())
-                .translations(translations)
-                .relations(relations)
-                .build();
-    }
+	private LookupResultDTO convertToLookupResult(Word word) {
+		return lookupResultMapper.toLookupResult(word);
+	}
 }
