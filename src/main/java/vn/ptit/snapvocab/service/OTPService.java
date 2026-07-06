@@ -1,7 +1,7 @@
 package vn.ptit.snapvocab.service;
 
 import java.security.SecureRandom;
-import java.util.concurrent.TimeUnit;
+import java.time.Duration;
 import lombok.RequiredArgsConstructor;
 import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
@@ -20,7 +20,7 @@ public class OTPService {
 		SecureRandom secureRandom = new SecureRandom();
 		int otp = 100000 + secureRandom.nextInt(900000);
 		String code = String.valueOf(otp);
-		redissonClient.<String>getBucket(key).set(code, OTP_TTL, TimeUnit.MINUTES);
+		redissonClient.<String>getBucket(key).set(code, Duration.ofMinutes(OTP_TTL));
 		return code;
 	}
 
