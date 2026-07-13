@@ -44,3 +44,9 @@ jwt:
   secret: Q2F6eV9TZWNyZXRfU2FtcGxlX0tleV9Gb3JfSldUX0FuZF9SZWRpc3Nvbl9JbnRlZ3JhdGlvbl8yMDI2X0Rldg==
   access-expiration: 900000
   refresh-expiration: 604800000
+
+minio:
+  endpoint: http://localhost:19000
+  access-key: admin
+  secret-key: 200320045
+  bucket: snapvocab

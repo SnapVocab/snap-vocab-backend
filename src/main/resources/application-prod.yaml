@@ -39,3 +39,9 @@ jwt:
   access-expiration: 900000
   refresh-expiration: 604800000
 
+minio:
+  endpoint: endpoint_here
+  access-key: access-key here
+  secret-key: secret-key here
+  bucket: snapvocab
+
