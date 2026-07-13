@@ -94,4 +94,8 @@ public class User {
 	@Column(nullable = false)
 	private boolean activated = false;
 
+	@Size(max = 200, message = "Bio must not exceed 200 characters")
+	@Column(name = "bio", length = 200)
+	private String bio;
+
 }

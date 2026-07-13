@@ -45,4 +45,6 @@ public class UserDTO {
 	private Instant lastStudiedAt;
 
 	private String email;
+
+	private String bio;
 }
