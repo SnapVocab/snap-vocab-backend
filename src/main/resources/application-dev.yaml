@@ -35,6 +35,11 @@ spring:
         format_sql: true
         use_sql_comments: true
 
+  servlet:
+    multipart:
+      max-file-size: 15MB
+      max-request-size: 15MB
+
 logging:
   level:
     org.hibernate.SQL: DEBUG
@@ -50,3 +55,10 @@ minio:
   access-key: admin
   secret-key: 200320045
   bucket: snapvocab
+
+ai-service:
+  base-url: http://localhost:8000
+  connect-timeout-ms: 5000
+  # CPU inference (no GPU) can take minutes per image with the full pipeline enabled.
+  # Lower this back down once the AI service runs on GPU again.
+  read-timeout-ms: 600000
