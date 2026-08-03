@@ -30,6 +30,11 @@ spring:
       ddl-auto: validate
     show-sql: false
 
+  servlet:
+    multipart:
+      max-file-size: 15MB
+      max-request-size: 15MB
+
 logging:
   level:
     root: INFO
@@ -44,4 +49,9 @@ minio:
   access-key: access-key here
   secret-key: secret-key here
   bucket: snapvocab
+
+ai-service:
+  base-url: ${AI_SERVICE_URL}
+  connect-timeout-ms: 5000
+  read-timeout-ms: 60000
 
