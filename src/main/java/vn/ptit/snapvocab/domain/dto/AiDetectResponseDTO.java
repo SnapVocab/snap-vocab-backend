@@ -1,5 +1,6 @@
 package vn.ptit.snapvocab.domain.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
 /**
@@ -7,6 +8,10 @@ import java.util.List;
  */
 public record AiDetectResponseDTO(
 		List<DetectionDTO> detections,
-		List<String> labels
+		List<String> labels,
+		@JsonProperty("annotated_image_base64") String annotatedImageBase64,
+		@JsonProperty("annotated_image_mime") String annotatedImageMime,
+		@JsonProperty("image_width") int imageWidth,
+		@JsonProperty("image_height") int imageHeight
 ) {
 }

@@ -14,6 +14,7 @@ import vn.ptit.snapvocab.domain.dto.BatchLookupRequest;
 import vn.ptit.snapvocab.domain.dto.DetectionDTO;
 import vn.ptit.snapvocab.domain.dto.LookupResultDTO;
 import vn.ptit.snapvocab.domain.dto.ScanItemDTO;
+import vn.ptit.snapvocab.domain.dto.ScanResultDTO;
 import vn.ptit.snapvocab.service.AiDetectionService;
 import vn.ptit.snapvocab.service.ScanService;
 import vn.ptit.snapvocab.service.WordService;
@@ -31,17 +32,24 @@ public class ScanServiceImpl implements ScanService {
 	private final WordService wordService;
 
 	@Override
-	public List<ScanItemDTO> scanImage(MultipartFile image) {
+	public ScanResultDTO scanImage(MultipartFile image) {
 		AiDetectResponseDTO detected = aiDetectionService.detect(image);
-		if (detected.detections().isEmpty()) {
-			return List.of();
-		}
 
-		Map<String, LookupResultDTO> byWord = lookupWords(detected.labels());
+		Map<String, LookupResultDTO> byWord = detected.detections().isEmpty()
+				? Map.of()
+				: lookupWords(detected.labels());
 
-		return detected.detections().stream()
+		List<ScanItemDTO> items = detected.detections().stream()
 				.map(d -> toScanItem(d, byWord.get(d.label().toLowerCase(Locale.ROOT))))
 				.toList();
+
+		return ScanResultDTO.builder()
+				.annotatedImageBase64(detected.annotatedImageBase64())
+				.annotatedImageMime(detected.annotatedImageMime())
+				.imageWidth(detected.imageWidth())
+				.imageHeight(detected.imageHeight())
+				.items(items)
+				.build();
 	}
 
 	private Map<String, LookupResultDTO> lookupWords(List<String> labels) {
@@ -57,7 +65,6 @@ public class ScanServiceImpl implements ScanService {
 				.score(detection.score())
 				.source(detection.source())
 				.box(detection.box())
-				.imageBase64(detection.imageBase64())
 				.word(word)
 				.build();
 	}

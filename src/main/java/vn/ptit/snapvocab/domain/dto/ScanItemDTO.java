@@ -21,6 +21,5 @@ public class ScanItemDTO {
 	private double score;
 	private String source;
 	private BoundingBoxDTO box;
-	private String imageBase64;
 	private LookupResultDTO word;
 }

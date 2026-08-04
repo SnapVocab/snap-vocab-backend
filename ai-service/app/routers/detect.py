@@ -1,10 +1,9 @@
-import base64
 import io
 
 from fastapi import APIRouter, HTTPException, Request, UploadFile
 from PIL import Image
 
-from app.pipeline.pipeline import process_image
+from app.pipeline.pipeline import encode_base64, process_image
 from app.schemas import BoundingBox, Detection, DetectResponse, HealthResponse
 
 router = APIRouter()
@@ -27,7 +26,7 @@ async def detect(request: Request, file: UploadFile) -> DetectResponse:
     engines = request.app.state.engines
     settings = engines.settings
 
-    if not engines.florence.loaded or not engines.sam.loaded:
+    if not engines.florence.loaded:
         raise HTTPException(status_code=503, detail="Models are still loading, try again shortly.")
 
     if file.content_type not in {"image/jpeg", "image/png", "image/webp"}:
@@ -43,16 +42,22 @@ async def detect(request: Request, file: UploadFile) -> DetectResponse:
     except Exception as exc:
         raise HTTPException(status_code=400, detail="Could not decode image.") from exc
 
-    results = process_image(settings, engines.florence, engines.sam, engines.clip, image)
+    result = process_image(settings, engines.florence, engines.clip, image)
 
     detections = [
         Detection(
-            label=r.label,
-            score=r.score,
-            source=r.source,
-            box=BoundingBox(x1=r.box[0], y1=r.box[1], x2=r.box[2], y2=r.box[3]),
-            image_base64=base64.b64encode(r.crop_png).decode("ascii"),
+            label=d["label"],
+            score=d["score"],
+            source=d["source"],
+            box=BoundingBox(x1=d["box"][0], y1=d["box"][1], x2=d["box"][2], y2=d["box"][3]),
         )
-        for r in results
+        for d in result.detections
     ]
-    return DetectResponse(detections=detections, labels=[d.label for d in detections])
+    return DetectResponse(
+        detections=detections,
+        labels=[d.label for d in detections],
+        annotated_image_base64=encode_base64(result.annotated_image),
+        annotated_image_mime=f"image/{settings.annotated_format.lower()}",
+        image_width=result.width,
+        image_height=result.height,
+    )
