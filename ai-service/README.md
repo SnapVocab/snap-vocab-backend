@@ -3,10 +3,22 @@
 Service FastAPI nhận diện đồ vật trong ảnh và trả về tên tiếng Anh của chúng,
 để backend tra nghĩa và app dựng thẻ từ vựng.
 
-Được port từ notebook nghiên cứu `object_scan_florence2`, giữ nguyên pipeline:
-**Florence-2** (nhận diện vật thể từ vựng mở) → **CLIP** (xác thực các nhãn từ
-vựng nền có thật trong ảnh, chống ảo giác) → **SAM** (phân đoạn và cắt từng vật
-thể ra nền trong suốt).
+## Pipeline
+
+```
+Ảnh đầu vào
+  → Resize (cạnh dài tối đa MAX_INPUT_SIZE)
+  → Florence-2 chạy <OD>                    (1 lượt gọi model)
+  → Loại bounding box quá nhỏ / quá lớn
+  → Chuẩn hoá nhãn, loại nhãn trùng
+  → Vẽ tất cả box lên MỘT ảnh duy nhất
+  → Trả: danh sách từ + box + ảnh đã khoanh vùng
+```
+
+Được port từ notebook nghiên cứu `object_scan_florence2` nhưng đã rút gọn mạnh
+để chạy được với độ trễ chấp nhận được trên CPU. Các bước bổ sung của notebook
+(tiled OD, self-grounding, dense caption, từ vựng nền + CLIP, cắt nền bằng SAM)
+vẫn còn trong code nhưng **mặc định tắt** — xem [Cấu hình](#cấu-hình).
 
 ## Vị trí trong hệ thống
 
@@ -108,23 +120,29 @@ Kết quả:
 
 ```json
 {
-  "labels": ["mug", "laptop", "chair"],
+  "labels": ["bottle", "person"],
   "detections": [
     {
-      "label": "mug",
+      "label": "bottle",
       "score": 0.9,
       "source": "od",
-      "box": { "x1": 120.0, "y1": 80.0, "x2": 340.0, "y2": 310.0 },
-      "image_base64": "iVBORw0KGgoAAAANSUhEUgAA..."
+      "box": { "x1": 745.0, "y1": 435.0, "x2": 785.0, "y2": 542.0 }
     }
-  ]
+  ],
+  "annotated_image_base64": "UklGRiQAAABXRUJQVlA4...",
+  "annotated_image_mime": "image/webp",
+  "image_width": 900,
+  "image_height": 599
 }
 ```
 
-- `box` là toạ độ pixel theo **kích thước gốc của ảnh gửi lên** — app dùng
-  toạ độ này để vẽ khung nhận diện đè lên ảnh.
-- `image_base64` là ảnh PNG nền trong suốt (do SAM cắt), dùng làm ảnh thẻ
-  từ vựng. Chuỗi này **không** có tiền tố `data:`.
+- `annotated_image_base64` là **một ảnh duy nhất** đã vẽ sẵn toàn bộ khung +
+  nhãn + độ tin cậy. Chuỗi **không** có tiền tố `data:` — client tự ghép:
+  `data:${annotated_image_mime};base64,${annotated_image_base64}`.
+- `image_width`/`image_height` là **hệ toạ độ chung** của cả ảnh khoanh vùng
+  lẫn mọi `box`, nên client không phải quy đổi tỉ lệ.
+- Không còn ảnh cắt riêng cho từng vật thể (trước đây khiến response phình
+  lên ~2MB cho ảnh vào 193KB).
 - `source` cho biết nhãn đến từ bước nào trong pipeline:
 
 | `source`  | Nguồn |
@@ -147,16 +165,22 @@ gì thì service chạy y hệt notebook.
 | Biến | Mặc định | Ý nghĩa |
 |---|---|---|
 | `DEVICE` | `cuda` | `cuda` \| `cpu` \| `auto` |
-| `FLORENCE_MODEL_ID` | `microsoft/Florence-2-large` | Đổi sang `Florence-2-base` để nhẹ hơn |
-| `SAM_MODEL_TYPE` | `vit_h` | `vit_h` \| `vit_l` \| `vit_b` (`vit_b` nhẹ nhất) |
-| `ENABLE_TILED_OD` | `true` | Quét thêm 4 ô để bắt vật nhỏ (+4 lượt gọi model) |
-| `ENABLE_SELF_GROUNDING` | `true` | Tự mô tả ảnh rồi ground caption (+2 lượt) |
-| `ENABLE_BASE_VOCAB` | `true` | Quét 80 từ vựng nền (**+7 lượt**, tốn nhất) |
-| `ENABLE_EXTRA_VOCAB` | `true` | Thêm 79 từ gia dụng vào bộ nền (**+7 lượt nữa**) |
-| `MAX_CARDS_PER_LABEL` | `1` | Mỗi từ chỉ giữ 1 thẻ điểm cao nhất |
-| `CLIP_BASE_THRESHOLD` | `0.23` | Sàn điểm CLIP cho nhãn nguồn `base` |
-| `CLIP_RANK_MARGIN` | `0.02` | Biên độ thứ hạng CLIP (chống ảo giác "na ná") |
+| `FLORENCE_MODEL_ID` | `microsoft/Florence-2-base` | `Florence-2-large` chính xác hơn nhưng chậm vài lần |
+| `MAX_INPUT_SIZE` | `900` | Cạnh dài tối đa sau resize; cũng là hệ toạ độ của box |
+| `MIN_BOX_AREA_RATIO` | `0.004` | Bỏ box nhỏ hơn 0.4% diện tích ảnh (nhiễu) |
+| `MAX_BOX_AREA_RATIO` | `0.85` | Bỏ box trùm >85% ảnh (phông nền, không đáng học) |
+| `ANNOTATED_FORMAT` | `WEBP` | Định dạng ảnh khoanh vùng (WEBP nhỏ hơn PNG ~15×) |
+| `ANNOTATED_QUALITY` | `85` | Chất lượng nén WebP |
+| `ENABLE_TILED_OD` | `false` | Quét thêm 4 ô để bắt vật nhỏ (**+4 lượt gọi**) |
+| `ENABLE_SELF_GROUNDING` | `false` | Tự mô tả ảnh rồi ground caption (**+2 lượt**) |
+| `ENABLE_DENSE_CAPTION` | `false` | Dense region caption (**+1 lượt**) |
+| `ENABLE_BASE_VOCAB` | `false` | Quét 80 từ vựng nền (**+7 lượt**, kéo theo CLIP) |
+| `ENABLE_EXTRA_VOCAB` | `false` | Thêm 79 từ gia dụng vào bộ nền (**+7 lượt nữa**) |
 | `MAX_UPLOAD_MB` | `15` | Giới hạn dung lượng ảnh |
+
+SAM chỉ dùng để cắt nền từng vật thể — luồng mặc định không còn cần nên
+**service không nạp SAM**, tiết kiệm 2.4GB RAM (vit_h) và thời gian khởi động.
+CLIP cũng chỉ nạp khi `ENABLE_BASE_VOCAB=true`.
 
 ### Ba bộ cấu hình sẵn có
 
@@ -175,17 +199,48 @@ copy .env.notebook .env
 
 ## Đánh đổi giữa chất lượng và tốc độ
 
-Số lượt gọi Florence-2 cho mỗi ảnh quyết định thời gian xử lý:
+**Thời gian gần như tỉ lệ thuận với số lượt gọi Florence-2** (~7-13 giây/lượt
+trên CPU i5-10300H).
 
-| Cấu hình | Số lượt gọi | Số nhãn (ảnh mẫu) | Thời gian (CPU i5-10300H) |
-|---|---|---|---|
-| Chỉ `OD` + `dense` | 2 | 4 | ~26 giây |
-| Thêm `TILED_OD` + `SELF_GROUNDING` | ~8 | 18 | ~83 giây |
-| Đầy đủ như notebook (thêm `BASE_VOCAB` + `EXTRA_VOCAB`) | ~22 | nhiều nhất | nhiều phút |
+Số đo thật trên `hell.webp` (990×659, ảnh bếp nhiều đồ vật), `Florence-2-base`.
+Cột cuối là số nhãn đúng so với 33 vật thể nhìn thấy được trong ảnh — chạy lại
+bằng `evaluate_configs.py`:
 
-Đây là số đo thật với `Florence-2-base` + `SAM vit_b`. Dùng `Florence-2-large`
-sẽ chậm hơn vài lần nữa nhưng nhãn chính xác và cụ thể hơn (ví dụ nhận đúng
-`turkey` thay vì `chicken`).
+| Cấu hình | Thời gian | Số nhãn | Đúng/33 |
+|---|---:|---:|---:|
+| `OD` một mình | 11.7s | 4 | 4 |
+| `OD` + `DENSE_CAPTION` | 18.5s | 4 | 4 |
+| `OD` + `TILED_OD` @900px | 31.1s | 5 | 5 |
+| **`OD` + `SELF_GROUNDING` (mặc định)** | **~40s** | **16** | **13** |
+| `OD` + `SELF` + `TILED` @900px | 71.8s | 17 | 14 |
+| `OD` + `SELF` + `TILED` @1400px | 71.9s | 18 | 15 |
+| `OD` + `SELF` + `TILED` + `BASE_VOCAB` @1400px | 131.9s | 29 | 19 |
+| `OD` + `SELF` + `BASE` + `EXTRA_VOCAB` | 114.6s | 29 | 16 |
+
+Bốn điều rút ra từ số đo:
+
+1. **`SELF_GROUNDING` là bước đáng giá nhất**: gấp 4 lần số nhãn (4 → 16) chỉ
+   với khoảng +22 giây. Đây là lý do nó được bật mặc định.
+2. **Chất lượng ảnh đầu vào quan trọng hơn tưởng tượng**: cùng ảnh đó nhưng
+   nén lại JPEG 80% (đúng như `ImagePicker` của app từng làm) chỉ còn **11
+   nhãn thay vì 16**. Vì vậy app phải gửi ảnh ở `quality: 1`.
+3. **`MAX_INPUT_SIZE` cao không tốn thêm thời gian** (Florence-2 vẫn co về
+   768px bên trong) nhưng giúp `TILED_OD` bắt được vật nhỏ — nâng 900 → 1400
+   lấy lại `faucet` và `drawer`. Đã đặt mặc định 1400.
+4. **`BASE_VOCAB` tăng độ phủ nhưng giảm độ chính xác**: 29 nhãn nhưng chỉ 19
+   đúng (~35% là nhãn sai như `laptop`, `cake`, `sandwich`, `book`). Bật khi
+   cần phủ rộng và chấp nhận người dùng phải bỏ chọn bớt.
+   `EXTRA_VOCAB` thì **làm tệ hơn** (16 đúng, chậm hơn) — không nên bật.
+
+Để so sánh, pipeline cũ (đầy đủ các bước + cắt nền SAM) mất **165 giây** và
+trả về response **2196 KB**; mặc định hiện tại mất **~34 giây** và **~193 KB**.
+
+### Những từ chưa cấu hình nào bắt được
+
+`baby`, `carrot`, `jar`, `kale`, `microwave`, `mug`, `scale`, `shirt`, `sink`,
+`spatula`, `toy`, `turkey`, `window` — chủ yếu là vật nhỏ hoặc bị che khuất.
+Muốn bắt thêm thì cần `Florence-2-large` (chậm hơn vài lần trên CPU, nên chỉ
+khả thi khi có GPU).
 
 **Cảnh báo timeout**: app đặt timeout 180 giây
 (`src/features/scan/api.ts`), backend đặt `read-timeout-ms: 600000`
@@ -244,9 +299,11 @@ ai-service/
 │   └── pipeline/
 │       ├── labels.py        # Lọc từ điển/danh từ cụ thể, so khớp nhãn, IoU
 │       ├── florence.py      # Nạp Florence-2, nhận diện, khử trùng lặp
-│       ├── sam.py           # Nạp SAM, phân đoạn box thành mask
-│       ├── clip.py          # CLIP xác thực nhãn nguồn `base`
-│       └── pipeline.py      # Điều phối: detect → dedup → CLIP → SAM cắt ảnh
+│       ├── annotate.py      # Vẽ box + nhãn lên một ảnh, nén WebP
+│       ├── timing.py        # Đo thời gian từng bước (xem log khi chạy)
+│       ├── sam.py           # (không dùng ở luồng mặc định) cắt nền vật thể
+│       ├── clip.py          # (chỉ khi bật BASE_VOCAB) xác thực nhãn nền
+│       └── pipeline.py      # Điều phối toàn bộ luồng
 ├── checkpoints/             # Checkpoint SAM (tự tải, đã .gitignore)
 ├── nltk_data/               # Dữ liệu NLTK (tự tải, đã .gitignore)
 ├── .env / .env.example / .env.notebook

@@ -1,102 +1,116 @@
-"""End-to-end orchestration: Florence-2 detect -> dedup -> CLIP-gate -> SAM crop.
+"""End-to-end orchestration.
 
-Adapted from `process_and_crop_flashcards` in the research notebook (cell 10),
-with the Colab/matplotlib/eval-only pieces removed and PNG crops returned as
-in-memory bytes instead of being written to disk.
+Flow (each step maps to one function below):
+
+    input image
+      -> resize
+      -> Florence-2 `<OD>`            (one model call by default)
+      -> drop boxes that are too small / too large
+      -> normalise labels, drop duplicates
+      -> draw every box onto a single annotated image
+      -> return labels + boxes + that one image
+
+Extra Florence-2 stages (tiled OD, self-grounding, dense captions, background
+vocabulary) stay available behind config flags, but each one adds model calls,
+which is where nearly all the latency lives.
 """
 from __future__ import annotations
 
-import io
+import base64
+import logging
 
-import numpy as np
 from PIL import Image
 
 from app.config import Settings
+from app.pipeline.annotate import draw_detections, encode_image, fit_within
 from app.pipeline.clip import ClipEngine
 from app.pipeline.florence import FlorenceEngine, dedup_detections
 from app.pipeline.labels import is_valid_dictionary_word
-from app.pipeline.sam import SamEngine
+from app.pipeline.timing import stage
+
+logger = logging.getLogger("ai-service.timing")
 
 
-class DetectionResult:
-    __slots__ = ("label", "score", "source", "box", "crop_png")
+class ScanResult:
+    __slots__ = ("detections", "annotated_image", "width", "height")
 
-    def __init__(self, label: str, score: float, source: str, box: list[float], crop_png: bytes):
-        self.label = label
-        self.score = score
-        self.source = source
-        self.box = box
-        self.crop_png = crop_png
+    def __init__(self, detections: list[dict], annotated_image: bytes, width: int, height: int):
+        self.detections = detections
+        self.annotated_image = annotated_image
+        # Both the boxes and the annotated image use this one coordinate space,
+        # so the client can overlay them without rescaling.
+        self.width = width
+        self.height = height
 
 
-def _crop_to_png_bytes(image_np: np.ndarray, mask: np.ndarray, box: list[float], padding: int) -> bytes | None:
-    height, width = image_np.shape[:2]
-    ys, xs = np.where(mask)
-    if ys.size == 0 or xs.size == 0:
-        return None
-    mx1 = max(0, int(xs.min()) - padding)
-    my1 = max(0, int(ys.min()) - padding)
-    mx2 = min(width, int(xs.max()) + 1 + padding)
-    my2 = min(height, int(ys.max()) + 1 + padding)
-    if mx2 <= mx1 or my2 <= my1:
-        return None
-    rgba = np.dstack([image_np, (mask.astype(np.uint8) * 255)])
-    crop = Image.fromarray(rgba[my1:my2, mx1:mx2], mode="RGBA")
-    buf = io.BytesIO()
-    crop.save(buf, format="PNG")
-    return buf.getvalue()
+def _filter_by_area(detections: list[dict], width: int, height: int, settings: Settings) -> list[dict]:
+    """Drop boxes too small to read and boxes that just frame the backdrop."""
+    image_area = float(width * height)
+    kept = []
+    for d in detections:
+        x1, y1, x2, y2 = d["box"]
+        ratio = max(0.0, (x2 - x1)) * max(0.0, (y2 - y1)) / image_area
+        if settings.min_box_area_ratio <= ratio <= settings.max_box_area_ratio:
+            kept.append(d)
+    return kept
+
+
+def _unique_by_label(detections: list[dict]) -> list[dict]:
+    """One card per word: keep the highest-scoring box for each label."""
+    best: dict[str, dict] = {}
+    for d in sorted(detections, key=lambda x: -x["score"]):
+        best.setdefault(d["label"], d)
+    return list(best.values())
 
 
 def process_image(
     settings: Settings,
     florence: FlorenceEngine,
-    sam: SamEngine,
     clip: ClipEngine,
     raw_image: Image.Image,
-) -> list[DetectionResult]:
-    raw_image = raw_image.convert("RGB")
-    image_np = np.array(raw_image)
+) -> ScanResult:
+    # 1. Resize — Florence-2 works on 768x768 internally, and this also bounds
+    #    the annotated image we send back.
+    image = fit_within(raw_image.convert("RGB"), settings.max_input_size)
+    logger.info("--- detect start (%dx%d) ---", image.width, image.height)
 
-    # 1. Florence-2: propose boxes + open-vocab labels
-    detections = florence.detect(raw_image)
+    # 2. Florence-2 detection
+    with stage("1.florence.detect"):
+        detections = florence.detect(image)
+    n_raw = len(detections)
 
-    # 2. Dedup between <OD> / tiled OD / self-grounding / dense / base-vocab
-    detections = dedup_detections(detections)
+    # 3. Drop boxes that are too small or that cover the whole scene
+    detections = _filter_by_area(detections, image.width, image.height, settings)
 
-    # 3. CLIP gates the base-vocabulary detections (the only source prone to hallucination)
+    # 4. Normalise + drop duplicates
+    with stage("2.dedup+filter", f"{n_raw} raw"):
+        detections = dedup_detections(detections)
+        if settings.require_dictionary_labels:
+            detections = [
+                d for d in detections
+                if is_valid_dictionary_word(d["label"].split()[-1])
+            ]
+        detections = _unique_by_label(detections)
+
+    # 4b. CLIP only matters when background-vocabulary grounding produced boxes,
+    #     which is the one source prone to hallucinating objects.
     base_dets = [d for d in detections if d.get("source") == "base"]
-    if base_dets:
+    if base_dets and clip.loaded:
         others = [d for d in detections if d.get("source") != "base"]
-        kept, _dropped = clip.verify(raw_image, base_dets, settings.clip_base_threshold)
+        with stage("3.clip.verify", f"{len(base_dets)} base boxes"):
+            kept, _dropped = clip.verify(image, base_dets, settings.clip_base_threshold)
         detections = others + kept
 
-    # 4. Flashcard mode: keep only the top-scoring box per label
-    if settings.max_cards_per_label:
-        by_label: dict[str, list[dict]] = {}
-        for d in sorted(detections, key=lambda x: -x["score"]):
-            by_label.setdefault(d["label"], []).append(d)
-        detections = [d for lst in by_label.values() for d in lst[: settings.max_cards_per_label]]
+    # 5. One annotated image instead of one cropped image per object.
+    #    Drawn on `image` (already resized in step 1) and NOT resized again, so
+    #    the boxes above stay valid for it.
+    with stage("4.annotate", f"{len(detections)} boxes"):
+        annotated = draw_detections(image, detections)
+        encoded = encode_image(annotated, settings.annotated_format, settings.annotated_quality)
 
-    # 5. SAM verifies + segments each box, crops a transparent-background flashcard image
-    sam.set_image(image_np)
-    results: list[DetectionResult] = []
-    for d in detections:
-        if settings.require_dictionary_labels and not is_valid_dictionary_word(d["label"].split()[-1]):
-            continue
+    logger.info("annotated image %.1f KB, %d labels", len(encoded) / 1024, len(detections))
+    return ScanResult(detections, encoded, image.width, image.height)
 
-        x1, y1, x2, y2 = d["box"]
-        mask, _iou_pred, _stability = sam.segment_box(d["box"])
-        mask_area = int(mask.sum())
-        box_area = max(1.0, (x2 - x1) * (y2 - y1))
-        if mask_area < settings.sam_min_mask_area_px or (mask_area / box_area) < settings.sam_min_mask_box_ratio:
-            continue
 
-        png_bytes = _crop_to_png_bytes(image_np, mask, d["box"], settings.sam_crop_padding)
-        if png_bytes is None:
-            continue
-
-        results.append(DetectionResult(
-            label=d["label"], score=d["score"], source=d["source"], box=d["box"], crop_png=png_bytes,
-        ))
-
-    return results
+def encode_base64(data: bytes) -> str:
+    return base64.b64encode(data).decode("ascii")

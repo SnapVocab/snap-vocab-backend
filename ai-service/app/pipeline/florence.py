@@ -6,6 +6,7 @@ base/extra vocabulary grounding. Evaluation-only ablations were dropped.
 """
 from __future__ import annotations
 
+import time
 from typing import Any
 from unittest.mock import patch
 
@@ -16,6 +17,7 @@ from transformers.dynamic_module_utils import get_imports
 
 from app.config import Settings
 from app.pipeline.labels import BASE_VOCAB, EXTRA_HOUSEHOLD_VOCAB, clean_label, compute_iou, labels_match
+from app.pipeline.timing import log_stage as _log_stage, stage
 
 PSEUDO_SCORE = {"od": 0.90, "grounding": 0.85, "self": 0.80, "dense": 0.75, "base": 0.70}
 
@@ -77,7 +79,8 @@ class FlorenceEngine:
         strict = settings.strict_dictionary_filter
 
         # ---- 1. <OD> ----
-        od = self.run(image, "<OD>")
+        with stage("  1a.OD", "1 call"):
+            od = self.run(image, "<OD>")
         for box, raw in zip(od.get("bboxes", []), od.get("labels", [])):
             label = clean_label(raw, from_caption=False, strict_dictionary_filter=strict)
             if label:
@@ -96,6 +99,7 @@ class FlorenceEngine:
                 (int(0.4 * width), int(0.4 * height), width, height),
             ]
             margin = 8
+            tiles_started = time.perf_counter()
             for (tx1, ty1, tx2, ty2) in tiles:
                 od_t = self.run(image.crop((tx1, ty1, tx2, ty2)), "<OD>")
                 for box, raw in zip(od_t.get("bboxes", []), od_t.get("labels", [])):
@@ -113,9 +117,11 @@ class FlorenceEngine:
                             "box": [x1 + tx1, y1 + ty1, x2 + tx1, y2 + ty1],
                             "source": "od_tile",
                         })
+            _log_stage("  1b.OD tiled", time.perf_counter() - tiles_started, "4 calls")
 
         # ---- 1c. Self-grounding: detailed caption -> ground that same caption ----
         if settings.enable_self_grounding:
+            self_started = time.perf_counter()
             try:
                 detailed_cap = self.run(image, "<MORE_DETAILED_CAPTION>")
                 if isinstance(detailed_cap, str) and detailed_cap.strip():
@@ -131,16 +137,19 @@ class FlorenceEngine:
                             })
             except Exception:
                 pass
+            _log_stage("  1c.self-grounding", time.perf_counter() - self_started, "2 calls")
 
         # ---- 2. <DENSE_REGION_CAPTION> ----
-        dense = self.run(image, "<DENSE_REGION_CAPTION>")
-        for box, cap in zip(dense.get("bboxes", []), dense.get("labels", [])):
-            label = clean_label(cap, from_caption=True, strict_dictionary_filter=strict)
-            if label:
-                detections.append({
-                    "label": label, "score": PSEUDO_SCORE["dense"],
-                    "box": [float(v) for v in box], "source": "dense",
-                })
+        if settings.enable_dense_caption:
+            with stage("  2.dense-caption", "1 call"):
+                dense = self.run(image, "<DENSE_REGION_CAPTION>")
+            for box, cap in zip(dense.get("bboxes", []), dense.get("labels", [])):
+                label = clean_label(cap, from_caption=True, strict_dictionary_filter=strict)
+                if label:
+                    detections.append({
+                        "label": label, "score": PSEUDO_SCORE["dense"],
+                        "box": [float(v) for v in box], "source": "dense",
+                    })
 
         # ---- 3. Background vocabulary coverage (BASE_VOCAB [+ EXTRA_HOUSEHOLD_VOCAB]) ----
         if settings.enable_base_vocab:
@@ -151,6 +160,8 @@ class FlorenceEngine:
                 w for w in query_vocab
                 if not any(labels_match(w, e) or labels_match(e, w) for e in existing)
             ]
+            base_started = time.perf_counter()
+            n_chunks = (len(todo) + 11) // 12
             for k in range(0, len(todo), 12):
                 chunk = todo[k:k + 12]
                 text = ". ".join(chunk) + "."
@@ -166,6 +177,7 @@ class FlorenceEngine:
                         "label": label, "score": PSEUDO_SCORE["base"],
                         "box": [x1, y1, x2, y2], "source": "base",
                     })
+            _log_stage("  3.base-vocab", time.perf_counter() - base_started, f"{n_chunks} calls")
 
         return detections
 
