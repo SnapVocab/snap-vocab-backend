@@ -18,7 +18,9 @@ public class RedissonConfig {
 		config.setCodec(new JsonJacksonCodec());
 
 		config.useSingleServer()
-				.setAddress("redis://" + redisProperties.getHost() + ":" + redisProperties.getPort())
+				.setAddress("rediss://" + redisProperties.getHost() + ":" + redisProperties.getPort())
+				.setUsername(redisProperties.getUsername())
+				.setPassword(redisProperties.getPassword())
 				.setDatabase(redisProperties.getDatabase());
 
 		if (redisProperties.getPassword() != null && !redisProperties.getPassword().isBlank()) {
