@@ -3,16 +3,20 @@ server:
 
 spring:
   datasource:
-    url: jdbc:mariadb://localhost:3636/snapvocab
+    url: jdbc:mariadb://cloud.layerbase.dev:12785/snapvocab?sslMode=REQUIRED
     username: root
-    password: root
+    password: TokgTf12Z0K0dr5QO1bjWj4x
 
   data:
     redis:
-      host: localhost
-      port: 6380
-      password:
+      host: snap-vocab-redis-peak-font.cloud.layerbase.dev
+      port: 6379
+      username: default
+      password: h4mlAqhKrZXs4p3dkEVPl86p
       database: 0
+      ssl:
+        enabled: true
+
   mail:
     host: smtp.gmail.com
     port: 587
