@@ -10,8 +10,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import vn.ptit.snapvocab.domain.dto.BatchLookupRequest;
-import vn.ptit.snapvocab.domain.dto.LookupResultDTO;
+import vn.ptit.snapvocab.domain.dto.word.BatchLookupRequest;
+import vn.ptit.snapvocab.domain.dto.word.LookupResultDTO;
 import vn.ptit.snapvocab.service.WordService;
 
 @RestController

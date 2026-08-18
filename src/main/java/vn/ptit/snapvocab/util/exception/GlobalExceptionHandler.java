@@ -8,7 +8,7 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-import vn.ptit.snapvocab.domain.dto.RestResponse;
+import vn.ptit.snapvocab.domain.dto.common.RestResponse;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {

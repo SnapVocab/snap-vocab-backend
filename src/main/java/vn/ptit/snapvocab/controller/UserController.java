@@ -7,8 +7,8 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import vn.ptit.snapvocab.domain.dto.UpdateProfileRequest;
-import vn.ptit.snapvocab.domain.dto.UserDTO;
+import vn.ptit.snapvocab.domain.dto.user.UpdateProfileRequest;
+import vn.ptit.snapvocab.domain.dto.user.UserDTO;
 import vn.ptit.snapvocab.security.SecurityUtils;
 import vn.ptit.snapvocab.service.UserService;
 

@@ -4,8 +4,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.ptit.snapvocab.domain.User;
-import vn.ptit.snapvocab.domain.dto.UpdateProfileRequest;
-import vn.ptit.snapvocab.domain.dto.UserDTO;
+import vn.ptit.snapvocab.domain.dto.user.UpdateProfileRequest;
+import vn.ptit.snapvocab.domain.dto.user.UserDTO;
 import vn.ptit.snapvocab.domain.mapper.UserMapper;
 import vn.ptit.snapvocab.repository.UserRepository;
 

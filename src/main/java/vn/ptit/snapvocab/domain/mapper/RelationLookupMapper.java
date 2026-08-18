@@ -4,7 +4,7 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.Named;
 import vn.ptit.snapvocab.domain.WordRelation;
-import vn.ptit.snapvocab.domain.dto.RelationLookupDTO;
+import vn.ptit.snapvocab.domain.dto.word.RelationLookupDTO;
 import vn.ptit.snapvocab.domain.enumeration.CodeLabelMapper;
 import vn.ptit.snapvocab.domain.enumeration.RelationLabel;
 

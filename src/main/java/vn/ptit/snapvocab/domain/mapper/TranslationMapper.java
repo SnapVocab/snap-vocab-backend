@@ -6,8 +6,8 @@ import org.mapstruct.Mapping;
 import org.mapstruct.Named;
 import vn.ptit.snapvocab.domain.Translation;
 import vn.ptit.snapvocab.domain.Word;
-import vn.ptit.snapvocab.domain.dto.TranslationDTO;
-import vn.ptit.snapvocab.domain.dto.WordDTO;
+import vn.ptit.snapvocab.domain.dto.word.TranslationDTO;
+import vn.ptit.snapvocab.domain.dto.word.WordDTO;
 
 @Mapper(componentModel = "spring")
 public interface TranslationMapper extends EntityMapper<TranslationDTO, Translation> {
