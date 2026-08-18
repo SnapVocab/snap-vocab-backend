@@ -48,6 +48,9 @@ public class TopicAttribute {
 	@Column(nullable = false, length = 255)
 	private String name;
 
+	@Column(length = 255)
+	private String label;
+
 	@Column(name = "data_type", nullable = false, length = 50)
 	private String dataType;
 
