@@ -6,8 +6,8 @@ import org.mapstruct.Mapping;
 import org.mapstruct.Named;
 import vn.ptit.snapvocab.domain.Pronunciation;
 import vn.ptit.snapvocab.domain.Word;
-import vn.ptit.snapvocab.domain.dto.PronunciationDTO;
-import vn.ptit.snapvocab.domain.dto.WordDTO;
+import vn.ptit.snapvocab.domain.dto.word.PronunciationDTO;
+import vn.ptit.snapvocab.domain.dto.word.WordDTO;
 
 @Mapper(componentModel = "spring")
 public interface PronunciationMapper extends EntityMapper<PronunciationDTO, Pronunciation> {

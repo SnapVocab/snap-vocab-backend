@@ -2,7 +2,7 @@ package vn.ptit.snapvocab.domain.mapper;
 
 import org.mapstruct.Mapper;
 import vn.ptit.snapvocab.domain.Pronunciation;
-import vn.ptit.snapvocab.domain.dto.PronunciationLookupDTO;
+import vn.ptit.snapvocab.domain.dto.word.PronunciationLookupDTO;
 
 @Mapper(componentModel = "spring")
 public interface PronunciationLookupMapper {

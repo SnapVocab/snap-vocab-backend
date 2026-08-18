@@ -9,7 +9,7 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.multipart.MultipartFile;
-import vn.ptit.snapvocab.domain.dto.AiDetectResponseDTO;
+import vn.ptit.snapvocab.domain.dto.scan.AiDetectResponseDTO;
 import vn.ptit.snapvocab.service.AiDetectionService;
 
 @Service

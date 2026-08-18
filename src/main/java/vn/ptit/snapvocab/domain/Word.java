@@ -58,8 +58,4 @@ public class Word {
 	@OneToMany(fetch = FetchType.LAZY, mappedBy = "word")
 	@JsonIgnoreProperties(value = {"word"}, allowSetters = true)
 	private Set<WordRelation> wordRelations = new HashSet<>();
-
-	@OneToMany(fetch = FetchType.LAZY, mappedBy = "word")
-	@JsonIgnoreProperties(value = {"reviewLogs", "word", "deck"}, allowSetters = true)
-	private Set<Flashcard> flashcards = new HashSet<>();
 }
