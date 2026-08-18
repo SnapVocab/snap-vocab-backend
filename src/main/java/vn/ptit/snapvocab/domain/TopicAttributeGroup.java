@@ -49,6 +49,9 @@ public class TopicAttributeGroup {
 	@Column(nullable = false, length = 255)
 	private String name;
 
+	@Column(length = 255)
+	private String label;
+
 	@Column(nullable = false)
 	private boolean multiple = false;
 
