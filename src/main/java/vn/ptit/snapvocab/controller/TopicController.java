@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import vn.ptit.snapvocab.domain.dto.common.PaginationObject;
 import vn.ptit.snapvocab.domain.dto.topic.TopicItemData;
+import vn.ptit.snapvocab.domain.dto.topic.TopicSchemaData;
 import vn.ptit.snapvocab.service.TopicService;
 
 @RestController
@@ -22,6 +23,14 @@ public class TopicController {
 	@GetMapping("/{topicId}")
 	public ResponseEntity<PaginationObject<List<TopicItemData>>> getTopicItems(
 			@PathVariable Long topicId, Pageable pageable) {
+		topicService.validateTopicAccess(topicId);
 		return ResponseEntity.ok(topicService.getTopicItems(topicId, pageable));
 	}
+
+	@GetMapping("/{topicId}/schema")
+	public ResponseEntity<TopicSchemaData> getTopicSchema(@PathVariable Long topicId) {
+		topicService.validateTopicAccess(topicId);
+		return ResponseEntity.ok(topicService.getTopicSchema(topicId));
+	}
+
 }

@@ -57,6 +57,12 @@ public class SecurityConfiguration {
 				.authorizeHttpRequests(
 						auth -> auth
 								.requestMatchers(whiteList).permitAll()
+								.requestMatchers(org.springframework.http.HttpMethod.GET,
+										"/api/collections",
+										"/api/collections/system",
+										"/api/collections/public",
+										"/api/collections/{collectionId:[0-9]+}",
+										"/api/collections/{collectionId:[0-9]+}/topics").permitAll()
 								.anyRequest().authenticated()
 				)
 				.oauth2ResourceServer((oauth2) -> oauth2.jwt(Customizer.withDefaults())

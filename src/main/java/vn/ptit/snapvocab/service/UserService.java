@@ -1,5 +1,6 @@
 package vn.ptit.snapvocab.service;
 
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,6 +16,16 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final UserMapper userMapper;
+
+    public java.util.Optional<User> getCurrentUser() {
+        return vn.ptit.snapvocab.security.SecurityUtils.getCurrentUserLogin()
+                .flatMap(userRepository::findOneWithAuthoritiesByEmailIgnoreCase);
+    }
+
+    public java.util.Optional<Long> getCurrentUserId() {
+        return vn.ptit.snapvocab.security.SecurityUtils.getCurrentUserId()
+                .or(() -> getCurrentUser().map(User::getId));
+    }
 
     public UserDTO getProfile(String email) {
         User user = userRepository.findOneByEmailIgnoreCase(email)

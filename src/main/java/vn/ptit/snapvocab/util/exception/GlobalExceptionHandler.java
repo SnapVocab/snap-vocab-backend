@@ -96,6 +96,18 @@ public class GlobalExceptionHandler {
 		return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
 	}
 
+	@ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+	public ResponseEntity<RestResponse<Object>> handleAccessDenied(
+			org.springframework.security.access.AccessDeniedException ex) {
+
+		RestResponse<Object> response = RestResponse.builder()
+				.statusCode(403)
+				.error(ex.getMessage())
+				.build();
+
+		return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+	}
+
 	@ExceptionHandler(RuntimeException.class)
 	public ResponseEntity<RestResponse<Object>> handleRuntime(RuntimeException ex) {
 

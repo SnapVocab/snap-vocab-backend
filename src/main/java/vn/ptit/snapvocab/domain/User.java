@@ -104,4 +104,8 @@ public class User {
 
 	@OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
 	private List<Deck> decks = new ArrayList<>();
+
+	@OneToMany(mappedBy = "owner", cascade = CascadeType.ALL, orphanRemoval = true)
+	@Builder.Default
+	private List<Collection> collections = new ArrayList<>();
 }

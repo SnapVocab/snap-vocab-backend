@@ -108,7 +108,7 @@ public class AuthenticationService {
 				.map(auth -> new SimpleGrantedAuthority(
 						auth.getName())).collect(Collectors.toUnmodifiableList());
 		Authentication authentication = new UsernamePasswordAuthenticationToken(
-				(Object) user.getEmail(),
+				UserWithId.fromUser(user),
 				null,
 				authorities
 		);

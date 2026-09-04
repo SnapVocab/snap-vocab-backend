@@ -21,14 +21,19 @@ public class RedissonConfig {
 
 		config.setCodec(new JsonJacksonCodec());
 
-		config.useSingleServer()
-				.setAddress("rediss://" + redisProperties.getHost() + ":" + redisProperties.getPort())
-				.setUsername(redisProperties.getUsername())
-				.setPassword(redisProperties.getPassword())
+		boolean isSsl = redisProperties.getSsl() != null && redisProperties.getSsl().isEnabled();
+		String prefix = isSsl ? "rediss://" : "redis://";
+
+		var singleServerConfig = config.useSingleServer()
+				.setAddress(prefix + redisProperties.getHost() + ":" + redisProperties.getPort())
 				.setDatabase(redisProperties.getDatabase());
 
+		if (redisProperties.getUsername() != null && !redisProperties.getUsername().isBlank()) {
+			singleServerConfig.setUsername(redisProperties.getUsername());
+		}
+
 		if (redisProperties.getPassword() != null && !redisProperties.getPassword().isBlank()) {
-			config.useSingleServer().setPassword(redisProperties.getPassword());
+			singleServerConfig.setPassword(redisProperties.getPassword());
 		}
 
 		return Redisson.create(config);
