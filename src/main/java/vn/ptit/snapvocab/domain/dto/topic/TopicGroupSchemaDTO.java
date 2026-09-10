@@ -1,7 +1,7 @@
 package vn.ptit.snapvocab.domain.dto.topic;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -22,5 +22,5 @@ public class TopicGroupSchemaDTO {
 	private short position;
 
 	@Builder.Default
-	private Map<String, TopicAttributeSchemaDTO> attributes = new LinkedHashMap<>();
+	private List<TopicAttributeSchemaDTO> attributes = new ArrayList<>();
 }

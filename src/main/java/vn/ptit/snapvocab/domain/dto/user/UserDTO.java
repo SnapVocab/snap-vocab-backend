@@ -47,4 +47,8 @@ public class UserDTO {
 	private String email;
 
 	private String bio;
+
+	private Instant createdAt;
+
+	private Instant updatedAt;
 }

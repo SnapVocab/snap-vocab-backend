@@ -2,6 +2,7 @@ package vn.ptit.snapvocab.domain.dto.word;
 
 import jakarta.persistence.Lob;
 import jakarta.validation.constraints.NotNull;
+import java.time.Instant;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -25,4 +26,6 @@ public class WordDefinitionDTO {
 
 	@NotNull
 	private DefinitionDTO definition;
+
+	private Instant createdAt;
 }

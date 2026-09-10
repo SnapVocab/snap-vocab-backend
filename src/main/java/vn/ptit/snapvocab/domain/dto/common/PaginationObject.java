@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import vn.ptit.snapvocab.domain.dto.topic.TopicSchemaData;
 
 @Getter
 @Setter
@@ -17,5 +18,5 @@ public class PaginationObject<T> {
 
 	private T data;
 	private Meta meta;
-	private Object schema;
+	private TopicSchemaData schema;
 }

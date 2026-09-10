@@ -1,0 +1,16 @@
+services:
+  backend:
+    image: ghcr.io/thanhthbm/snapvocab-backend:latest
+    container_name: snapvocab-backend
+    restart: unless-stopped
+
+    env_file:
+      - .env
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    ports:
+      - "127.0.0.1:8080:8080"

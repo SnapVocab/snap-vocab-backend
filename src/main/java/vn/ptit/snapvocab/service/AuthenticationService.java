@@ -108,7 +108,7 @@ public class AuthenticationService {
 				.map(auth -> new SimpleGrantedAuthority(
 						auth.getName())).collect(Collectors.toUnmodifiableList());
 		Authentication authentication = new UsernamePasswordAuthenticationToken(
-				(Object) user.getEmail(),
+				UserWithId.fromUser(user),
 				null,
 				authorities
 		);
@@ -180,6 +180,7 @@ public class AuthenticationService {
 				.exp(createdUser.getExp())
 				.coin(createdUser.getCoin())
 				.streakDays(createdUser.getStreakDays())
+				.createdAt(createdUser.getCreatedAt())
 				.build();
 
 		LOG.debug("Creating registration verification code");

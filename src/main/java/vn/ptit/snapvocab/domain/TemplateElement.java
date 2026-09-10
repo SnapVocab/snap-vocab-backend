@@ -1,5 +1,6 @@
 package vn.ptit.snapvocab.domain;
 
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -10,50 +11,50 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
-import java.time.Instant;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import vn.ptit.snapvocab.domain.enumeration.ReviewRating;
+import vn.ptit.snapvocab.domain.enumeration.TemplateElementType;
 
 @Entity
-@Table(name = "review_log")
+@Table(
+		name = "template_elements",
+		uniqueConstraints = @UniqueConstraint(
+				name = "uk_template_element_position",
+				columnNames = {"template_id", "position"}
+		)
+)
 @Getter
 @Setter
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class ReviewLog {
+public class TemplateElement {
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
 
 	@ManyToOne(fetch = FetchType.LAZY, optional = false)
-	@JoinColumn(name = "card_id", nullable = false)
-	private Card card;
+	@JoinColumn(name = "template_id", nullable = false)
+	private Template template;
+
+	@Column(nullable = false)
+	private Integer position;
 
 	@Enumerated(EnumType.STRING)
 	@Column(nullable = false)
-	private ReviewRating rating;
+	private TemplateElementType type;
 
-	@Column(nullable = false)
-	private Instant reviewedAt;
-
-	private Integer responseTimeMs;
-
-	private Instant previousDueAt;
-
-	private Instant nextDueAt;
-
-	private Double previousStability;
-
-	private Double nextStability;
-
-	private Double previousDifficulty;
-
-	private Double nextDifficulty;
+	@OneToOne(
+			mappedBy = "element",
+			cascade = CascadeType.ALL,
+			optional = true
+	)
+	private TemplateField field;
 }

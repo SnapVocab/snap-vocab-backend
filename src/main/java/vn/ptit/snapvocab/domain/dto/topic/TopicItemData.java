@@ -2,6 +2,7 @@ package vn.ptit.snapvocab.domain.dto.topic;
 
 import com.fasterxml.jackson.annotation.JsonAnyGetter;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import lombok.AllArgsConstructor;
@@ -28,6 +29,7 @@ import lombok.Setter;
 public class TopicItemData {
 
 	private Long topicItemId;
+	private Instant createdAt;
 
 	/**
 	 * Dynamic map holding attribute groups keyed by group name (e.g., "main", "examples").

@@ -1,5 +1,6 @@
 package vn.ptit.snapvocab.domain.dto.topic;
 
+import java.time.Instant;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -14,6 +15,7 @@ import lombok.Setter;
 public class TopicItemAttributeRow {
 
 	private Long topicItemId;
+	private Instant itemCreatedAt;
 	private Long groupId;
 	private String groupName;
 	private String groupLabel;

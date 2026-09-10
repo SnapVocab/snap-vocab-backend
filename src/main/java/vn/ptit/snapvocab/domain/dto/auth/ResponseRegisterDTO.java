@@ -1,5 +1,6 @@
 package vn.ptit.snapvocab.domain.dto.auth;
 
+import java.time.Instant;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -20,4 +21,5 @@ public class ResponseRegisterDTO {
 	private Long coin;
 	private Integer streakDays;
 	private boolean isActivated;
+	private Instant createdAt;
 }

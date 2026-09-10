@@ -3,29 +3,32 @@ package vn.ptit.snapvocab.domain;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
-import jakarta.persistence.Index;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import jakarta.validation.constraints.Size;
+import vn.ptit.snapvocab.domain.common.BaseCreatedAtEntity;
 
 @Entity
-@Table(name = "word_relation", indexes = {
-		@Index(name = "idx_word_relation_word_id", columnList = "word_id"),
-		@Index(name = "idx_word_relation_unique", columnList = "word_id, related_word, relation_type", unique = true)
+@Table(name = "word_relations", indexes = {
+		@Index(name = "idx_word_relations_word_id", columnList = "word_id"),
+		@Index(name = "idx_word_relations_unique", columnList = "word_id, related_word, relation_type", unique = true)
 })
 @Getter
 @Setter
 @AllArgsConstructor
 @NoArgsConstructor
-public class WordRelation {
+public class WordRelation extends BaseCreatedAtEntity {
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -39,10 +42,11 @@ public class WordRelation {
 	@Column(name = "relation_type", length = 50)
 	private String relationType;
 
-	@ManyToOne(optional = false)
+	@ManyToOne(fetch = FetchType.LAZY, optional = false)
+	@JoinColumn(name = "word_id", nullable = false)
 	@NotNull
 	@JsonIgnoreProperties(
-			value = {"pronunciations", "translations", "wordRelations", "wordDefinitions", "flashcards"},
+			value = {"pronunciations", "translations", "wordRelations", "wordDefinitions"},
 			allowSetters = true
 	)
 	private Word word;

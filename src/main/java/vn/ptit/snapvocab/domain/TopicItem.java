@@ -18,6 +18,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import vn.ptit.snapvocab.domain.common.BaseCreatedAtEntity;
 
 @Entity
 @Table(name = "topic_items")
@@ -26,7 +27,7 @@ import lombok.Setter;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class TopicItem {
+public class TopicItem extends BaseCreatedAtEntity {
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -42,6 +43,7 @@ public class TopicItem {
 			orphanRemoval = true
 	)
 	@OrderBy("position ASC")
+	@Builder.Default
 	private List<TopicItemAttributeGroup> groupInstances =
 			new ArrayList<>();
 }
