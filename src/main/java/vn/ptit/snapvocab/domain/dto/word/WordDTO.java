@@ -2,6 +2,7 @@ package vn.ptit.snapvocab.domain.dto.word;
 
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.time.Instant;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -24,4 +25,6 @@ public class WordDTO {
 	@NotNull
 	@Size(min = 2, max = 20)
 	private String langCode;
+
+	private Instant createdAt;
 }

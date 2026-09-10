@@ -45,6 +45,7 @@ public interface TopicItemRepository extends JpaRepository<TopicItem, Long> {
 	@Query("""
 			SELECT new vn.ptit.snapvocab.domain.dto.topic.TopicItemAttributeRow(
 			    ti.id,
+			    ti.createdAt,
 			    tag.id,
 			    tag.name,
 			    tag.label,

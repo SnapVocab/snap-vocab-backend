@@ -107,11 +107,13 @@ class TopicServiceCollectionTest {
 	void getTopicsByCollection_userCollection_allowedForOwner() {
 		UserWithId userWithId = UserWithId.fromUser(user1);
 		SecurityContextHolder.getContext().setAuthentication(
-				new UsernamePasswordAuthenticationToken(userWithId, null, List.of(new SimpleGrantedAuthority(AuthoritiesConstants.USER)))
+				new UsernamePasswordAuthenticationToken(userWithId, null,
+						List.of(new SimpleGrantedAuthority(AuthoritiesConstants.USER)))
 		);
 
 		when(collectionRepository.findById(20L)).thenReturn(Optional.of(userCollection));
-		when(userRepository.findOneByEmailIgnoreCase("user1@snapvocab.com")).thenReturn(Optional.of(user1));
+		when(userRepository.findOneByEmailIgnoreCase("user1@snapvocab.com")).thenReturn(
+				Optional.of(user1));
 		when(topicRepository.findByCollectionId(20L)).thenReturn(List.of());
 
 		List<TopicDTO> result = topicService.getTopicsByCollection(20L);
@@ -134,15 +136,18 @@ class TopicServiceCollectionTest {
 	void createCollectionTopic_userCollection_byOwner_succeedsAndSaves() {
 		UserWithId userWithId = UserWithId.fromUser(user1);
 		SecurityContextHolder.getContext().setAuthentication(
-				new UsernamePasswordAuthenticationToken(userWithId, null, List.of(new SimpleGrantedAuthority(AuthoritiesConstants.USER)))
+				new UsernamePasswordAuthenticationToken(userWithId, null,
+						List.of(new SimpleGrantedAuthority(AuthoritiesConstants.USER)))
 		);
 
 		when(collectionRepository.findById(20L)).thenReturn(Optional.of(userCollection));
-		when(userRepository.findOneByEmailIgnoreCase("user1@snapvocab.com")).thenReturn(Optional.of(user1));
+		when(userRepository.findOneByEmailIgnoreCase("user1@snapvocab.com")).thenReturn(
+				Optional.of(user1));
 
 		Topic savedTopic = Topic.builder().id(100L).name("My New Topic").build();
 		when(topicRepository.save(any(Topic.class))).thenReturn(savedTopic);
-		when(topicMapper.toDto(savedTopic)).thenReturn(TopicDTO.builder().id(100L).name("My New Topic").build());
+		when(topicMapper.toDto(savedTopic)).thenReturn(
+				TopicDTO.builder().id(100L).name("My New Topic").build());
 
 		CreateTopicDTO dto = CreateTopicDTO.builder().name("My New Topic").build();
 		TopicDTO result = topicService.createCollectionTopic(20L, dto);

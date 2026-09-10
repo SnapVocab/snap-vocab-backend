@@ -3,8 +3,6 @@ package vn.ptit.snapvocab.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -35,7 +33,6 @@ import vn.ptit.snapvocab.repository.UserRepository;
 import vn.ptit.snapvocab.security.AuthoritiesConstants;
 import vn.ptit.snapvocab.util.constant.CacheConstants;
 import vn.ptit.snapvocab.util.exception.ResourceAlreadyExistException;
-import vn.ptit.snapvocab.util.exception.ResourceNotFoundException;
 
 @ExtendWith(MockitoExtension.class)
 class CollectionServiceTest {
@@ -71,8 +68,10 @@ class CollectionServiceTest {
 	@BeforeEach
 	void setUp() {
 		SecurityContextHolder.clearContext();
-		user1 = User.builder().id(1L).email("user1@snapvocab.com").password("hashed_password_placeholder_for_testing_purposes_123456789012").build();
-		user2 = User.builder().id(2L).email("user2@snapvocab.com").password("hashed_password_placeholder_for_testing_purposes_123456789012").build();
+		user1 = User.builder().id(1L).email("user1@snapvocab.com")
+				.password("hashed_password_placeholder_for_testing_purposes_123456789012").build();
+		user2 = User.builder().id(2L).email("user2@snapvocab.com")
+				.password("hashed_password_placeholder_for_testing_purposes_123456789012").build();
 
 		systemCol = Collection.builder()
 				.id(10L)
@@ -161,7 +160,8 @@ class CollectionServiceTest {
 				.build();
 		when(collectionRepository.save(any(Collection.class))).thenReturn(savedCol);
 		when(collectionMapper.toDto(savedCol)).thenReturn(
-				CollectionDTO.builder().id(30L).name("My Travel").type(CollectionType.USER).ownerId(1L).build()
+				CollectionDTO.builder().id(30L).name("My Travel").type(CollectionType.USER).ownerId(1L)
+						.build()
 		);
 		when(cacheManager.getCache(CacheConstants.USER_COLLECTIONS)).thenReturn(userCollectionsCache);
 
@@ -193,7 +193,8 @@ class CollectionServiceTest {
 	@Test
 	void createSystemCollection_whenNotAdmin_throwsAccessDenied() {
 		SecurityContextHolder.getContext().setAuthentication(
-				new UsernamePasswordAuthenticationToken("user1", null, List.of(new SimpleGrantedAuthority(AuthoritiesConstants.USER)))
+				new UsernamePasswordAuthenticationToken("user1", null,
+						List.of(new SimpleGrantedAuthority(AuthoritiesConstants.USER)))
 		);
 
 		CreateCollectionDTO dto = CreateCollectionDTO.builder()
@@ -211,7 +212,8 @@ class CollectionServiceTest {
 	@Test
 	void createSystemCollection_whenAdmin_succeedsAndClearsAllUserCollectionsCache() {
 		SecurityContextHolder.getContext().setAuthentication(
-				new UsernamePasswordAuthenticationToken("admin", null, List.of(new SimpleGrantedAuthority(AuthoritiesConstants.ADMIN)))
+				new UsernamePasswordAuthenticationToken("admin", null,
+						List.of(new SimpleGrantedAuthority(AuthoritiesConstants.ADMIN)))
 		);
 
 		CreateCollectionDTO dto = CreateCollectionDTO.builder()
@@ -220,7 +222,8 @@ class CollectionServiceTest {
 				.build();
 
 		when(userRepository.findById(1L)).thenReturn(Optional.of(user1));
-		when(collectionRepository.existsByNameAndType("New System Vocab", CollectionType.SYSTEM)).thenReturn(false);
+		when(collectionRepository.existsByNameAndType("New System Vocab",
+				CollectionType.SYSTEM)).thenReturn(false);
 
 		Collection savedCol = Collection.builder()
 				.id(40L)

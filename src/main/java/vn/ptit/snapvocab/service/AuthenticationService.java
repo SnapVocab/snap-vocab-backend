@@ -180,6 +180,7 @@ public class AuthenticationService {
 				.exp(createdUser.getExp())
 				.coin(createdUser.getCoin())
 				.streakDays(createdUser.getStreakDays())
+				.createdAt(createdUser.getCreatedAt())
 				.build();
 
 		LOG.debug("Creating registration verification code");

@@ -1,5 +1,6 @@
 package vn.ptit.snapvocab.domain.dto.collection;
 
+import java.time.Instant;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -19,4 +20,6 @@ public class CollectionDTO {
 	private String translation;
 	private CollectionType type;
 	private Long ownerId;
+	private Instant createdAt;
+	private Instant updatedAt;
 }

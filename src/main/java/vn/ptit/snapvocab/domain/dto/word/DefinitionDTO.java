@@ -2,6 +2,7 @@ package vn.ptit.snapvocab.domain.dto.word;
 
 import jakarta.persistence.Lob;
 import jakarta.validation.constraints.Size;
+import java.time.Instant;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -31,4 +32,6 @@ public class DefinitionDTO {
 
 	@Size(max = 2048)
 	private String links;
+
+	private Instant createdAt;
 }

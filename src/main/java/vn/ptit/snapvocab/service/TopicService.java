@@ -1,5 +1,6 @@
 package vn.ptit.snapvocab.service;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -13,11 +14,13 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.ptit.snapvocab.domain.Collection;
 import vn.ptit.snapvocab.domain.Topic;
 import vn.ptit.snapvocab.domain.TopicAttributeGroup;
+import vn.ptit.snapvocab.domain.User;
 import vn.ptit.snapvocab.domain.dto.common.Meta;
 import vn.ptit.snapvocab.domain.dto.common.PaginationObject;
 import vn.ptit.snapvocab.domain.dto.topic.CreateTopicDTO;
@@ -27,7 +30,6 @@ import vn.ptit.snapvocab.domain.dto.topic.TopicGroupSchemaDTO;
 import vn.ptit.snapvocab.domain.dto.topic.TopicItemAttributeRow;
 import vn.ptit.snapvocab.domain.dto.topic.TopicItemData;
 import vn.ptit.snapvocab.domain.dto.topic.TopicSchemaData;
-import vn.ptit.snapvocab.domain.User;
 import vn.ptit.snapvocab.domain.enumeration.CollectionType;
 import vn.ptit.snapvocab.domain.mapper.TopicMapper;
 import vn.ptit.snapvocab.repository.CollectionRepository;
@@ -38,7 +40,6 @@ import vn.ptit.snapvocab.repository.UserRepository;
 import vn.ptit.snapvocab.security.AuthoritiesConstants;
 import vn.ptit.snapvocab.security.SecurityUtils;
 import vn.ptit.snapvocab.util.exception.ResourceNotFoundException;
-import org.springframework.security.access.AccessDeniedException;
 
 @Service
 @RequiredArgsConstructor
@@ -103,11 +104,13 @@ public class TopicService {
 		TopicSchemaData schema = buildSchema(rows);
 
 		// Step 4: Aggregate item data values by single vs multiple groups
+		Map<Long, Instant> createdAtByItem = new LinkedHashMap<>();
 		Map<Long, Map<String, Object>> singleGroupsByItem = new LinkedHashMap<>();
 		Map<Long, Map<String, Map<Long, Map<String, Object>>>> multiGroupsByItem = new LinkedHashMap<>();
 
 		for (TopicItemAttributeRow row : rows) {
 			Long itemId = row.getTopicItemId();
+			createdAtByItem.putIfAbsent(itemId, row.getItemCreatedAt());
 			String groupName = row.getGroupName();
 			boolean multiple = row.isGroupMultiple();
 			Long instanceId = row.getGroupInstanceId();
@@ -158,6 +161,7 @@ public class TopicService {
 
 			items.add(TopicItemData.builder()
 					.topicItemId(itemId)
+					.createdAt(createdAtByItem.get(itemId))
 					.groups(groupMap)
 					.build());
 		}
@@ -297,7 +301,8 @@ public class TopicService {
 	)
 	public List<TopicDTO> getTopicsByCollection(Long collectionId) {
 		Collection collection = this.collectionRepository.findById(collectionId)
-				.orElseThrow(() -> new ResourceNotFoundException("Collection not found with id: " + collectionId));
+				.orElseThrow(
+						() -> new ResourceNotFoundException("Collection not found with id: " + collectionId));
 
 		validateCollectionAccess(collection);
 
@@ -343,7 +348,8 @@ public class TopicService {
 	)
 	public TopicDTO createCollectionTopic(Long collectionId, CreateTopicDTO createTopicDTO) {
 		Collection collection = collectionRepository.findById(collectionId)
-				.orElseThrow(() -> new ResourceNotFoundException("Collection not found with id: " + collectionId));
+				.orElseThrow(
+						() -> new ResourceNotFoundException("Collection not found with id: " + collectionId));
 
 		if (collection.getType() == CollectionType.SYSTEM) {
 			if (!SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.ADMIN)) {
@@ -351,16 +357,19 @@ public class TopicService {
 			}
 		} else {
 			Long currentUserId = SecurityUtils.getCurrentUserId()
-					.or(() -> SecurityUtils.getCurrentUserLogin().flatMap(userRepository::findOneByEmailIgnoreCase).map(User::getId))
+					.or(() -> SecurityUtils.getCurrentUserLogin()
+							.flatMap(userRepository::findOneByEmailIgnoreCase).map(User::getId))
 					.orElse(null);
 
 			if (currentUserId == null) {
 				throw new AccessDeniedException("Authentication required to add topics to this collection");
 			}
-			boolean isOwner = collection.getOwner() != null && collection.getOwner().getId().equals(currentUserId);
+			boolean isOwner =
+					collection.getOwner() != null && collection.getOwner().getId().equals(currentUserId);
 			boolean isAdmin = SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.ADMIN);
 			if (!isOwner && !isAdmin) {
-				throw new AccessDeniedException("You do not have permission to add topics to this collection");
+				throw new AccessDeniedException(
+						"You do not have permission to add topics to this collection");
 			}
 		}
 
@@ -391,13 +400,16 @@ public class TopicService {
 	private void validateCollectionAccess(Collection collection) {
 		if (collection.getType() == CollectionType.USER) {
 			Long currentUserId = SecurityUtils.getCurrentUserId()
-					.or(() -> SecurityUtils.getCurrentUserLogin().flatMap(userRepository::findOneByEmailIgnoreCase).map(User::getId))
+					.or(() -> SecurityUtils.getCurrentUserLogin()
+							.flatMap(userRepository::findOneByEmailIgnoreCase).map(User::getId))
 					.orElse(null);
 
 			if (currentUserId == null) {
-				throw new AccessDeniedException("Authentication required to access this private collection");
+				throw new AccessDeniedException(
+						"Authentication required to access this private collection");
 			}
-			boolean isOwner = collection.getOwner() != null && collection.getOwner().getId().equals(currentUserId);
+			boolean isOwner =
+					collection.getOwner() != null && collection.getOwner().getId().equals(currentUserId);
 			boolean isAdmin = SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.ADMIN);
 			if (!isOwner && !isAdmin) {
 				throw new AccessDeniedException("You do not have permission to access this collection");

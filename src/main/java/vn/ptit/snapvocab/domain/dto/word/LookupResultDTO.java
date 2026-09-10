@@ -1,5 +1,6 @@
 package vn.ptit.snapvocab.domain.dto.word;
 
+import java.time.Instant;
 import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -29,4 +30,6 @@ public class LookupResultDTO {
     private List<TranslationLookupDTO> translations;
 
     private List<RelationLookupDTO> relations;
+
+    private Instant createdAt;
 }
