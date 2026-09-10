@@ -3,9 +3,9 @@ server:
 
 spring:
   datasource:
-    url: jdbc:mariadb://cloud.layerbase.dev:12785/snapvocab?sslMode=REQUIRED
-    username: root
-    password: TokgTf12Z0K0dr5QO1bjWj4x
+    url: jdbc:mariadb://140.245.123.111:3306/snapvocab
+    username: thanh
+    password: 200320045
 
   data:
     redis:
@@ -53,7 +53,7 @@ jwt:
   refresh-expiration: 604800000
 
 minio:
-  endpoint: http://localhost:19000
+  endpoint: https://s3.thanhthbm.online
   access-key: admin
   secret-key: 200320045
   bucket: snapvocab

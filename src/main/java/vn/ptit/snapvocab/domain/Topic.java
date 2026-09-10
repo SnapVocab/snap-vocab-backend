@@ -19,6 +19,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import vn.ptit.snapvocab.domain.common.BaseTimeEntity;
 
 @Getter
 @Setter
@@ -27,7 +28,7 @@ import lombok.Setter;
 @Builder
 @Table(name = "topics")
 @Entity
-public class Topic {
+public class Topic extends BaseTimeEntity {
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -42,6 +43,7 @@ public class Topic {
 	private Topic parent;
 
 	@OneToMany(mappedBy = "parent")
+	@Builder.Default
 	private List<Topic> children = new ArrayList<>();
 
 	@Column(nullable = false, length = 255)
@@ -62,6 +64,7 @@ public class Topic {
 			orphanRemoval = true
 	)
 	@OrderBy("position ASC")
+	@Builder.Default
 	private List<TopicAttributeGroup> attributeGroups = new ArrayList<>();
 
 	@OneToMany(
@@ -69,5 +72,6 @@ public class Topic {
 			cascade = CascadeType.ALL,
 			orphanRemoval = true
 	)
+	@Builder.Default
 	private List<TopicItem> items = new ArrayList<>();
 }

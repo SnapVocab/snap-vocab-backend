@@ -39,9 +39,9 @@ public class CollectionService {
 	private final CacheManager cacheManager;
 
 	/**
-	 * Returns public (system) collections plus the collections created by the specified user.
-	 * If userId is null, returns only public collections.
-	 * Cached per user key; evictions for user collections affect that user only.
+	 * Returns public (system) collections plus the collections created by the specified user. If
+	 * userId is null, returns only public collections. Cached per user key; evictions for user
+	 * collections affect that user only.
 	 */
 	@Cacheable(
 			cacheNames = CacheConstants.USER_COLLECTIONS,
@@ -86,7 +86,8 @@ public class CollectionService {
 	 */
 	public CollectionDTO getCollectionById(Long collectionId, Long userId) {
 		Collection collection = this.collectionRepository.findById(collectionId)
-				.orElseThrow(() -> new ResourceNotFoundException("Collection not found with id: " + collectionId));
+				.orElseThrow(
+						() -> new ResourceNotFoundException("Collection not found with id: " + collectionId));
 
 		validateCollectionReadAccess(collection, userId);
 
@@ -94,9 +95,8 @@ public class CollectionService {
 	}
 
 	/**
-	 * Creates a new collection.
-	 * If type is SYSTEM, requires ROLE_ADMIN and evicts all user collection caches.
-	 * If type is USER, creates for current user and evicts cache for this user only.
+	 * Creates a new collection. If type is SYSTEM, requires ROLE_ADMIN and evicts all user collection
+	 * caches. If type is USER, creates for current user and evicts cache for this user only.
 	 */
 	@Transactional
 	public CollectionDTO createCollection(CreateCollectionDTO createCollectionDTO, Long userId) {
@@ -116,7 +116,8 @@ public class CollectionService {
 				throw new AccessDeniedException("Only administrators can create system collections");
 			}
 
-			if (this.collectionRepository.existsByNameAndType(createCollectionDTO.getName(), CollectionType.SYSTEM)) {
+			if (this.collectionRepository.existsByNameAndType(createCollectionDTO.getName(),
+					CollectionType.SYSTEM)) {
 				throw new ResourceAlreadyExistException(
 						"System collection with name '" + createCollectionDTO.getName() + "' already exists");
 			}
@@ -153,18 +154,19 @@ public class CollectionService {
 	}
 
 	/**
-	 * Updates a collection.
-	 * If SYSTEM: requires ROLE_ADMIN.
-	 * If USER: requires owner or ROLE_ADMIN. Evicts cache for user only.
+	 * Updates a collection. If SYSTEM: requires ROLE_ADMIN. If USER: requires owner or ROLE_ADMIN.
+	 * Evicts cache for user only.
 	 */
 	@Transactional
-	public CollectionDTO updateCollection(Long collectionId, UpdateCollectionDTO updateCollectionDTO, Long userId) {
+	public CollectionDTO updateCollection(Long collectionId, UpdateCollectionDTO updateCollectionDTO,
+			Long userId) {
 		if (userId == null) {
 			throw new AccessDeniedException("Authentication required to update a collection");
 		}
 
 		Collection collection = this.collectionRepository.findById(collectionId)
-				.orElseThrow(() -> new ResourceNotFoundException("Collection not found with id: " + collectionId));
+				.orElseThrow(
+						() -> new ResourceNotFoundException("Collection not found with id: " + collectionId));
 
 		if (collection.getType() == CollectionType.SYSTEM) {
 			if (!SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.ADMIN)) {
@@ -187,9 +189,8 @@ public class CollectionService {
 	}
 
 	/**
-	 * Deletes a collection.
-	 * If SYSTEM: requires ROLE_ADMIN.
-	 * If USER: requires owner or ROLE_ADMIN. Evicts cache for user only.
+	 * Deletes a collection. If SYSTEM: requires ROLE_ADMIN. If USER: requires owner or ROLE_ADMIN.
+	 * Evicts cache for user only.
 	 */
 	@Transactional
 	public void deleteCollection(Long collectionId, Long userId) {
@@ -198,7 +199,8 @@ public class CollectionService {
 		}
 
 		Collection collection = this.collectionRepository.findById(collectionId)
-				.orElseThrow(() -> new ResourceNotFoundException("Collection not found with id: " + collectionId));
+				.orElseThrow(
+						() -> new ResourceNotFoundException("Collection not found with id: " + collectionId));
 
 		if (collection.getType() == CollectionType.SYSTEM) {
 			if (!SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.ADMIN)) {
@@ -262,9 +264,11 @@ public class CollectionService {
 	private void validateCollectionReadAccess(Collection collection, Long userId) {
 		if (collection.getType() == CollectionType.USER) {
 			if (userId == null) {
-				throw new AccessDeniedException("Authentication required to access this private collection");
+				throw new AccessDeniedException(
+						"Authentication required to access this private collection");
 			}
-			boolean isOwner = collection.getOwner() != null && collection.getOwner().getId().equals(userId);
+			boolean isOwner =
+					collection.getOwner() != null && collection.getOwner().getId().equals(userId);
 			boolean isAdmin = SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.ADMIN);
 			if (!isOwner && !isAdmin) {
 				throw new AccessDeniedException("You do not have permission to access this collection");

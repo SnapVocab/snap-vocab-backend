@@ -20,6 +20,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import vn.ptit.snapvocab.domain.common.BaseTimeEntity;
 import vn.ptit.snapvocab.domain.enumeration.CollectionType;
 
 @Setter
@@ -29,7 +30,7 @@ import vn.ptit.snapvocab.domain.enumeration.CollectionType;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class Collection {
+public class Collection extends BaseTimeEntity {
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)

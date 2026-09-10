@@ -18,15 +18,16 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import vn.ptit.snapvocab.domain.common.BaseCreatedAtEntity;
 
 @Entity
-@Table(name = "definition")
+@Table(name = "definitions")
 @Getter
 @Setter
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class Definition {
+public class Definition extends BaseCreatedAtEntity {
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -54,5 +55,6 @@ public class Definition {
 
 	@OneToMany(fetch = FetchType.LAZY, mappedBy = "definition")
 	@JsonIgnoreProperties(value = {"word", "definition"}, allowSetters = true)
+	@Builder.Default
 	private Set<WordDefinition> wordDefinitions = new HashSet<>();
 }

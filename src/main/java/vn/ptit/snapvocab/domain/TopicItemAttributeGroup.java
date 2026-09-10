@@ -53,6 +53,7 @@ public class TopicItemAttributeGroup {
 	@JoinColumn(name = "group_definition_id", nullable = false)
 	private TopicAttributeGroup groupDefinition;
 
+	@Builder.Default
 	@Column(nullable = false)
 	private short position = 1;
 
@@ -61,5 +62,6 @@ public class TopicItemAttributeGroup {
 			cascade = CascadeType.ALL,
 			orphanRemoval = true
 	)
+	@Builder.Default
 	private List<TopicItemAttributeValue> values = new ArrayList<>();
 }

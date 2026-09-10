@@ -19,6 +19,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import vn.ptit.snapvocab.domain.common.BaseTimeEntity;
 
 @Entity
 @Table(
@@ -35,7 +36,7 @@ import lombok.Setter;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
-public class TopicAttribute {
+public class TopicAttribute extends BaseTimeEntity {
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -54,6 +55,7 @@ public class TopicAttribute {
 	@Column(name = "data_type", nullable = false, length = 50)
 	private String dataType;
 
+	@Builder.Default
 	@Column(nullable = false)
 	private boolean required = false;
 
@@ -65,5 +67,6 @@ public class TopicAttribute {
 			cascade = CascadeType.ALL,
 			orphanRemoval = true
 	)
+	@Builder.Default
 	private List<TopicItemAttributeValue> values = new ArrayList<>();
 }

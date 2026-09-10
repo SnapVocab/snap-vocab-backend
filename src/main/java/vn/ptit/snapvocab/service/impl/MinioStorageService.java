@@ -111,7 +111,7 @@ public class MinioStorageService implements StorageService {
 						.orElseThrow(() -> new RuntimeException("Not authenticated"));
 				User user = userRepository.findOneByEmailIgnoreCase(email)
 						.orElseThrow(() -> new RuntimeException("User not found"));
-				user.setAvatar_url(downloadUrl);
+				user.setAvatarUrl(downloadUrl);
 				userRepository.save(user);
 			}
 		}
