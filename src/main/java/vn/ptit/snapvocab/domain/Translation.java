@@ -3,11 +3,13 @@ package vn.ptit.snapvocab.domain;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -15,15 +17,16 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import vn.ptit.snapvocab.domain.common.BaseCreatedAtEntity;
 
 @Entity
-@Table(name = "translation", indexes = @Index(name = "idx_translation_word_id", columnList = "word_id"))
+@Table(name = "translations", indexes = @Index(name = "idx_translations_word_id", columnList = "word_id"))
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @SuppressWarnings("common-java:DuplicatedBlocks")
-public class Translation {
+public class Translation extends BaseCreatedAtEntity {
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -37,13 +40,12 @@ public class Translation {
 	@Column(name = "translation", length = 1024)
 	private String translation;
 
-	@ManyToOne(optional = false)
+	@ManyToOne(fetch = FetchType.LAZY, optional = false)
+	@JoinColumn(name = "word_id", nullable = false)
 	@NotNull
 	@JsonIgnoreProperties(
-			value = {"pronunciations", "translations", "wordRelations", "wordDefinitions", "flashcards"},
+			value = {"pronunciations", "translations", "wordRelations", "wordDefinitions"},
 			allowSetters = true
 	)
 	private Word word;
-
-
 }

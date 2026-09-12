@@ -7,7 +7,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
-import vn.ptit.snapvocab.domain.dto.LiteScanResponseDTO;
 import vn.ptit.snapvocab.domain.dto.ScanResultDTO;
 import vn.ptit.snapvocab.service.ScanService;
 

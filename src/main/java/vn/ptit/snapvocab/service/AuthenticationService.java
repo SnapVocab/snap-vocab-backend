@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -28,20 +29,21 @@ import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.stereotype.Service;
 import vn.ptit.snapvocab.domain.Authority;
 import vn.ptit.snapvocab.domain.User;
-import vn.ptit.snapvocab.domain.dto.ForgotPasswordRequest;
-import vn.ptit.snapvocab.domain.dto.RefreshTokenRequest;
-import vn.ptit.snapvocab.domain.dto.RequestLoginDTO;
-import vn.ptit.snapvocab.domain.dto.RequestRegisterDTO;
-import vn.ptit.snapvocab.domain.dto.ResendCodeRequest;
-import vn.ptit.snapvocab.domain.dto.ResetPasswordRequest;
-import vn.ptit.snapvocab.domain.dto.ResponseLoginDTO;
-import vn.ptit.snapvocab.domain.dto.ResponseRegisterDTO;
-import vn.ptit.snapvocab.domain.dto.VerifyMailRequest;
+import vn.ptit.snapvocab.domain.dto.auth.ForgotPasswordRequest;
+import vn.ptit.snapvocab.domain.dto.auth.RefreshTokenRequest;
+import vn.ptit.snapvocab.domain.dto.auth.RequestLoginDTO;
+import vn.ptit.snapvocab.domain.dto.auth.RequestRegisterDTO;
+import vn.ptit.snapvocab.domain.dto.auth.ResendCodeRequest;
+import vn.ptit.snapvocab.domain.dto.auth.ResetPasswordRequest;
+import vn.ptit.snapvocab.domain.dto.auth.ResponseLoginDTO;
+import vn.ptit.snapvocab.domain.dto.auth.ResponseRegisterDTO;
+import vn.ptit.snapvocab.domain.dto.auth.VerifyMailRequest;
 import vn.ptit.snapvocab.domain.mapper.UserMapper;
 import vn.ptit.snapvocab.repository.AuthorityRepository;
 import vn.ptit.snapvocab.repository.UserRepository;
 import vn.ptit.snapvocab.security.AuthoritiesConstants;
 import vn.ptit.snapvocab.security.DomainUserDetailsService.UserWithId;
+import vn.ptit.snapvocab.security.SecurityAuditLogger;
 import vn.ptit.snapvocab.security.SecurityUtils;
 import vn.ptit.snapvocab.util.constant.OtpPurpose;
 import vn.ptit.snapvocab.util.exception.BadRequestAlertException;
@@ -55,6 +57,7 @@ public class AuthenticationService {
 	private final RefreshTokenService refreshTokenService;
 	private final OTPService otpService;
 	private final UserRepository userRepository;
+	private final SecurityAuditLogger securityAuditLogger;
 
 	private final AuthenticationManagerBuilder authenticationManagerBuilder;
 	private final UserMapper userMapper;
@@ -66,26 +69,38 @@ public class AuthenticationService {
 	private long accessTokenValidityInSeconds;
 
 	public ResponseLoginDTO login(RequestLoginDTO requestLoginDTO) {
-		LOG.info("Login attempt email={}", requestLoginDTO.getEmail());
+		LOG.info("Login attempt");
 
 		UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(
 				requestLoginDTO.getEmail(),
 				requestLoginDTO.getPassword()
 		);
 
-		Authentication authentication = authenticationManagerBuilder.getObject()
-				.authenticate(authenticationToken);
+		Authentication authentication;
+		try {
+			authentication = authenticationManagerBuilder.getObject()
+					.authenticate(authenticationToken);
+		} catch (AuthenticationException e) {
+			securityAuditLogger.failure(
+					"LOGIN", requestLoginDTO.getEmail(), "INVALID_CREDENTIALS");
+			throw e;
+		}
 		SecurityContextHolder.getContext().setAuthentication(authentication);
 
 		Optional<User> userOptional = this.userRepository.findOneByEmailIgnoreCase(
 				requestLoginDTO.getEmail());
 
 		if (userOptional.isEmpty()) {
+			securityAuditLogger.failure(
+					"LOGIN", requestLoginDTO.getEmail(), "USER_NOT_FOUND_AFTER_AUTHENTICATION");
 			throw new BadRequestAlertException(
 					"User with username " + requestLoginDTO.getEmail() + " was not found");
 		}
 
-		return generateAuthResponse(userOptional.get());
+		User user = userOptional.get();
+		ResponseLoginDTO response = generateAuthResponse(user);
+		securityAuditLogger.success("LOGIN", user.getId());
+		return response;
 	}
 
 	private ResponseLoginDTO generateAuthResponse(User user) {
@@ -93,7 +108,7 @@ public class AuthenticationService {
 				.map(auth -> new SimpleGrantedAuthority(
 						auth.getName())).collect(Collectors.toUnmodifiableList());
 		Authentication authentication = new UsernamePasswordAuthenticationToken(
-				(Object) user.getEmail(),
+				UserWithId.fromUser(user),
 				null,
 				authorities
 		);
@@ -132,9 +147,11 @@ public class AuthenticationService {
 
 	@Transactional
 	public ResponseRegisterDTO register(RequestRegisterDTO requestRegisterDTO) {
-		LOG.debug("Register for user with email {}", requestRegisterDTO.getEmail());
+		LOG.debug("Registration attempt");
 
 		if (userRepository.existsByEmail(requestRegisterDTO.getEmail())) {
+			securityAuditLogger.failure(
+					"REGISTRATION", requestRegisterDTO.getEmail(), "ACCOUNT_ALREADY_EXISTS");
 			throw new ResourceAlreadyExistException(
 					"User with email " + requestRegisterDTO.getEmail() + " already existed");
 		}
@@ -163,16 +180,20 @@ public class AuthenticationService {
 				.exp(createdUser.getExp())
 				.coin(createdUser.getCoin())
 				.streakDays(createdUser.getStreakDays())
+				.createdAt(createdUser.getCreatedAt())
 				.build();
 
-		LOG.debug("Sending verification code to email {} with TTL = 5", createdUser.getEmail());
+		LOG.debug("Creating registration verification code");
 		String code = otpService.saveOtp(createdUser.getEmail(), OtpPurpose.SIGNUP_VERIFY);
-		LOG.debug("Sending code {} to email {}", code, createdUser.getEmail());
 		try {
 			mailService.sendVerificationEmail(createdUser.getEmail(), code, Duration.ofMinutes(5));
 		} catch (MessagingException e) {
-			LOG.debug("Send verification email error {}", e.getMessage());
+			LOG.warn("Failed to send registration verification email: {}", e.getMessage());
+			securityAuditLogger.failure(
+					"REGISTRATION_EMAIL_DELIVERY", createdUser.getEmail(), "EMAIL_DELIVERY_FAILED");
 		}
+
+		securityAuditLogger.success("REGISTRATION", createdUser.getId());
 
 		return responseRegisterDTO;
 	}
@@ -183,25 +204,39 @@ public class AuthenticationService {
 				verifyMailRequest.getCode(), OtpPurpose.SIGNUP_VERIFY);
 
 		if (!valid) {
+			securityAuditLogger.failure(
+					"EMAIL_VERIFICATION", verifyMailRequest.getEmail(), "INVALID_OR_EXPIRED_CODE");
 			throw new BadRequestAlertException("Verify code is invalid or has expired.");
 		}
 
-		User u = this.userRepository.findOneByEmailIgnoreCase(verifyMailRequest.getEmail()).orElseThrow(
-				() -> new UsernameNotFoundException("User " + verifyMailRequest.getEmail() + " not found")
-		);
+		User u = this.userRepository.findOneByEmailIgnoreCase(verifyMailRequest.getEmail())
+				.orElseThrow(() -> {
+					securityAuditLogger.failure(
+							"EMAIL_VERIFICATION", verifyMailRequest.getEmail(), "USER_NOT_FOUND");
+					return new UsernameNotFoundException(
+							"User " + verifyMailRequest.getEmail() + " not found");
+				});
 
 		u.setActivated(true);
 		this.userRepository.save(u);
 
-		return this.generateAuthResponse(u);
+		ResponseLoginDTO response = this.generateAuthResponse(u);
+		securityAuditLogger.success("EMAIL_VERIFICATION", u.getId());
+		return response;
 	}
 
 	public void resendCode(ResendCodeRequest resendCodeRequest) {
-		User u = this.userRepository.findOneByEmailIgnoreCase(resendCodeRequest.email()).orElseThrow(
-				() -> new UsernameNotFoundException("User " + resendCodeRequest.email() + " not found")
-		);
+		User u = this.userRepository.findOneByEmailIgnoreCase(resendCodeRequest.email())
+				.orElseThrow(() -> {
+					securityAuditLogger.failure(
+							"VERIFICATION_CODE_RESEND", resendCodeRequest.email(), "USER_NOT_FOUND");
+					return new UsernameNotFoundException(
+							"User " + resendCodeRequest.email() + " not found");
+				});
 
 		if (u.isActivated()) {
+			securityAuditLogger.failure(
+					"VERIFICATION_CODE_RESEND", u.getEmail(), "ACCOUNT_ALREADY_ACTIVATED");
 			throw new BadRequestAlertException("User " + resendCodeRequest.email() + " was activated");
 		}
 
@@ -211,18 +246,28 @@ public class AuthenticationService {
 			this.mailService.sendVerificationEmail(resendCodeRequest.email(), code,
 					Duration.ofMinutes(5));
 		} catch (MessagingException e) {
-			LOG.debug("Failed to send code {} to email {}", code, resendCodeRequest.email());
+			LOG.warn("Failed to resend registration verification email: {}", e.getMessage());
+			securityAuditLogger.failure(
+					"VERIFICATION_CODE_EMAIL_DELIVERY", u.getEmail(), "EMAIL_DELIVERY_FAILED");
 		}
+
+		securityAuditLogger.success("VERIFICATION_CODE_RESEND", u.getId());
 	}
 
 	public void forgotPassword(ForgotPasswordRequest forgotPasswordRequest) {
-		LOG.debug("Forgot password for email={}", forgotPasswordRequest.email());
+		LOG.debug("Forgot-password request");
 
 		User u = userRepository.findOneByEmailIgnoreCase(forgotPasswordRequest.email())
-				.orElseThrow(() -> new UsernameNotFoundException(
-						"User " + forgotPasswordRequest.email() + " not found"));
+				.orElseThrow(() -> {
+					securityAuditLogger.failure(
+							"PASSWORD_RESET_REQUEST", forgotPasswordRequest.email(), "USER_NOT_FOUND");
+					return new UsernameNotFoundException(
+							"User " + forgotPasswordRequest.email() + " not found");
+				});
 
 		if (!u.isActivated()) {
+			securityAuditLogger.failure(
+					"PASSWORD_RESET_REQUEST", u.getEmail(), "ACCOUNT_NOT_ACTIVATED");
 			throw new BadRequestAlertException(
 					"User " + forgotPasswordRequest.email() + " has not been activated");
 		}
@@ -233,39 +278,62 @@ public class AuthenticationService {
 			mailService.sendPasswordResetEmail(forgotPasswordRequest.email(), code,
 					Duration.ofMinutes(5));
 		} catch (MessagingException e) {
-			LOG.debug("Failed to send password reset email to {}: {}", forgotPasswordRequest.email(),
-					e.getMessage());
+			LOG.warn("Failed to send password reset email: {}", e.getMessage());
+			securityAuditLogger.failure(
+					"PASSWORD_RESET_EMAIL_DELIVERY", u.getEmail(), "EMAIL_DELIVERY_FAILED");
 		}
+
+		securityAuditLogger.success("PASSWORD_RESET_REQUEST", u.getId());
 	}
 
 	@Transactional
 	public void resetPassword(ResetPasswordRequest resetPasswordRequest) {
-		LOG.info("Reset password for email={}", resetPasswordRequest.email());
+		LOG.info("Reset password attempt");
 
 		boolean valid = otpService.verifyOtp(resetPasswordRequest.email(),
 				resetPasswordRequest.code(), OtpPurpose.FORGOT_PASSWORD);
 
 		if (!valid) {
+			securityAuditLogger.failure(
+					"PASSWORD_RESET", resetPasswordRequest.email(), "INVALID_OR_EXPIRED_CODE");
 			throw new BadRequestAlertException("Reset code is invalid or has expired.");
 		}
 
 		User u = userRepository.findOneByEmailIgnoreCase(resetPasswordRequest.email())
-				.orElseThrow(() -> new UsernameNotFoundException(
-						"User " + resetPasswordRequest.email() + " not found"));
+				.orElseThrow(() -> {
+					securityAuditLogger.failure(
+							"PASSWORD_RESET", resetPasswordRequest.email(), "USER_NOT_FOUND");
+					return new UsernameNotFoundException(
+							"User " + resetPasswordRequest.email() + " not found");
+				});
 
 		u.setPassword(passwordEncoder.encode(resetPasswordRequest.newPassword()));
 		userRepository.save(u);
+		securityAuditLogger.success("PASSWORD_RESET", u.getId());
 	}
 
 	public ResponseLoginDTO refreshToken(RefreshTokenRequest refreshTokenRequest) {
-		String username = this.refreshTokenService.getUsernameFromToken(
-				refreshTokenRequest.refreshToken());
+		String username;
+		try {
+			username = this.refreshTokenService.getUsernameFromToken(
+					refreshTokenRequest.refreshToken());
+		} catch (BadRequestAlertException e) {
+			securityAuditLogger.failure(
+					"REFRESH_TOKEN_ROTATION", null, "INVALID_OR_EXPIRED_TOKEN");
+			throw e;
+		}
 
 		this.refreshTokenService.revokeToken(refreshTokenRequest.refreshToken());
 
-		User u = this.userRepository.findOneByEmailIgnoreCase(username).orElseThrow(
-				() -> new UsernameNotFoundException("User with email " + username + " was not found"));
+		User u = this.userRepository.findOneByEmailIgnoreCase(username).orElseThrow(() -> {
+			securityAuditLogger.failure(
+					"REFRESH_TOKEN_ROTATION", username, "USER_NOT_FOUND");
+			return new UsernameNotFoundException(
+					"User with email " + username + " was not found");
+		});
 
-		return generateAuthResponse(u);
+		ResponseLoginDTO response = generateAuthResponse(u);
+		securityAuditLogger.success("REFRESH_TOKEN_ROTATION", u.getId());
+		return response;
 	}
 }

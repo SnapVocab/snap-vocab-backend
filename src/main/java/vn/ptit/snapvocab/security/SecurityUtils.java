@@ -52,7 +52,20 @@ public final class SecurityUtils {
 		return Optional.ofNullable(securityContext.getAuthentication())
 				.filter(authentication -> authentication.getPrincipal() instanceof ClaimAccessor)
 				.map(authentication -> (ClaimAccessor) authentication.getPrincipal())
-				.map(principal -> principal.getClaim(USER_ID_CLAIM));
+				.map(principal -> {
+					Object claim = principal.getClaim(USER_ID_CLAIM);
+					if (claim instanceof Number number) {
+						return number.longValue();
+					}
+					if (claim instanceof String str) {
+						try {
+							return Long.parseLong(str);
+						} catch (NumberFormatException e) {
+							return null;
+						}
+					}
+					return null;
+				});
 	}
 
 	public static boolean isAuthenticated() {

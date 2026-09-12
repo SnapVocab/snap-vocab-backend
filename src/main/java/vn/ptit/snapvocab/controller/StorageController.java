@@ -7,9 +7,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import vn.ptit.snapvocab.domain.dto.PresignedUploadResponse;
-import vn.ptit.snapvocab.domain.dto.UploadCompleteRequest;
-import vn.ptit.snapvocab.domain.dto.UploadUrlRequest;
+import vn.ptit.snapvocab.domain.dto.storage.PresignedUploadResponse;
+import vn.ptit.snapvocab.domain.dto.storage.UploadCompleteRequest;
+import vn.ptit.snapvocab.domain.dto.storage.UploadUrlRequest;
 import vn.ptit.snapvocab.service.StorageService;
 
 @RestController

@@ -18,23 +18,24 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import vn.ptit.snapvocab.domain.common.BaseCreatedAtEntity;
 
 @Entity
-@Table(name = "word", indexes = {
-		@Index(name = "idx_word_en", columnList = "word, lang_code")
+@Table(name = "words", indexes = {
+		@Index(name = "idx_words_en", columnList = "word, lang_code")
 })
 @Getter
 @Setter
 @AllArgsConstructor
 @NoArgsConstructor
-public class Word {
+public class Word extends BaseCreatedAtEntity {
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
 
 	@NotNull
-	@Size
+	@Size(max = 191)
 	@Column(name = "word", length = 191, nullable = false)
 	private String word;
 
@@ -58,8 +59,4 @@ public class Word {
 	@OneToMany(fetch = FetchType.LAZY, mappedBy = "word")
 	@JsonIgnoreProperties(value = {"word"}, allowSetters = true)
 	private Set<WordRelation> wordRelations = new HashSet<>();
-
-	@OneToMany(fetch = FetchType.LAZY, mappedBy = "word")
-	@JsonIgnoreProperties(value = {"reviewLogs", "word", "deck"}, allowSetters = true)
-	private Set<Flashcard> flashcards = new HashSet<>();
 }

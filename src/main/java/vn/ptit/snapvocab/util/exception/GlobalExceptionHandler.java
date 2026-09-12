@@ -8,7 +8,7 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-import vn.ptit.snapvocab.domain.dto.RestResponse;
+import vn.ptit.snapvocab.domain.dto.common.RestResponse;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -87,6 +87,18 @@ public class GlobalExceptionHandler {
 
 	@ExceptionHandler(UserNotActivatedException.class)
 	public ResponseEntity<RestResponse<Object>> handleUserNotActivated(UserNotActivatedException ex) {
+
+		RestResponse<Object> response = RestResponse.builder()
+				.statusCode(403)
+				.error(ex.getMessage())
+				.build();
+
+		return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+	}
+
+	@ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+	public ResponseEntity<RestResponse<Object>> handleAccessDenied(
+			org.springframework.security.access.AccessDeniedException ex) {
 
 		RestResponse<Object> response = RestResponse.builder()
 				.statusCode(403)

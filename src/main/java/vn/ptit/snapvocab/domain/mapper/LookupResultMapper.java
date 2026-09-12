@@ -7,8 +7,8 @@ import org.mapstruct.Mapping;
 import org.mapstruct.Named;
 import vn.ptit.snapvocab.domain.Translation;
 import vn.ptit.snapvocab.domain.Word;
-import vn.ptit.snapvocab.domain.dto.LookupResultDTO;
-import vn.ptit.snapvocab.domain.dto.TranslationLookupDTO;
+import vn.ptit.snapvocab.domain.dto.word.LookupResultDTO;
+import vn.ptit.snapvocab.domain.dto.word.TranslationLookupDTO;
 
 @Mapper(componentModel = "spring", uses = {
         PronunciationLookupMapper.class,

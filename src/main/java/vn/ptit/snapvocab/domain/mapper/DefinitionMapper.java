@@ -7,9 +7,9 @@ import org.mapstruct.Named;
 import vn.ptit.snapvocab.domain.Definition;
 import vn.ptit.snapvocab.domain.Word;
 import vn.ptit.snapvocab.domain.WordDefinition;
-import vn.ptit.snapvocab.domain.dto.DefinitionDTO;
-import vn.ptit.snapvocab.domain.dto.WordDTO;
-import vn.ptit.snapvocab.domain.dto.WordDefinitionDTO;
+import vn.ptit.snapvocab.domain.dto.word.DefinitionDTO;
+import vn.ptit.snapvocab.domain.dto.word.WordDTO;
+import vn.ptit.snapvocab.domain.dto.word.WordDefinitionDTO;
 
 @Mapper(componentModel = "spring")
 public interface DefinitionMapper extends EntityMapper<DefinitionDTO, Definition> {

@@ -4,7 +4,7 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.Named;
 import vn.ptit.snapvocab.domain.WordDefinition;
-import vn.ptit.snapvocab.domain.dto.MeaningDTO;
+import vn.ptit.snapvocab.domain.dto.word.MeaningDTO;
 import vn.ptit.snapvocab.domain.enumeration.CodeLabelMapper;
 import vn.ptit.snapvocab.domain.enumeration.PosLabel;
 import vn.ptit.snapvocab.domain.enumeration.SubPosLabel;

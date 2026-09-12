@@ -6,8 +6,8 @@ import org.mapstruct.Mapping;
 import org.mapstruct.Named;
 import vn.ptit.snapvocab.domain.Word;
 import vn.ptit.snapvocab.domain.WordRelation;
-import vn.ptit.snapvocab.domain.dto.WordDTO;
-import vn.ptit.snapvocab.domain.dto.WordRelationDTO;
+import vn.ptit.snapvocab.domain.dto.word.WordDTO;
+import vn.ptit.snapvocab.domain.dto.word.WordRelationDTO;
 
 @Mapper(componentModel = "spring")
 public interface WordRelationMapper extends EntityMapper<WordRelationDTO, WordRelation> {
