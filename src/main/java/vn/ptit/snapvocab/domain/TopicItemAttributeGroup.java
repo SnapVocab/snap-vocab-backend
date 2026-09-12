@@ -51,7 +51,7 @@ public class TopicItemAttributeGroup {
 
 	@ManyToOne(fetch = FetchType.LAZY, optional = false)
 	@JoinColumn(name = "group_definition_id", nullable = false)
-	private TopicAttributeGroup groupDefinition;
+	private SchemaAttributeGroup groupDefinition;
 
 	@Builder.Default
 	@Column(nullable = false)

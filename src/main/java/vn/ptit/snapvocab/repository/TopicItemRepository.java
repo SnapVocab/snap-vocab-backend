@@ -46,31 +46,31 @@ public interface TopicItemRepository extends JpaRepository<TopicItem, Long> {
 			SELECT new vn.ptit.snapvocab.domain.dto.topic.TopicItemAttributeRow(
 			    ti.id,
 			    ti.createdAt,
-			    tag.id,
-			    tag.name,
-			    tag.label,
-			    tag.multiple,
+			    sag.id,
+			    sag.name,
+			    sag.label,
+			    sag.multiple,
 			    tiag.id,
 			    tiag.position,
-			    ta.id,
-			    ta.name,
-			    ta.label,
-			    ta.dataType,
-			    ta.required,
-			    ta.position,
+			    sa.id,
+			    sa.name,
+			    sa.label,
+			    sa.dataType,
+			    sa.required,
+			    sa.position,
 			    tiav.value
 			)
 			FROM TopicItem ti
 			JOIN ti.groupInstances tiag
-			JOIN tiag.groupDefinition tag
-			JOIN tag.attributes ta
+			JOIN tiag.groupDefinition sag
+			JOIN sag.attributes sa
 			JOIN tiag.values tiav
-			    ON tiav.attribute = ta
+			    ON tiav.attribute = sa
 			WHERE ti.id IN :topicItemIds
 			ORDER BY
-			    tag.position,
+			    sag.position,
 			    tiag.position,
-			    ta.position
+			    sa.position
 			""")
 	List<TopicItemAttributeRow> findAttributeRows(
 			@Param("topicItemIds") List<Long> topicItemIds

@@ -25,7 +25,7 @@ import vn.ptit.snapvocab.domain.common.BaseTimeEntity;
 						name = "uq_group_instance_attribute",
 						columnNames = {
 								"group_instance_id",
-								"topic_attribute_id"
+								"schema_attribute_id"
 						}
 				)
 		}
@@ -46,8 +46,8 @@ public class TopicItemAttributeValue extends BaseTimeEntity {
 	private TopicItemAttributeGroup groupInstance;
 
 	@ManyToOne(fetch = FetchType.LAZY, optional = false)
-	@JoinColumn(name = "topic_attribute_id", nullable = false)
-	private TopicAttribute attribute;
+	@JoinColumn(name = "schema_attribute_id", nullable = false)
+	private SchemaAttribute attribute;
 
 	@Column(nullable = false, columnDefinition = "TEXT")
 	private String value;

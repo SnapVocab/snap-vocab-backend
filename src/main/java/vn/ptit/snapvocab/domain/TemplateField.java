@@ -45,8 +45,8 @@ public class TemplateField {
 	private TemplateElement element;
 
 	@ManyToOne(fetch = FetchType.LAZY, optional = false)
-	@JoinColumn(name = "topic_attribute_id", nullable = false)
-	private TopicAttribute topicAttribute;
+	@JoinColumn(name = "schema_attribute_id", nullable = false)
+	private SchemaAttribute schemaAttribute;
 
 	@Enumerated(EnumType.STRING)
 	@Column(name = "semantic_role", length = 50)
