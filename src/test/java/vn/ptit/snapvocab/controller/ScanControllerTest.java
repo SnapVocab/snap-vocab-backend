@@ -19,6 +19,7 @@ import vn.ptit.snapvocab.domain.dto.ImageSizeDTO;
 import vn.ptit.snapvocab.domain.dto.LiteScanDetectionDTO;
 import vn.ptit.snapvocab.domain.dto.LiteScanResponseDTO;
 import vn.ptit.snapvocab.domain.dto.NormalizedBoundingBoxDTO;
+import vn.ptit.snapvocab.domain.dto.ScanResultDTO;
 import vn.ptit.snapvocab.domain.dto.ScanWordDTO;
 import vn.ptit.snapvocab.service.ScanService;
 
@@ -38,11 +39,19 @@ class ScanControllerTest {
 	@Test
 	void scanUsesFullScanFlow() throws Exception {
 		MockMultipartFile image = image();
-		when(scanService.scanImage(image)).thenReturn(List.of());
+		when(scanService.scanImage(image)).thenReturn(ScanResultDTO.builder()
+				.annotatedImageBase64("QUJD")
+				.annotatedImageMime("image/webp")
+				.imageWidth(100)
+				.imageHeight(50)
+				.items(List.of())
+				.build());
 
 		mockMvc.perform(multipart("/api/scan").file(image))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$").isArray());
+				.andExpect(jsonPath("$.annotatedImageMime").value("image/webp"))
+				.andExpect(jsonPath("$.imageWidth").value(100))
+				.andExpect(jsonPath("$.items").isArray());
 
 		verify(scanService).scanImage(image);
 	}
