@@ -10,6 +10,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.OneToOne;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import java.util.ArrayList;
@@ -58,14 +59,13 @@ public class Topic extends BaseTimeEntity {
 	@Column(name = "description_translation", columnDefinition = "TEXT")
 	private String descriptionTranslation;
 
-	@OneToMany(
+	@OneToOne(
 			mappedBy = "topic",
 			cascade = CascadeType.ALL,
-			orphanRemoval = true
+			orphanRemoval = true,
+			fetch = FetchType.LAZY
 	)
-	@OrderBy("position ASC")
-	@Builder.Default
-	private List<TopicAttributeGroup> attributeGroups = new ArrayList<>();
+	private TopicSchema schema;
 
 	@OneToMany(
 			mappedBy = "topic",

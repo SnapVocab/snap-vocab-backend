@@ -27,10 +27,12 @@ import vn.ptit.snapvocab.domain.dto.topic.CreateTopicDTO;
 import vn.ptit.snapvocab.domain.dto.topic.TopicDTO;
 import vn.ptit.snapvocab.domain.enumeration.CollectionType;
 import vn.ptit.snapvocab.domain.mapper.TopicMapper;
+import vn.ptit.snapvocab.domain.mapper.TopicSchemaMapper;
 import vn.ptit.snapvocab.repository.CollectionRepository;
-import vn.ptit.snapvocab.repository.TopicAttributeGroupRepository;
+import vn.ptit.snapvocab.repository.SchemaAttributeGroupRepository;
 import vn.ptit.snapvocab.repository.TopicItemRepository;
 import vn.ptit.snapvocab.repository.TopicRepository;
+import vn.ptit.snapvocab.repository.TopicSchemaRepository;
 import vn.ptit.snapvocab.repository.UserRepository;
 import vn.ptit.snapvocab.security.AuthoritiesConstants;
 import vn.ptit.snapvocab.security.DomainUserDetailsService.UserWithId;
@@ -48,13 +50,19 @@ class TopicServiceCollectionTest {
 	private CollectionRepository collectionRepository;
 
 	@Mock
-	private TopicAttributeGroupRepository topicAttributeGroupRepository;
+	private TopicSchemaRepository topicSchemaRepository;
+
+	@Mock
+	private SchemaAttributeGroupRepository schemaAttributeGroupRepository;
 
 	@Mock
 	private UserRepository userRepository;
 
 	@Mock
 	private TopicMapper topicMapper;
+
+	@Mock
+	private TopicSchemaMapper topicSchemaMapper;
 
 	@InjectMocks
 	private TopicService topicService;

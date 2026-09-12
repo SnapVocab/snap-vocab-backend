@@ -10,6 +10,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.util.ArrayList;
@@ -23,28 +24,28 @@ import vn.ptit.snapvocab.domain.common.BaseTimeEntity;
 
 @Entity
 @Table(
-		name = "topic_attributes",
+		name = "schema_attribute_groups",
 		uniqueConstraints = {
 				@UniqueConstraint(
-						name = "uq_group_attribute_name",
-						columnNames = {"group_id", "name"}
+						name = "uq_schema_group_name",
+						columnNames = {"schema_id", "name"}
 				)
 		}
 )
 @Getter
 @Setter
-@Builder
-@AllArgsConstructor
 @NoArgsConstructor
-public class TopicAttribute extends BaseTimeEntity {
+@AllArgsConstructor
+@Builder
+public class SchemaAttributeGroup extends BaseTimeEntity {
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
 
 	@ManyToOne(fetch = FetchType.LAZY, optional = false)
-	@JoinColumn(name = "group_id", nullable = false)
-	private TopicAttributeGroup group;
+	@JoinColumn(name = "schema_id", nullable = false)
+	private TopicSchema schema;
 
 	@Column(nullable = false, length = 255)
 	private String name;
@@ -52,21 +53,27 @@ public class TopicAttribute extends BaseTimeEntity {
 	@Column(length = 255)
 	private String label;
 
-	@Column(name = "data_type", nullable = false, length = 50)
-	private String dataType;
-
 	@Builder.Default
 	@Column(nullable = false)
-	private boolean required = false;
+	private boolean multiple = false;
 
 	@Column(nullable = false)
 	private short position;
 
 	@OneToMany(
-			mappedBy = "attribute",
+			mappedBy = "group",
+			cascade = CascadeType.ALL,
+			orphanRemoval = true
+	)
+	@OrderBy("position ASC")
+	@Builder.Default
+	private List<SchemaAttribute> attributes = new ArrayList<>();
+
+	@OneToMany(
+			mappedBy = "groupDefinition",
 			cascade = CascadeType.ALL,
 			orphanRemoval = true
 	)
 	@Builder.Default
-	private List<TopicItemAttributeValue> values = new ArrayList<>();
+	private List<TopicItemAttributeGroup> instances = new ArrayList<>();
 }

@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -18,27 +19,36 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.ptit.snapvocab.domain.Collection;
+import vn.ptit.snapvocab.domain.SchemaAttribute;
+import vn.ptit.snapvocab.domain.SchemaAttributeGroup;
 import vn.ptit.snapvocab.domain.Topic;
-import vn.ptit.snapvocab.domain.TopicAttributeGroup;
+import vn.ptit.snapvocab.domain.TopicSchema;
 import vn.ptit.snapvocab.domain.User;
 import vn.ptit.snapvocab.domain.dto.common.Meta;
 import vn.ptit.snapvocab.domain.dto.common.PaginationObject;
+import vn.ptit.snapvocab.domain.dto.topic.CreateSchemaAttributeDTO;
+import vn.ptit.snapvocab.domain.dto.topic.CreateSchemaAttributeGroupDTO;
 import vn.ptit.snapvocab.domain.dto.topic.CreateTopicDTO;
-import vn.ptit.snapvocab.domain.dto.topic.TopicAttributeSchemaDTO;
+import vn.ptit.snapvocab.domain.dto.topic.CreateTopicSchemaDTO;
+import vn.ptit.snapvocab.domain.dto.topic.SchemaAttributeDTO;
+import vn.ptit.snapvocab.domain.dto.topic.SchemaAttributeGroupDTO;
 import vn.ptit.snapvocab.domain.dto.topic.TopicDTO;
-import vn.ptit.snapvocab.domain.dto.topic.TopicGroupSchemaDTO;
 import vn.ptit.snapvocab.domain.dto.topic.TopicItemAttributeRow;
 import vn.ptit.snapvocab.domain.dto.topic.TopicItemData;
-import vn.ptit.snapvocab.domain.dto.topic.TopicSchemaData;
+import vn.ptit.snapvocab.domain.dto.topic.TopicSchemaDTO;
 import vn.ptit.snapvocab.domain.enumeration.CollectionType;
+import vn.ptit.snapvocab.domain.mapper.SchemaMapperUtils;
 import vn.ptit.snapvocab.domain.mapper.TopicMapper;
+import vn.ptit.snapvocab.domain.mapper.TopicSchemaMapper;
 import vn.ptit.snapvocab.repository.CollectionRepository;
-import vn.ptit.snapvocab.repository.TopicAttributeGroupRepository;
+import vn.ptit.snapvocab.repository.SchemaAttributeGroupRepository;
 import vn.ptit.snapvocab.repository.TopicItemRepository;
 import vn.ptit.snapvocab.repository.TopicRepository;
+import vn.ptit.snapvocab.repository.TopicSchemaRepository;
 import vn.ptit.snapvocab.repository.UserRepository;
 import vn.ptit.snapvocab.security.AuthoritiesConstants;
 import vn.ptit.snapvocab.security.SecurityUtils;
+import vn.ptit.snapvocab.util.exception.ResourceAlreadyExistException;
 import vn.ptit.snapvocab.util.exception.ResourceNotFoundException;
 
 @Service
@@ -49,9 +59,11 @@ public class TopicService {
 	private final TopicItemRepository topicItemRepository;
 	private final TopicRepository topicRepository;
 	private final CollectionRepository collectionRepository;
-	private final TopicAttributeGroupRepository topicAttributeGroupRepository;
+	private final TopicSchemaRepository topicSchemaRepository;
+	private final SchemaAttributeGroupRepository schemaAttributeGroupRepository;
 	private final UserRepository userRepository;
 	private final TopicMapper topicMapper;
+	private final TopicSchemaMapper topicSchemaMapper;
 	private final Logger LOG = LoggerFactory.getLogger(TopicService.class);
 
 	/**
@@ -75,6 +87,7 @@ public class TopicService {
 			key = "#topicId + ':page:' + #pageable.pageNumber + ':size:' + #pageable.pageSize"
 	)
 	public PaginationObject<List<TopicItemData>> getTopicItems(Long topicId, Pageable pageable) {
+		this.validateTopicAccess(topicId);
 		LOG.info("Fetching topic items for topic ID: {}", topicId);
 
 		// Step 1: Query paginated IDs for the target topic
@@ -101,7 +114,7 @@ public class TopicService {
 				topicItemIds.getContent());
 
 		// Step 3: Build schema definition
-		TopicSchemaData schema = buildSchema(rows);
+		TopicSchemaDTO schema = buildSchema(rows, topicId);
 
 		// Step 4: Aggregate item data values by single vs multiple groups
 		Map<Long, Instant> createdAtByItem = new LinkedHashMap<>();
@@ -174,13 +187,13 @@ public class TopicService {
 	}
 
 	/**
-	 * Builds structured schema metadata from attribute rows. Returns a {@link TopicSchemaData}
+	 * Builds structured schema metadata from attribute rows. Returns a {@link TopicSchemaDTO}
 	 * containing a list of groups, where each group has a list of attributes. Preserves group and
 	 * attribute position ordering.
 	 */
-	private TopicSchemaData buildSchema(List<TopicItemAttributeRow> rows) {
-		Map<String, TopicGroupSchemaDTO> groupMap = new LinkedHashMap<>();
-		Map<String, Map<String, TopicAttributeSchemaDTO>> attributeMapByGroup = new LinkedHashMap<>();
+	private TopicSchemaDTO buildSchema(List<TopicItemAttributeRow> rows, Long topicId) {
+		Map<String, SchemaAttributeGroupDTO> groupMap = new LinkedHashMap<>();
+		Map<String, Map<String, SchemaAttributeDTO>> attributeMapByGroup = new LinkedHashMap<>();
 
 		for (TopicItemAttributeRow row : rows) {
 			String groupName = row.getGroupName();
@@ -190,10 +203,10 @@ public class TopicService {
 
 			groupMap.computeIfAbsent(
 					groupName,
-					name -> TopicGroupSchemaDTO.builder()
+					name -> SchemaAttributeGroupDTO.builder()
 							.groupId(row.getGroupId())
 							.name(name)
-							.label(resolveLabel(row.getGroupLabel(), name))
+							.label(SchemaMapperUtils.resolveLabel(row.getGroupLabel(), name))
 							.multiple(row.isGroupMultiple())
 							.position(row.getGroupInstancePosition())
 							.attributes(new ArrayList<>())
@@ -202,15 +215,15 @@ public class TopicService {
 
 			String attrName = row.getAttributeName();
 			if (attrName != null) {
-				Map<String, TopicAttributeSchemaDTO> groupAttrs =
+				Map<String, SchemaAttributeDTO> groupAttrs =
 						attributeMapByGroup.computeIfAbsent(groupName, k -> new LinkedHashMap<>());
 
 				groupAttrs.computeIfAbsent(
 						attrName,
-						name -> TopicAttributeSchemaDTO.builder()
+						name -> SchemaAttributeDTO.builder()
 								.attributeId(row.getAttributeId())
 								.name(name)
-								.label(resolveLabel(row.getAttributeLabel(), name))
+								.label(SchemaMapperUtils.resolveLabel(row.getAttributeLabel(), name))
 								.dataType(row.getDataType())
 								.required(row.isAttributeRequired())
 								.position(row.getAttributePosition())
@@ -219,14 +232,15 @@ public class TopicService {
 			}
 		}
 
-		for (Map.Entry<String, TopicGroupSchemaDTO> entry : groupMap.entrySet()) {
-			Map<String, TopicAttributeSchemaDTO> attrMap = attributeMapByGroup.get(entry.getKey());
+		for (Map.Entry<String, SchemaAttributeGroupDTO> entry : groupMap.entrySet()) {
+			Map<String, SchemaAttributeDTO> attrMap = attributeMapByGroup.get(entry.getKey());
 			if (attrMap != null) {
 				entry.getValue().setAttributes(new ArrayList<>(attrMap.values()));
 			}
 		}
 
-		return TopicSchemaData.builder()
+		return TopicSchemaDTO.builder()
+				.topicId(topicId)
 				.groups(new ArrayList<>(groupMap.values()))
 				.build();
 	}
@@ -239,61 +253,23 @@ public class TopicService {
 			cacheNames = "topic-schema",
 			key = "#topicId"
 	)
-	public TopicSchemaData getTopicSchema(Long topicId) {
+	public TopicSchemaDTO getTopicSchema(Long topicId) {
+		this.validateTopicAccess(topicId);
 		LOG.info("Fetching topic schema for topic ID: {}", topicId);
-		List<TopicAttributeGroup> groups = this.topicAttributeGroupRepository.findByTopicIdWithAttributes(
-				topicId);
+		TopicSchema schema = this.topicSchemaRepository.findByTopicId(topicId)
+				.orElse(null);
 
-		List<TopicGroupSchemaDTO> groupDTOs = groups.stream()
-				.map(group -> TopicGroupSchemaDTO.builder()
-						.groupId(group.getId())
-						.name(group.getName())
-						.label(resolveLabel(group.getLabel(), group.getName()))
-						.multiple(group.isMultiple())
-						.position(group.getPosition())
-						.attributes(group.getAttributes().stream()
-								.map(attr -> TopicAttributeSchemaDTO.builder()
-										.attributeId(attr.getId())
-										.name(attr.getName())
-										.label(resolveLabel(attr.getLabel(), attr.getName()))
-										.dataType(attr.getDataType())
-										.required(attr.isRequired())
-										.position(attr.getPosition())
-										.build())
-								.toList())
-						.build())
-				.toList();
+		if (schema == null) {
+			return TopicSchemaDTO.builder()
+					.topicId(topicId)
+					.groups(new ArrayList<>())
+					.build();
+		}
 
-		return TopicSchemaData.builder()
-				.groups(groupDTOs)
-				.build();
+		List<SchemaAttributeGroup> groups = this.schemaAttributeGroupRepository.findByTopicIdWithAttributes(topicId);
+		return this.topicSchemaMapper.toDto(schema, groups);
 	}
 
-	/**
-	 * Resolves a human-readable English label from database label, falling back to Title Case of
-	 * snake_case name.
-	 */
-	private String resolveLabel(String dbLabel, String name) {
-		if (dbLabel != null && !dbLabel.isBlank()) {
-			return dbLabel.trim();
-		}
-		if (name == null || name.isBlank()) {
-			return "";
-		}
-		StringBuilder sb = new StringBuilder();
-		for (String part : name.split("_")) {
-			if (!part.isEmpty()) {
-				if (sb.length() > 0) {
-					sb.append(" ");
-				}
-				sb.append(Character.toUpperCase(part.charAt(0)));
-				if (part.length() > 1) {
-					sb.append(part.substring(1));
-				}
-			}
-		}
-		return sb.toString();
-	}
 
 	@Cacheable(
 			cacheNames = "topic-tree",
@@ -312,10 +288,9 @@ public class TopicService {
 	}
 
 	private List<TopicDTO> buildTopicsTree(List<Topic> topics) {
-		// Implementation for building topics tree
 		Map<Long, TopicDTO> topicMap = new HashMap<>();
 
-		//create DTO for all nodes
+		// create DTO for all nodes
 		for (Topic topic : topics) {
 			TopicDTO dto = topicMapper.toDto(topic);
 			dto.setChildren(new ArrayList<>());
@@ -373,7 +348,6 @@ public class TopicService {
 			}
 		}
 
-		// Implementation for creating a topic within the collection
 		Topic topic = Topic.builder()
 				.collection(collection)
 				.parent(createTopicDTO.getParentId() != null ? topicRepository.findById(
@@ -383,11 +357,19 @@ public class TopicService {
 				.translation(createTopicDTO.getTranslation())
 				.description(createTopicDTO.getDescription())
 				.descriptionTranslation(createTopicDTO.getDescriptionTranslation())
-				.attributeGroups(new ArrayList<>())
 				.items(new ArrayList<>())
 				.build();
 
 		Topic saved = topicRepository.save(topic);
+
+		// Each Topic has One Schema
+		TopicSchema defaultSchema = TopicSchema.builder()
+				.topic(saved)
+				.attributeGroups(new LinkedHashSet<>())
+				.build();
+		topicSchemaRepository.save(defaultSchema);
+		saved.setSchema(defaultSchema);
+
 		return topicMapper.toDto(saved);
 	}
 
@@ -415,5 +397,37 @@ public class TopicService {
 				throw new AccessDeniedException("You do not have permission to access this collection");
 			}
 		}
+	}
+
+	@Transactional
+	@CacheEvict(
+			cacheNames = "topic-schema",
+			key = "#topicId"
+	)
+	public TopicSchemaDTO createTopicSchema(Long topicId,
+			CreateTopicSchemaDTO createTopicSchemaDTO) {
+		this.validateTopicAccess(topicId);
+		LOG.info("Creating schema for topicId: {}", topicId);
+
+		Topic topic = this.topicRepository.findById(topicId)
+				.orElseThrow(() -> new ResourceNotFoundException("Topic not found with id: " + topicId));
+
+		TopicSchema existingSchema = this.topicSchemaRepository.findByTopicId(topicId).orElse(null);
+		List<SchemaAttributeGroup> existingGroups = this.schemaAttributeGroupRepository.findByTopicIdWithAttributes(topicId);
+		if (!existingGroups.isEmpty()) {
+			throw new ResourceAlreadyExistException("Topic already has a schema with groups for topicId: " + topicId);
+		}
+
+		TopicSchema schema;
+		if (existingSchema != null) {
+			schema = existingSchema;
+			this.topicSchemaMapper.updateEntityFromDto(createTopicSchemaDTO, schema);
+		} else {
+			schema = this.topicSchemaMapper.toEntity(createTopicSchemaDTO);
+			schema.setTopic(topic);
+		}
+
+		TopicSchema saved = this.topicSchemaRepository.save(schema);
+		return getTopicSchema(saved.getTopic().getId());
 	}
 }

@@ -1,7 +1,5 @@
 package vn.ptit.snapvocab.domain.dto.topic;
 
-import java.util.ArrayList;
-import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -13,8 +11,12 @@ import lombok.Setter;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class TopicSchemaData {
+public class SchemaAttributeDTO {
 
-	@Builder.Default
-	private List<TopicGroupSchemaDTO> groups = new ArrayList<>();
+	private Long attributeId;
+	private String name;
+	private String label;
+	private String dataType;
+	private boolean required;
+	private short position;
 }
