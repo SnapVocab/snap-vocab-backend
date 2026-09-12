@@ -1,2 +1,0 @@
-{"@timestamp":"2026-09-04T08:32:04.0611245+07:00","@version":"1","message":"Security event","logger_name":"SECURITY_AUDIT","thread_name":"http-nio-8080-exec-3","level":"INFO","level_value":20000,"event":"LOGIN","outcome":"SUCCESS","userId":2}
-{"@timestamp":"2026-09-04T09:25:34.8294684+07:00","@version":"1","message":"Security event","logger_name":"SECURITY_AUDIT","thread_name":"http-nio-8080-exec-1","level":"INFO","level_value":20000,"event":"LOGIN","outcome":"SUCCESS","userId":2}

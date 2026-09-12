@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
-import vn.ptit.snapvocab.domain.dto.ScanResultDTO;
+import vn.ptit.snapvocab.domain.dto.scan.ScanResultDTO;
 import vn.ptit.snapvocab.service.ScanService;
 
 @RestController
@@ -20,11 +20,5 @@ public class ScanController {
 	@PostMapping
 	public ResponseEntity<ScanResultDTO> scan(@RequestParam("file") MultipartFile file) {
 		return ResponseEntity.ok(scanService.scanImage(file));
-	}
-
-	/** Lite scan: boxes + one dictionary entry per distinct label, no annotated image. */
-	@PostMapping("/lite")
-	public ResponseEntity<LiteScanResponseDTO> scanLite(@RequestParam("file") MultipartFile file) {
-		return ResponseEntity.ok(scanService.scanImageLite(file));
 	}
 }

@@ -9,7 +9,7 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.multipart.MultipartFile;
-import vn.ptit.snapvocab.domain.dto.AiDetectResponseDTO;
+import vn.ptit.snapvocab.domain.dto.scan.AiDetectResponseDTO;
 import vn.ptit.snapvocab.service.AiDetectionService;
 
 @Service
@@ -20,25 +20,16 @@ public class AiDetectionServiceImpl implements AiDetectionService {
 
 	@Override
 	public AiDetectResponseDTO detect(MultipartFile image) {
-		return post("/api/v1/detect", image, AiDetectResponseDTO.class);
-	}
-
-	@Override
-	public AiLiteDetectResponseDTO detectLite(MultipartFile image) {
-		return post("/api/v1/detect/lite", image, AiLiteDetectResponseDTO.class);
-	}
-
-	private <T> T post(String uri, MultipartFile image, Class<T> responseType) {
 		MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
 		body.add("file", toResource(image));
 
 		try {
 			return aiServiceRestClient.post()
-					.uri(uri)
+					.uri("/api/v1/detect")
 					.contentType(MediaType.MULTIPART_FORM_DATA)
 					.body(body)
 					.retrieve()
-					.body(responseType);
+					.body(AiDetectResponseDTO.class);
 		} catch (Exception e) {
 			throw new RuntimeException("AI service detection failed", e);
 		}

@@ -9,12 +9,12 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-import vn.ptit.snapvocab.domain.dto.AiDetectResponseDTO;
-import vn.ptit.snapvocab.domain.dto.BatchLookupRequest;
-import vn.ptit.snapvocab.domain.dto.DetectionDTO;
-import vn.ptit.snapvocab.domain.dto.LookupResultDTO;
-import vn.ptit.snapvocab.domain.dto.ScanItemDTO;
-import vn.ptit.snapvocab.domain.dto.ScanResultDTO;
+import vn.ptit.snapvocab.domain.dto.scan.AiDetectResponseDTO;
+import vn.ptit.snapvocab.domain.dto.scan.DetectionDTO;
+import vn.ptit.snapvocab.domain.dto.scan.ScanItemDTO;
+import vn.ptit.snapvocab.domain.dto.scan.ScanResultDTO;
+import vn.ptit.snapvocab.domain.dto.word.BatchLookupRequest;
+import vn.ptit.snapvocab.domain.dto.word.LookupResultDTO;
 import vn.ptit.snapvocab.service.AiDetectionService;
 import vn.ptit.snapvocab.service.ScanService;
 import vn.ptit.snapvocab.service.WordService;
@@ -67,41 +67,5 @@ public class ScanServiceImpl implements ScanService {
 				.box(detection.box())
 				.word(word)
 				.build();
-	}
-
-	@Override
-	public LiteScanResponseDTO scanImageLite(MultipartFile image) {
-		AiLiteDetectResponseDTO detected = aiDetectionService.detectLite(image);
-
-		// Labels come back with inconsistent casing/spacing ("Dog", " dog ", "DOG"),
-		// so normalise first and treat those as one word.
-		List<LiteScanDetectionDTO> detections = detected.detections().stream()
-				.map(d -> new LiteScanDetectionDTO(normalize(d.label()), d.source(), d.box()))
-				.toList();
-
-		// Ordered by first appearance, so the client shows words in the order the
-		// user's eye meets them in the photo.
-		List<String> labels = detections.stream()
-				.map(LiteScanDetectionDTO::label)
-				.distinct()
-				.toList();
-
-		Map<String, LookupResultDTO> byWord = labels.isEmpty()
-				? Map.of()
-				: lookupWords(labels);
-
-		List<ScanWordDTO> words = labels.stream()
-				.map(label -> {
-					LookupResultDTO found = byWord.get(label);
-					return found != null ? ScanWordDTO.from(label, found) : ScanWordDTO.missing(label);
-				})
-				.toList();
-
-		return new LiteScanResponseDTO(
-				detected.mode(), detected.image(), labels, words, detections);
-	}
-
-	private static String normalize(String label) {
-		return label == null ? "" : label.trim().toLowerCase(Locale.ROOT);
 	}
 }
