@@ -1,5 +1,7 @@
 package vn.ptit.snapvocab.config;
 
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
 import org.redisson.codec.JsonJacksonCodec;
@@ -19,7 +21,10 @@ public class RedissonConfig {
 	public RedissonClient redissonClient(RedisProperties redisProperties) {
 		Config config = new Config();
 
-		config.setCodec(new JsonJacksonCodec());
+		JsonJacksonCodec codec = new JsonJacksonCodec();
+		codec.getObjectMapper().registerModule(new JavaTimeModule());
+		codec.getObjectMapper().disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+		config.setCodec(codec);
 
 		boolean isSsl = redisProperties.getSsl() != null && redisProperties.getSsl().isEnabled();
 		String prefix = isSsl ? "rediss://" : "redis://";
