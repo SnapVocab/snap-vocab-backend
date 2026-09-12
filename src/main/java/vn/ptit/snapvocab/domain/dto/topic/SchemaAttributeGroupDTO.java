@@ -13,7 +13,7 @@ import lombok.Setter;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class TopicGroupSchemaDTO {
+public class SchemaAttributeGroupDTO {
 
 	private Long groupId;
 	private String name;
@@ -22,5 +22,5 @@ public class TopicGroupSchemaDTO {
 	private short position;
 
 	@Builder.Default
-	private List<TopicAttributeSchemaDTO> attributes = new ArrayList<>();
+	private List<SchemaAttributeDTO> attributes = new ArrayList<>();
 }
