@@ -144,6 +144,17 @@ public class DataInitializer implements CommandLineRunner {
 				LOG.debug("Template schema_id update ignored: {}", e.getMessage());
 			}
 
+			// 6. Ensure user_id column exists on schemas table
+			try {
+				stmt.execute("ALTER TABLE `schemas` ADD COLUMN `user_id` BIGINT NULL");
+			} catch (Exception e) {
+				LOG.debug("schemas user_id column update ignored: {}", e.getMessage());
+			}
+
+			try {
+				stmt.execute("ALTER TABLE `schemas` ADD CONSTRAINT `fk_schemas_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL");
+			} catch (Exception ignored) {}
+
 			stmt.execute("SET FOREIGN_KEY_CHECKS = 1");
 			LOG.info("Database schema migration verification completed successfully.");
 		} catch (Exception e) {

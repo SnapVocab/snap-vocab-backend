@@ -20,6 +20,7 @@ public class SchemaDTO {
 	private Long id;
 	private String code;
 	private boolean isSystem;
+	private Long userId;
 
 	public boolean isSystem() {
 		return isSystem;

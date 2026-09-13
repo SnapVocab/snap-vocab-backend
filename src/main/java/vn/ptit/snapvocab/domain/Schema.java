@@ -3,9 +3,12 @@ package vn.ptit.snapvocab.domain;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
@@ -40,6 +43,33 @@ public class Schema extends BaseTimeEntity {
 	@Column(name = "is_system", nullable = false)
 	private boolean isSystem = false;
 
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "user_id")
+	private User user;
+
+	@Column(nullable = false, length = 255)
+	private String name;
+	@Column(columnDefinition = "TEXT")
+	private String description;
+	@OneToMany(
+			mappedBy = "schema",
+			cascade = CascadeType.ALL,
+			orphanRemoval = true
+	)
+	@OrderBy("position ASC")
+	@Builder.Default
+	private Set<SchemaAttributeGroup> attributeGroups = new LinkedHashSet<>();
+	@OneToMany(mappedBy = "schema")
+	@Builder.Default
+	private List<TopicSchema> topicSchemas = new ArrayList<>();
+	@OneToMany(
+			mappedBy = "schema",
+			cascade = CascadeType.ALL,
+			orphanRemoval = true
+	)
+	@Builder.Default
+	private List<Template> templates = new ArrayList<>();
+
 	public boolean isSystem() {
 		return isSystem;
 	}
@@ -55,33 +85,6 @@ public class Schema extends BaseTimeEntity {
 	public void setIsSystem(boolean isSystem) {
 		this.isSystem = isSystem;
 	}
-
-	@Column(nullable = false, length = 255)
-	private String name;
-
-	@Column(columnDefinition = "TEXT")
-	private String description;
-
-	@OneToMany(
-			mappedBy = "schema",
-			cascade = CascadeType.ALL,
-			orphanRemoval = true
-	)
-	@OrderBy("position ASC")
-	@Builder.Default
-	private Set<SchemaAttributeGroup> attributeGroups = new LinkedHashSet<>();
-
-	@OneToMany(mappedBy = "schema")
-	@Builder.Default
-	private List<TopicSchema> topicSchemas = new ArrayList<>();
-
-	@OneToMany(
-			mappedBy = "schema",
-			cascade = CascadeType.ALL,
-			orphanRemoval = true
-	)
-	@Builder.Default
-	private List<Template> templates = new ArrayList<>();
 
 	public void addTemplate(Template template) {
 		templates.add(template);

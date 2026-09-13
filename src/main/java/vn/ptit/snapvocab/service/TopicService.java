@@ -391,11 +391,13 @@ public class TopicService {
 		} else {
 			schema = this.schemaRepository.findByCode("DEFAULT_ENGLISH")
 					.orElseGet(() -> {
+						User creator = collection.getOwner();
 						Schema defaultSchema = Schema.builder()
 								.name(saved.getName() + " Schema")
 								.description("Default schema for topic " + saved.getName())
 								.code(null)
 								.isSystem(false)
+								.user(creator)
 								.attributeGroups(new LinkedHashSet<>())
 								.templates(new ArrayList<>())
 								.build();
@@ -482,6 +484,9 @@ public class TopicService {
 				.build();
 
 		Schema schema = this.schemaMapper.toEntity(schemaDTO);
+		User topicOwner = topic.getCollection() != null ? topic.getCollection().getOwner() : null;
+		schema.setUser(topicOwner);
+		schema.setIsSystem(false);
 		Schema savedSchema = this.schemaRepository.save(schema);
 
 		if (existingTopicSchema != null) {
@@ -552,11 +557,13 @@ public class TopicService {
 		}
 
 		// 1. Create a cloned Schema
+		User topicOwner = topic.getCollection() != null ? topic.getCollection().getOwner() : null;
 		Schema forkedSchema = Schema.builder()
 				.name(topic.getName() + " Schema (Custom)")
 				.description("Customized schema for topic " + topic.getName())
 				.code(null)
 				.isSystem(false)
+				.user(topicOwner)
 				.attributeGroups(new LinkedHashSet<>())
 				.templates(new ArrayList<>())
 				.build();

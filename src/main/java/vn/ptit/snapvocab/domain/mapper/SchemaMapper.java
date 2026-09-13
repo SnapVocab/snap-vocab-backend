@@ -17,21 +17,25 @@ public interface SchemaMapper {
 	@Mapping(target = "id", ignore = true)
 	@Mapping(target = "topicSchemas", ignore = true)
 	@Mapping(target = "templates", ignore = true)
+	@Mapping(target = "user", ignore = true)
 	@Mapping(source = "schemaGroups", target = "attributeGroups")
 	Schema toEntity(CreateSchemaDTO dto);
 
 	@Mapping(target = "id", ignore = true)
 	@Mapping(target = "topicSchemas", ignore = true)
 	@Mapping(target = "templates", ignore = true)
+	@Mapping(target = "user", ignore = true)
 	@Mapping(source = "schemaGroups", target = "attributeGroups")
 	void updateEntityFromDto(CreateSchemaDTO dto, @MappingTarget Schema schema);
 
+	@Mapping(source = "user.id", target = "userId")
 	@Mapping(source = "attributeGroups", target = "groups")
 	SchemaDTO toDto(Schema entity);
 
 	@Mapping(source = "schema.id", target = "id")
 	@Mapping(source = "schema.code", target = "code")
 	@Mapping(source = "schema.isSystem", target = "isSystem")
+	@Mapping(source = "schema.user.id", target = "userId")
 	@Mapping(source = "schema.name", target = "name")
 	@Mapping(source = "schema.description", target = "description")
 	@Mapping(source = "schema.createdAt", target = "createdAt")
