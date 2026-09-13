@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import vn.ptit.snapvocab.domain.enumeration.DataType;
 
 @Getter
 @Setter
@@ -25,7 +26,7 @@ public class TopicItemAttributeRow {
 	private Long attributeId;
 	private String attributeName;
 	private String attributeLabel;
-	private String dataType;
+	private DataType dataType;
 	private boolean attributeRequired;
 	private short attributePosition;
 	private String value;

@@ -19,6 +19,7 @@ import vn.ptit.snapvocab.domain.TemplateElement;
 import vn.ptit.snapvocab.domain.TemplateField;
 import vn.ptit.snapvocab.domain.User;
 import vn.ptit.snapvocab.domain.enumeration.Alignment;
+import vn.ptit.snapvocab.domain.enumeration.DataType;
 import vn.ptit.snapvocab.domain.enumeration.SemanticRole;
 import vn.ptit.snapvocab.domain.enumeration.TemplateElementType;
 import vn.ptit.snapvocab.repository.AuthorityRepository;
@@ -110,7 +111,7 @@ public class DataInitializer implements CommandLineRunner {
 					.group(mainGroup)
 					.name("word")
 					.label("Từ vựng")
-					.dataType("TEXT")
+					.dataType(DataType.TEXT)
 					.required(true)
 					.position((short) 0)
 					.build();
@@ -119,7 +120,7 @@ public class DataInitializer implements CommandLineRunner {
 					.group(mainGroup)
 					.name("phonetic")
 					.label("Phiên âm")
-					.dataType("TEXT")
+					.dataType(DataType.TEXT)
 					.required(false)
 					.position((short) 1)
 					.build();
@@ -128,7 +129,7 @@ public class DataInitializer implements CommandLineRunner {
 					.group(mainGroup)
 					.name("audio")
 					.label("Phát âm")
-					.dataType("AUDIO")
+					.dataType(DataType.AUDIO)
 					.required(false)
 					.position((short) 2)
 					.build();
@@ -137,7 +138,7 @@ public class DataInitializer implements CommandLineRunner {
 					.group(mainGroup)
 					.name("translation")
 					.label("Bản dịch tiếng Việt")
-					.dataType("TEXT")
+					.dataType(DataType.TEXT)
 					.required(false)
 					.position((short) 3)
 					.build();
@@ -146,7 +147,7 @@ public class DataInitializer implements CommandLineRunner {
 					.group(mainGroup)
 					.name("level")
 					.label("Cấp độ")
-					.dataType("TEXT")
+					.dataType(DataType.TEXT)
 					.required(false)
 					.position((short) 4)
 					.build();
@@ -155,7 +156,7 @@ public class DataInitializer implements CommandLineRunner {
 					.group(mainGroup)
 					.name("definition_translation")
 					.label("Dịch định nghĩa")
-					.dataType("TEXT")
+					.dataType(DataType.TEXT)
 					.required(false)
 					.position((short) 5)
 					.build();
@@ -176,7 +177,7 @@ public class DataInitializer implements CommandLineRunner {
 					.group(meaningGroup)
 					.name("meaning")
 					.label("Giải nghĩa")
-					.dataType("TEXT")
+					.dataType(DataType.TEXT)
 					.required(true)
 					.position((short) 0)
 					.build();
@@ -185,7 +186,7 @@ public class DataInitializer implements CommandLineRunner {
 					.group(meaningGroup)
 					.name("example")
 					.label("Ví dụ")
-					.dataType("TEXT")
+					.dataType(DataType.TEXT)
 					.required(false)
 					.position((short) 1)
 					.build();
@@ -194,7 +195,7 @@ public class DataInitializer implements CommandLineRunner {
 					.group(meaningGroup)
 					.name("image")
 					.label("Hình ảnh minh họa")
-					.dataType("IMAGE")
+					.dataType(DataType.IMAGE)
 					.required(false)
 					.position((short) 2)
 					.build();
@@ -215,7 +216,7 @@ public class DataInitializer implements CommandLineRunner {
 					.group(examplesGroup)
 					.name("content")
 					.label("Nội dung ví dụ")
-					.dataType("TEXT")
+					.dataType(DataType.TEXT)
 					.required(true)
 					.position((short) 0)
 					.build();
@@ -224,7 +225,7 @@ public class DataInitializer implements CommandLineRunner {
 					.group(examplesGroup)
 					.name("translation")
 					.label("Dịch câu ví dụ")
-					.dataType("TEXT")
+					.dataType(DataType.TEXT)
 					.required(false)
 					.position((short) 1)
 					.build();

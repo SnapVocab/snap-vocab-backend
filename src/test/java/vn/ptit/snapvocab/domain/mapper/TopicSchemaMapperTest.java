@@ -15,6 +15,7 @@ import vn.ptit.snapvocab.domain.dto.topic.CreateSchemaAttributeDTO;
 import vn.ptit.snapvocab.domain.dto.topic.CreateSchemaAttributeGroupDTO;
 import vn.ptit.snapvocab.domain.dto.topic.CreateSchemaDTO;
 import vn.ptit.snapvocab.domain.dto.topic.TopicSchemaDTO;
+import vn.ptit.snapvocab.domain.enumeration.DataType;
 
 class TopicSchemaMapperTest {
 
@@ -48,14 +49,14 @@ class TopicSchemaMapperTest {
 								.attributes(List.of(
 										CreateSchemaAttributeDTO.builder()
 												.name("part_of_speech")
-												.dataType("TEXT")
+												.dataType(DataType.TEXT)
 												.required(true)
 												.position(1)
 												.build(),
 										CreateSchemaAttributeDTO.builder()
 												.name("phonetic")
 												.label("IPA Phonetics")
-												.dataType("TEXT")
+												.dataType(DataType.TEXT)
 												.required(false)
 												.position(2)
 												.build()
@@ -108,7 +109,7 @@ class TopicSchemaMapperTest {
 				.id(200L)
 				.group(group)
 				.name("tense")
-				.dataType("TEXT")
+				.dataType(DataType.TEXT)
 				.required(true)
 				.position((short) 1)
 				.build();
@@ -136,7 +137,7 @@ class TopicSchemaMapperTest {
 		assertThat(attrDTO.getAttributeId()).isEqualTo(200L);
 		assertThat(attrDTO.getName()).isEqualTo("tense");
 		assertThat(attrDTO.getLabel()).isEqualTo("Tense");
-		assertThat(attrDTO.getDataType()).isEqualTo("TEXT");
+		assertThat(attrDTO.getDataType()).isEqualTo(DataType.TEXT);
 		assertThat(attrDTO.isRequired()).isTrue();
 	}
 

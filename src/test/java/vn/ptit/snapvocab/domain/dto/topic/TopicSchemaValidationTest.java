@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import vn.ptit.snapvocab.domain.enumeration.DataType;
 
 class TopicSchemaValidationTest {
 
@@ -33,7 +34,7 @@ class TopicSchemaValidationTest {
 								.attributes(List.of(
 										CreateSchemaAttributeDTO.builder()
 												.name("word")
-												.dataType("TEXT")
+												.dataType(DataType.TEXT)
 												.position(0)
 												.build()
 								))
@@ -67,7 +68,7 @@ class TopicSchemaValidationTest {
 								.attributes(List.of(
 										CreateSchemaAttributeDTO.builder()
 												.name("word")
-												.dataType("TEXT")
+												.dataType(DataType.TEXT)
 												.position(0)
 												.build()
 								))
@@ -89,7 +90,7 @@ class TopicSchemaValidationTest {
 								.attributes(List.of(
 										CreateSchemaAttributeDTO.builder()
 												.name("word")
-												.dataType("TEXT")
+												.dataType(DataType.TEXT)
 												.position(0)
 												.build()
 								))
@@ -100,7 +101,7 @@ class TopicSchemaValidationTest {
 								.attributes(List.of(
 										CreateSchemaAttributeDTO.builder()
 												.name("meaning")
-												.dataType("TEXT")
+												.dataType(DataType.TEXT)
 												.position(0)
 												.build()
 								))
@@ -122,12 +123,12 @@ class TopicSchemaValidationTest {
 								.attributes(List.of(
 										CreateSchemaAttributeDTO.builder()
 												.name("word")
-												.dataType("TEXT")
+												.dataType(DataType.TEXT)
 												.position(0)
 												.build(),
 										CreateSchemaAttributeDTO.builder()
 												.name("WORD")
-												.dataType("TEXT")
+												.dataType(DataType.TEXT)
 												.position(1)
 												.build()
 								))

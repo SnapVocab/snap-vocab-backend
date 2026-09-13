@@ -2,6 +2,7 @@ package vn.ptit.snapvocab.domain.dto.topic;
 
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
@@ -9,6 +10,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import vn.ptit.snapvocab.domain.enumeration.DataType;
 
 @Getter
 @Setter
@@ -17,9 +19,8 @@ import lombok.Setter;
 @Builder
 public class CreateSchemaAttributeDTO {
 
-	@NotBlank(message = "Attribute data type must not be blank")
-	@Size(max = 50, message = "Attribute data type must not exceed 50 characters")
-	private String dataType;
+	@NotNull(message = "Attribute data type must not be null")
+	private DataType dataType;
 
 	@NotBlank(message = "Attribute name must not be blank")
 	@Size(max = 255, message = "Attribute name must not exceed 255 characters")
