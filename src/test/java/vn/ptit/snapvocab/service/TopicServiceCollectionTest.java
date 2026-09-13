@@ -26,10 +26,14 @@ import vn.ptit.snapvocab.domain.User;
 import vn.ptit.snapvocab.domain.dto.topic.CreateTopicDTO;
 import vn.ptit.snapvocab.domain.dto.topic.TopicDTO;
 import vn.ptit.snapvocab.domain.enumeration.CollectionType;
+import vn.ptit.snapvocab.domain.mapper.SchemaMapper;
 import vn.ptit.snapvocab.domain.mapper.TopicMapper;
 import vn.ptit.snapvocab.domain.mapper.TopicSchemaMapper;
 import vn.ptit.snapvocab.repository.CollectionRepository;
 import vn.ptit.snapvocab.repository.SchemaAttributeGroupRepository;
+import vn.ptit.snapvocab.repository.SchemaRepository;
+import vn.ptit.snapvocab.repository.TemplateFieldRepository;
+import vn.ptit.snapvocab.repository.TemplateRepository;
 import vn.ptit.snapvocab.repository.TopicItemRepository;
 import vn.ptit.snapvocab.repository.TopicRepository;
 import vn.ptit.snapvocab.repository.TopicSchemaRepository;
@@ -53,7 +57,16 @@ class TopicServiceCollectionTest {
 	private TopicSchemaRepository topicSchemaRepository;
 
 	@Mock
+	private SchemaRepository schemaRepository;
+
+	@Mock
 	private SchemaAttributeGroupRepository schemaAttributeGroupRepository;
+
+	@Mock
+	private TemplateRepository templateRepository;
+
+	@Mock
+	private TemplateFieldRepository templateFieldRepository;
 
 	@Mock
 	private UserRepository userRepository;
@@ -63,6 +76,9 @@ class TopicServiceCollectionTest {
 
 	@Mock
 	private TopicSchemaMapper topicSchemaMapper;
+
+	@Mock
+	private SchemaMapper schemaMapper;
 
 	@InjectMocks
 	private TopicService topicService;
@@ -154,6 +170,8 @@ class TopicServiceCollectionTest {
 
 		Topic savedTopic = Topic.builder().id(100L).name("My New Topic").build();
 		when(topicRepository.save(any(Topic.class))).thenReturn(savedTopic);
+		when(schemaRepository.save(any(vn.ptit.snapvocab.domain.Schema.class)))
+				.thenAnswer(invocation -> invocation.getArgument(0));
 		when(topicMapper.toDto(savedTopic)).thenReturn(
 				TopicDTO.builder().id(100L).name("My New Topic").build());
 
@@ -163,5 +181,48 @@ class TopicServiceCollectionTest {
 		assertThat(result.getId()).isEqualTo(100L);
 		assertThat(result.getName()).isEqualTo("My New Topic");
 		verify(topicRepository).save(any(Topic.class));
+	}
+
+	@Test
+	void createCollectionTopic_whenSchemaIdNull_usesSystemDefaultEnglishSchemaAndSetsActiveTemplate() {
+		UserWithId userWithId = UserWithId.fromUser(user1);
+		SecurityContextHolder.getContext().setAuthentication(
+				new UsernamePasswordAuthenticationToken(userWithId, null,
+						List.of(new SimpleGrantedAuthority(AuthoritiesConstants.USER)))
+		);
+
+		when(collectionRepository.findById(20L)).thenReturn(Optional.of(userCollection));
+		when(userRepository.findOneByEmailIgnoreCase("user1@snapvocab.com")).thenReturn(
+				Optional.of(user1));
+
+		vn.ptit.snapvocab.domain.Schema defaultEnglish = vn.ptit.snapvocab.domain.Schema.builder()
+				.id(1L)
+				.code("DEFAULT_ENGLISH")
+				.isSystem(true)
+				.name("Tiếng Anh Tiêu Chuẩn")
+				.build();
+		when(schemaRepository.findByCode("DEFAULT_ENGLISH")).thenReturn(Optional.of(defaultEnglish));
+
+		vn.ptit.snapvocab.domain.Template defaultTemplate = vn.ptit.snapvocab.domain.Template.builder()
+				.id(10L)
+				.schema(defaultEnglish)
+				.code("STANDARD")
+				.name("Thẻ Chuẩn")
+				.isDefault(true)
+				.build();
+		when(templateRepository.findBySchemaIdAndIsDefaultTrue(1L)).thenReturn(Optional.of(defaultTemplate));
+
+		Topic savedTopic = Topic.builder().id(100L).name("My New Topic").build();
+		when(topicRepository.save(any(Topic.class))).thenReturn(savedTopic);
+		when(topicMapper.toDto(savedTopic)).thenReturn(
+				TopicDTO.builder().id(100L).name("My New Topic").activeTemplateId(10L).activeTemplateCode("STANDARD").build());
+
+		CreateTopicDTO dto = CreateTopicDTO.builder().name("My New Topic").build();
+		TopicDTO result = topicService.createCollectionTopic(20L, dto);
+
+		assertThat(result).isNotNull();
+		assertThat(result.getActiveTemplateId()).isEqualTo(10L);
+		assertThat(result.getActiveTemplateCode()).isEqualTo("STANDARD");
+		assertThat(savedTopic.getActiveTemplate()).isEqualTo(defaultTemplate);
 	}
 }

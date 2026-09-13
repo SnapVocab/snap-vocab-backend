@@ -1,0 +1,166 @@
+package vn.ptit.snapvocab.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import vn.ptit.snapvocab.domain.Collection;
+import vn.ptit.snapvocab.domain.Schema;
+import vn.ptit.snapvocab.domain.SchemaAttribute;
+import vn.ptit.snapvocab.domain.SchemaAttributeGroup;
+import vn.ptit.snapvocab.domain.Template;
+import vn.ptit.snapvocab.domain.TemplateElement;
+import vn.ptit.snapvocab.domain.TemplateField;
+import vn.ptit.snapvocab.domain.Topic;
+import vn.ptit.snapvocab.domain.TopicItem;
+import vn.ptit.snapvocab.domain.TopicItemAttributeGroup;
+import vn.ptit.snapvocab.domain.TopicItemAttributeValue;
+import vn.ptit.snapvocab.domain.TopicSchema;
+import vn.ptit.snapvocab.domain.dto.topic.TopicSchemaDTO;
+import vn.ptit.snapvocab.domain.enumeration.CollectionType;
+import vn.ptit.snapvocab.domain.mapper.TopicSchemaMapper;
+import vn.ptit.snapvocab.repository.SchemaAttributeGroupRepository;
+import vn.ptit.snapvocab.repository.SchemaRepository;
+import vn.ptit.snapvocab.repository.TemplateFieldRepository;
+import vn.ptit.snapvocab.repository.TemplateRepository;
+import vn.ptit.snapvocab.repository.TopicItemRepository;
+import vn.ptit.snapvocab.repository.TopicRepository;
+import vn.ptit.snapvocab.repository.TopicSchemaRepository;
+
+@ExtendWith(MockitoExtension.class)
+class TopicServiceForkTest {
+
+	@Mock
+	private TopicRepository topicRepository;
+
+	@Mock
+	private TopicSchemaRepository topicSchemaRepository;
+
+	@Mock
+	private SchemaRepository schemaRepository;
+
+	@Mock
+	private SchemaAttributeGroupRepository schemaAttributeGroupRepository;
+
+	@Mock
+	private TemplateRepository templateRepository;
+
+	@Mock
+	private TopicItemRepository topicItemRepository;
+
+	@Mock
+	private TemplateFieldRepository templateFieldRepository;
+
+	@Mock
+	private TopicSchemaMapper topicSchemaMapper;
+
+	@InjectMocks
+	private TopicService topicService;
+
+	private Topic topic;
+	private Schema sharedSchema;
+	private TopicSchema topicSchema;
+	private SchemaAttributeGroup group;
+	private SchemaAttribute attr;
+
+	@BeforeEach
+	void setUp() {
+		Collection collection = Collection.builder().id(1L).type(CollectionType.SYSTEM).build();
+		topic = Topic.builder().id(10L).name("Business Topic").collection(collection).build();
+
+		sharedSchema = Schema.builder().id(100L).name("Shared English").build();
+		group = SchemaAttributeGroup.builder().id(1000L).name("main").schema(sharedSchema).build();
+		attr = SchemaAttribute.builder().id(5000L).name("word").group(group).build();
+		group.setAttributes(new ArrayList<>(List.of(attr)));
+		sharedSchema.getAttributeGroups().add(group);
+
+		topicSchema = TopicSchema.builder().id(50L).topic(topic).schema(sharedSchema).build();
+		topic.setSchema(topicSchema);
+	}
+
+	@Test
+	void forkTopicSchema_whenNotShared_doesNotClone() {
+		when(topicRepository.findById(10L)).thenReturn(Optional.of(topic));
+		when(topicSchemaRepository.findByTopicId(10L)).thenReturn(Optional.of(topicSchema));
+		when(topicSchemaRepository.countBySchemaId(100L)).thenReturn(1L);
+		when(schemaAttributeGroupRepository.findBySchemaIdWithAttributes(100L)).thenReturn(List.of(group));
+		when(topicSchemaMapper.toDto(any(), any())).thenReturn(
+				TopicSchemaDTO.builder().topicId(10L).schemaId(100L).build()
+		);
+
+		TopicSchemaDTO result = topicService.forkTopicSchema(10L);
+
+		assertThat(result).isNotNull();
+		verify(schemaRepository, never()).save(any());
+	}
+
+	@Test
+	void forkTopicSchema_whenShared_clonesSchemaAndRemapsValuesAndTemplates() {
+		when(topicRepository.findById(10L)).thenReturn(Optional.of(topic));
+		when(topicSchemaRepository.findByTopicId(10L)).thenReturn(Optional.of(topicSchema));
+		when(topicSchemaRepository.countBySchemaId(100L)).thenReturn(3L);
+		when(schemaAttributeGroupRepository.findBySchemaIdWithAttributes(100L)).thenReturn(List.of(group));
+
+		// Mock Template on shared schema
+		Template template = Template.builder().id(5L).schema(sharedSchema).name("Standard").isDefault(true).build();
+		TemplateElement element = TemplateElement.builder().id(6L).template(template).position(0).build();
+		TemplateField templateField = TemplateField.builder().id(7L).element(element).schemaAttribute(attr).build();
+		element.setField(templateField);
+		template.setElements(new ArrayList<>(List.of(element)));
+		topic.setActiveTemplate(template);
+
+		when(templateRepository.findBySchemaId(100L)).thenReturn(List.of(template));
+
+		Schema savedForked = Schema.builder().id(200L).name("Business Topic Schema (Custom)").build();
+		when(schemaRepository.save(any(Schema.class))).thenReturn(savedForked);
+
+		// Mock Item with EAV value
+		TopicItem item = TopicItem.builder().id(1L).topic(topic).build();
+		TopicItemAttributeGroup itemGroup = TopicItemAttributeGroup.builder().id(2L).item(item).groupDefinition(group).build();
+		TopicItemAttributeValue itemVal = TopicItemAttributeValue.builder().id(3L).groupInstance(itemGroup).attribute(attr).value("hello").build();
+		itemGroup.setValues(new ArrayList<>(List.of(itemVal)));
+		item.setGroupInstances(new ArrayList<>(List.of(itemGroup)));
+		when(topicItemRepository.findByTopicIdWithEav(10L)).thenReturn(List.of(item));
+
+		when(schemaAttributeGroupRepository.findBySchemaIdWithAttributes(200L)).thenReturn(List.of());
+		when(topicSchemaRepository.countBySchemaId(200L)).thenReturn(1L);
+		when(topicSchemaMapper.toDto(any(), any())).thenReturn(
+				TopicSchemaDTO.builder().topicId(10L).schemaId(200L).isShared(false).usageCount(1L).build()
+		);
+
+		TopicSchemaDTO result = topicService.forkTopicSchema(10L);
+
+		assertThat(result).isNotNull();
+		assertThat(result.getSchemaId()).isEqualTo(200L);
+		assertThat(result.isShared()).isFalse();
+
+		ArgumentCaptor<Schema> schemaCaptor = ArgumentCaptor.forClass(Schema.class);
+		verify(schemaRepository).save(schemaCaptor.capture());
+		Schema capturedSchema = schemaCaptor.getValue();
+		assertThat(capturedSchema.getTemplates()).hasSize(1);
+		Template capturedTemplate = capturedSchema.getTemplates().get(0);
+		assertThat(capturedTemplate.getName()).isEqualTo("Standard");
+		assertThat(capturedTemplate.getElements()).hasSize(1);
+		assertThat(capturedTemplate.getElements().get(0).getField().getSchemaAttribute().getName()).isEqualTo("word");
+		assertThat(capturedTemplate.getElements().get(0).getField().getSchemaAttribute()).isNotEqualTo(attr);
+
+		verify(topicSchemaRepository).save(topicSchema);
+		assertThat(topicSchema.getSchema()).isEqualTo(savedForked);
+
+		// Verify remapping occurred on Item
+		assertThat(itemVal.getAttribute()).isNotEqualTo(attr);
+		assertThat(itemVal.getAttribute().getName()).isEqualTo("word");
+	}
+}

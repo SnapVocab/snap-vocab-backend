@@ -15,8 +15,13 @@ import lombok.Setter;
 @Builder
 public class TopicSchemaDTO {
 
+	private Long topicSchemaId;
 	private Long schemaId;
 	private Long topicId;
+	private String schemaName;
+	private String schemaDescription;
+	private boolean isShared;
+	private long usageCount;
 
 	@Builder.Default
 	private List<SchemaAttributeGroupDTO> groups = new ArrayList<>();

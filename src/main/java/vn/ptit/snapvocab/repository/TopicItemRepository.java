@@ -33,6 +33,15 @@ public interface TopicItemRepository extends JpaRepository<TopicItem, Long> {
 			Pageable pageable
 	);
 
+	@Query("""
+			SELECT DISTINCT ti
+			FROM TopicItem ti
+			LEFT JOIN FETCH ti.groupInstances gi
+			LEFT JOIN FETCH gi.values v
+			WHERE ti.topic.id = :topicId
+			""")
+	List<TopicItem> findByTopicIdWithEav(@Param("topicId") Long topicId);
+
 	/**
 	 * Batch fetches flat EAV attribute rows for the given list of TopicItem IDs.
 	 * <p>

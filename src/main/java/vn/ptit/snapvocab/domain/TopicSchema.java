@@ -1,18 +1,14 @@
 package vn.ptit.snapvocab.domain;
 
-import jakarta.persistence.CascadeType;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.OneToMany;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToOne;
-import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
-import java.util.LinkedHashSet;
-import java.util.Set;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -37,12 +33,7 @@ public class TopicSchema extends BaseTimeEntity {
 	@JoinColumn(name = "topic_id", nullable = false, unique = true)
 	private Topic topic;
 
-	@OneToMany(
-			mappedBy = "schema",
-			cascade = CascadeType.ALL,
-			orphanRemoval = true
-	)
-	@OrderBy("position ASC")
-	@Builder.Default
-	private Set<SchemaAttributeGroup> attributeGroups = new LinkedHashSet<>();
+	@ManyToOne(fetch = FetchType.LAZY, optional = false)
+	@JoinColumn(name = "schema_id", nullable = false)
+	private Schema schema;
 }

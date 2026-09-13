@@ -22,4 +22,6 @@ public class CreateTopicDTO {
 	private String description;
 	private Long parentId;
 	private String descriptionTranslation;
+	private Long schemaId;
+	private Long activeTemplateId;
 }
