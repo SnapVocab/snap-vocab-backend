@@ -95,6 +95,23 @@ public class DataInitializer implements CommandLineRunner {
 				LOG.debug("Schema copy ignored: {}", e.getMessage());
 			}
 
+			// 3.1 Align topic_schemas.schema_id with existing schemas
+			try {
+				stmt.execute("""
+						UPDATE `topic_schemas` ts
+						JOIN `schemas` s ON ts.id = s.id
+						SET ts.schema_id = s.id
+						WHERE ts.schema_id = 0 OR ts.schema_id IS NULL
+						""");
+				stmt.execute("""
+						UPDATE `topic_schemas` ts
+						SET ts.schema_id = (SELECT id FROM `schemas` WHERE code = 'DEFAULT_ENGLISH' LIMIT 1)
+						WHERE ts.schema_id = 0 OR ts.schema_id IS NULL OR ts.schema_id NOT IN (SELECT id FROM `schemas`)
+						""");
+			} catch (Exception e) {
+				LOG.debug("topic_schemas schema_id update ignored: {}", e.getMessage());
+			}
+
 			// 4. Update schema_attribute_groups orphan schema_id if any and point constraint to schemas
 			try {
 				stmt.execute("""
