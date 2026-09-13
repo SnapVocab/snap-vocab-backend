@@ -34,12 +34,35 @@ public class Template extends BaseTimeEntity {
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
 
+	@ManyToOne(fetch = FetchType.LAZY, optional = false)
+	@JoinColumn(name = "schema_id", nullable = false)
+	private Schema schema;
+
+	@Column(length = 50)
+	private String code;
+
 	@Column(nullable = false)
 	private String name;
 
-	@ManyToOne(fetch = FetchType.LAZY, optional = false)
-	@JoinColumn(name = "topic_id", nullable = false)
-	private Topic topic;
+	@Builder.Default
+	@Column(name = "is_default", nullable = false)
+	private boolean isDefault = false;
+
+	public boolean isDefault() {
+		return isDefault;
+	}
+
+	public boolean getIsDefault() {
+		return isDefault;
+	}
+
+	public void setDefault(boolean isDefault) {
+		this.isDefault = isDefault;
+	}
+
+	public void setIsDefault(boolean isDefault) {
+		this.isDefault = isDefault;
+	}
 
 	@OneToMany(
 			mappedBy = "template",

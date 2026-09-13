@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -41,5 +42,26 @@ public class TopicController {
 			@Valid @RequestBody CreateTopicSchemaDTO createTopicSchemaDTO
 	) {
 		return ResponseEntity.ok(topicService.createTopicSchema(topicId, createTopicSchemaDTO));
+	}
+
+	@PutMapping("/{topicId}/schema/{schemaId}")
+	public ResponseEntity<TopicSchemaDTO> assignSchemaToTopic(
+			@PathVariable Long topicId,
+			@PathVariable Long schemaId
+	) {
+		return ResponseEntity.ok(topicService.assignSchemaToTopic(topicId, schemaId));
+	}
+
+	@PostMapping("/{topicId}/schema/fork")
+	public ResponseEntity<TopicSchemaDTO> forkTopicSchema(@PathVariable Long topicId) {
+		return ResponseEntity.ok(topicService.forkTopicSchema(topicId));
+	}
+
+	@PutMapping("/{topicId}/active-template/{templateId}")
+	public ResponseEntity<vn.ptit.snapvocab.domain.dto.topic.TopicDTO> setActiveTemplate(
+			@PathVariable Long topicId,
+			@PathVariable Long templateId
+	) {
+		return ResponseEntity.ok(topicService.setActiveTemplate(topicId, templateId));
 	}
 }

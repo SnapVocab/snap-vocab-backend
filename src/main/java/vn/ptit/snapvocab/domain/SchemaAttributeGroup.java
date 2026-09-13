@@ -45,7 +45,7 @@ public class SchemaAttributeGroup extends BaseTimeEntity {
 
 	@ManyToOne(fetch = FetchType.LAZY, optional = false)
 	@JoinColumn(name = "schema_id", nullable = false)
-	private TopicSchema schema;
+	private Schema schema;
 
 	@Column(nullable = false, length = 255)
 	private String name;

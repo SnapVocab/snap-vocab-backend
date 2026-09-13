@@ -22,6 +22,8 @@ import lombok.Setter;
 public class CreateTopicSchemaDTO {
 
 	private Long topicId;
+	private String name;
+	private String description;
 
 	@NotEmpty(message = "schemaGroups must not be empty")
 	@Valid

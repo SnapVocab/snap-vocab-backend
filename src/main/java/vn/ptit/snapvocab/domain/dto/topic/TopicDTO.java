@@ -22,6 +22,9 @@ public class TopicDTO {
 	private String description;
 	private Long parentId;
 	private String descriptionTranslation;
+	private Long activeTemplateId;
+	private String activeTemplateName;
+	private String activeTemplateCode;
 	private Instant createdAt;
 	private Instant updatedAt;
 

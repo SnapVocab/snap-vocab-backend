@@ -59,6 +59,10 @@ public class Topic extends BaseTimeEntity {
 	@Column(name = "description_translation", columnDefinition = "TEXT")
 	private String descriptionTranslation;
 
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "active_template_id")
+	private Template activeTemplate;
+
 	@OneToOne(
 			mappedBy = "topic",
 			cascade = CascadeType.ALL,
