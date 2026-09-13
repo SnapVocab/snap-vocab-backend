@@ -16,7 +16,7 @@ public interface SchemaRepository extends JpaRepository<Schema, Long> {
 
 	java.util.List<Schema> findByIsSystemTrue();
 
-	@org.springframework.data.jpa.repository.Query("SELECT s FROM Schema s WHERE s.isSystem = true OR s.user IS NULL OR (s.user IS NOT NULL AND s.user.id = :userId)")
+	@org.springframework.data.jpa.repository.Query("SELECT s FROM Schema s WHERE s.isSystem = true OR (s.user IS NOT NULL AND s.user.id = :userId)")
 	java.util.List<Schema> findAccessibleSchemas(@org.springframework.data.repository.query.Param("userId") Long userId);
 
 	java.util.List<Schema> findByUserId(Long userId);
