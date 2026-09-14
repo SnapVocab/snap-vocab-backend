@@ -92,7 +92,8 @@ public class DataInitializer implements CommandLineRunner {
 					.code("DEFAULT_ENGLISH")
 					.isSystem(true)
 					.name("Tiếng Anh Tiêu Chuẩn")
-					.description("Cấu trúc từ vựng tiếng Anh chuẩn gồm Từ, Phiên âm, Định nghĩa, Ví dụ, Âm thanh và Hình ảnh")
+					.description(
+							"Cấu trúc từ vựng tiếng Anh chuẩn gồm Từ, Phiên âm, Định nghĩa, Ví dụ, Âm thanh và Hình ảnh")
 					.attributeGroups(new LinkedHashSet<>())
 					.templates(new ArrayList<>())
 					.build();
@@ -161,7 +162,9 @@ public class DataInitializer implements CommandLineRunner {
 					.position((short) 5)
 					.build();
 
-			mainGroup.getAttributes().addAll(List.of(wordAttr, phoneticAttr, audioAttr, translationAttr, levelAttr, defTranslationAttr));
+			mainGroup.getAttributes().addAll(
+					List.of(wordAttr, phoneticAttr, audioAttr, translationAttr, levelAttr,
+							defTranslationAttr));
 
 			// 2. Group Meaning
 			SchemaAttributeGroup meaningGroup = SchemaAttributeGroup.builder()
@@ -245,13 +248,26 @@ public class DataInitializer implements CommandLineRunner {
 					.elements(new ArrayList<>())
 					.build();
 
-			standardTemplate.addElement(createFieldElement(0, wordAttr, SemanticRole.TARGET_WORD, "Từ vựng", false, false, 24, Alignment.CENTER, "#111827"));
-			standardTemplate.addElement(createFieldElement(1, phoneticAttr, null, "Phiên âm", true, true, 16, Alignment.CENTER, "#6B7280"));
-			standardTemplate.addElement(createFieldElement(2, audioAttr, SemanticRole.AUDIO, "Phát âm", true, true, 16, Alignment.CENTER, null));
-			standardTemplate.addElement(TemplateElement.builder().position(3).type(TemplateElementType.SECTION_BREAK).build());
-			standardTemplate.addElement(createFieldElement(4, meaningAttr, SemanticRole.DEFINITION, "Nghĩa", false, false, 20, Alignment.LEFT, "#1F2937"));
-			standardTemplate.addElement(createFieldElement(5, exampleAttr, SemanticRole.EXAMPLE_SENTENCE, "Ví dụ", true, false, 15, Alignment.LEFT, "#4B5563"));
-			standardTemplate.addElement(createFieldElement(6, imageAttr, SemanticRole.IMAGE, "Hình ảnh", true, false, null, Alignment.CENTER, null));
+			standardTemplate.addElement(
+					createFieldElement(0, wordAttr, SemanticRole.TARGET_WORD, "Từ vựng", false, false, 24,
+							Alignment.CENTER, "#111827"));
+			standardTemplate.addElement(
+					createFieldElement(1, phoneticAttr, null, "Phiên âm", true, true, 16, Alignment.CENTER,
+							"#6B7280"));
+			standardTemplate.addElement(
+					createFieldElement(2, audioAttr, SemanticRole.AUDIO, "Phát âm", true, true, 16,
+							Alignment.CENTER, null));
+			standardTemplate.addElement(
+					TemplateElement.builder().position(3).type(TemplateElementType.SECTION_BREAK).build());
+			standardTemplate.addElement(
+					createFieldElement(4, meaningAttr, SemanticRole.DEFINITION, "Nghĩa", false, false, 20,
+							Alignment.LEFT, "#1F2937"));
+			standardTemplate.addElement(
+					createFieldElement(5, exampleAttr, SemanticRole.EXAMPLE_SENTENCE, "Ví dụ", true, false,
+							15, Alignment.LEFT, "#4B5563"));
+			standardTemplate.addElement(
+					createFieldElement(6, imageAttr, SemanticRole.IMAGE, "Hình ảnh", true, false, null,
+							Alignment.CENTER, null));
 
 			// 5. Template Listening (Luyện nghe)
 			Template listeningTemplate = Template.builder()
@@ -262,12 +278,23 @@ public class DataInitializer implements CommandLineRunner {
 					.elements(new ArrayList<>())
 					.build();
 
-			listeningTemplate.addElement(createFieldElement(0, audioAttr, SemanticRole.AUDIO, "Nghe phát âm", false, true, 32, Alignment.CENTER, null));
-			listeningTemplate.addElement(TemplateElement.builder().position(1).type(TemplateElementType.SECTION_BREAK).build());
-			listeningTemplate.addElement(createFieldElement(2, wordAttr, SemanticRole.TARGET_WORD, "Từ vựng", false, false, 24, Alignment.CENTER, "#111827"));
-			listeningTemplate.addElement(createFieldElement(3, phoneticAttr, null, "Phiên âm", true, true, 16, Alignment.CENTER, "#6B7280"));
-			listeningTemplate.addElement(createFieldElement(4, meaningAttr, SemanticRole.DEFINITION, "Nghĩa", false, false, 20, Alignment.LEFT, "#1F2937"));
-			listeningTemplate.addElement(createFieldElement(5, exampleAttr, SemanticRole.EXAMPLE_SENTENCE, "Ví dụ", true, false, 15, Alignment.LEFT, "#4B5563"));
+			listeningTemplate.addElement(
+					createFieldElement(0, audioAttr, SemanticRole.AUDIO, "Nghe phát âm", false, true, 32,
+							Alignment.CENTER, null));
+			listeningTemplate.addElement(
+					TemplateElement.builder().position(1).type(TemplateElementType.SECTION_BREAK).build());
+			listeningTemplate.addElement(
+					createFieldElement(2, wordAttr, SemanticRole.TARGET_WORD, "Từ vựng", false, false, 24,
+							Alignment.CENTER, "#111827"));
+			listeningTemplate.addElement(
+					createFieldElement(3, phoneticAttr, null, "Phiên âm", true, true, 16, Alignment.CENTER,
+							"#6B7280"));
+			listeningTemplate.addElement(
+					createFieldElement(4, meaningAttr, SemanticRole.DEFINITION, "Nghĩa", false, false, 20,
+							Alignment.LEFT, "#1F2937"));
+			listeningTemplate.addElement(
+					createFieldElement(5, exampleAttr, SemanticRole.EXAMPLE_SENTENCE, "Ví dụ", true, false,
+							15, Alignment.LEFT, "#4B5563"));
 
 			// 6. Template Reverse (Đảo mặt)
 			Template reverseTemplate = Template.builder()
@@ -278,12 +305,23 @@ public class DataInitializer implements CommandLineRunner {
 					.elements(new ArrayList<>())
 					.build();
 
-			reverseTemplate.addElement(createFieldElement(0, meaningAttr, SemanticRole.DEFINITION, "Nghĩa", false, false, 22, Alignment.CENTER, "#1F2937"));
-			reverseTemplate.addElement(createFieldElement(1, imageAttr, SemanticRole.IMAGE, "Hình ảnh", true, false, null, Alignment.CENTER, null));
-			reverseTemplate.addElement(TemplateElement.builder().position(2).type(TemplateElementType.SECTION_BREAK).build());
-			reverseTemplate.addElement(createFieldElement(3, wordAttr, SemanticRole.TARGET_WORD, "Từ vựng", false, false, 24, Alignment.CENTER, "#111827"));
-			reverseTemplate.addElement(createFieldElement(4, phoneticAttr, null, "Phiên âm", true, true, 16, Alignment.CENTER, "#6B7280"));
-			reverseTemplate.addElement(createFieldElement(5, audioAttr, SemanticRole.AUDIO, "Phát âm", true, true, 16, Alignment.CENTER, null));
+			reverseTemplate.addElement(
+					createFieldElement(0, meaningAttr, SemanticRole.DEFINITION, "Nghĩa", false, false, 22,
+							Alignment.CENTER, "#1F2937"));
+			reverseTemplate.addElement(
+					createFieldElement(1, imageAttr, SemanticRole.IMAGE, "Hình ảnh", true, false, null,
+							Alignment.CENTER, null));
+			reverseTemplate.addElement(
+					TemplateElement.builder().position(2).type(TemplateElementType.SECTION_BREAK).build());
+			reverseTemplate.addElement(
+					createFieldElement(3, wordAttr, SemanticRole.TARGET_WORD, "Từ vựng", false, false, 24,
+							Alignment.CENTER, "#111827"));
+			reverseTemplate.addElement(
+					createFieldElement(4, phoneticAttr, null, "Phiên âm", true, true, 16, Alignment.CENTER,
+							"#6B7280"));
+			reverseTemplate.addElement(
+					createFieldElement(5, audioAttr, SemanticRole.AUDIO, "Phát âm", true, true, 16,
+							Alignment.CENTER, null));
 
 			schema.getTemplates().addAll(List.of(standardTemplate, listeningTemplate, reverseTemplate));
 
@@ -293,7 +331,8 @@ public class DataInitializer implements CommandLineRunner {
 	}
 
 	private TemplateElement createFieldElement(int position, SchemaAttribute attr, SemanticRole role,
-			String label, boolean hideIfEmpty, boolean audioAction, Integer fontSize, Alignment alignment, String color) {
+			String label, boolean hideIfEmpty, boolean audioAction, Integer fontSize, Alignment alignment,
+			String color) {
 		TemplateElement element = TemplateElement.builder()
 				.position(position)
 				.type(TemplateElementType.FIELD)
