@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,6 +17,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -23,6 +28,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import vn.ptit.snapvocab.domain.Collection;
 import vn.ptit.snapvocab.domain.Topic;
 import vn.ptit.snapvocab.domain.User;
+import vn.ptit.snapvocab.domain.dto.common.PaginationObject;
 import vn.ptit.snapvocab.domain.dto.topic.CreateTopicDTO;
 import vn.ptit.snapvocab.domain.dto.topic.TopicDTO;
 import vn.ptit.snapvocab.domain.enumeration.CollectionType;
@@ -114,17 +120,19 @@ class TopicServiceCollectionTest {
 
 	@Test
 	void getTopicsByCollection_systemCollection_allowedForAnyone() {
+		Pageable pageable = PageRequest.of(0, 10);
 		when(collectionRepository.findById(10L)).thenReturn(Optional.of(systemCollection));
-		when(topicRepository.findByCollectionId(10L)).thenReturn(List.of());
+		when(topicRepository.findByCollectionIdAndParentIsNull(10L, pageable)).thenReturn(Page.empty());
 
-		List<TopicDTO> result = topicService.getTopicsByCollection(10L);
+		PaginationObject<List<TopicDTO>> result = topicService.getTopicsByCollection(10L, null, pageable);
 
-		assertThat(result).isEmpty();
-		verify(topicRepository).findByCollectionId(10L);
+		assertThat(result.getData()).isEmpty();
+		verify(topicRepository).findByCollectionIdAndParentIsNull(10L, pageable);
 	}
 
 	@Test
 	void getTopicsByCollection_userCollection_allowedForOwner() {
+		Pageable pageable = PageRequest.of(0, 10);
 		UserWithId userWithId = UserWithId.fromUser(user1);
 		SecurityContextHolder.getContext().setAuthentication(
 				new UsernamePasswordAuthenticationToken(userWithId, null,
@@ -134,22 +142,38 @@ class TopicServiceCollectionTest {
 		when(collectionRepository.findById(20L)).thenReturn(Optional.of(userCollection));
 		when(userRepository.findOneByEmailIgnoreCase("user1@snapvocab.com")).thenReturn(
 				Optional.of(user1));
-		when(topicRepository.findByCollectionId(20L)).thenReturn(List.of());
+		when(topicRepository.findByCollectionIdAndParentIsNull(20L, pageable)).thenReturn(Page.empty());
 
-		List<TopicDTO> result = topicService.getTopicsByCollection(20L);
+		PaginationObject<List<TopicDTO>> result = topicService.getTopicsByCollection(20L, null, pageable);
 
-		assertThat(result).isEmpty();
-		verify(topicRepository).findByCollectionId(20L);
+		assertThat(result.getData()).isEmpty();
+		verify(topicRepository).findByCollectionIdAndParentIsNull(20L, pageable);
 	}
 
 	@Test
 	void getTopicsByCollection_userCollection_unauthenticated_throwsAccessDenied() {
+		Pageable pageable = PageRequest.of(0, 10);
 		when(collectionRepository.findById(20L)).thenReturn(Optional.of(userCollection));
 
-		assertThatThrownBy(() -> topicService.getTopicsByCollection(20L))
+		assertThatThrownBy(() -> topicService.getTopicsByCollection(20L, null, pageable))
 				.isInstanceOf(AccessDeniedException.class);
 
-		verify(topicRepository, never()).findByCollectionId(any());
+		verify(topicRepository, never()).findByCollectionIdAndParentIsNull(any(), any());
+	}
+
+	@Test
+	void getTopicsByCollection_withParentId_queriesByParentIdAndReturnsDTOs() {
+		Pageable pageable = PageRequest.of(0, 10);
+		when(collectionRepository.findById(10L)).thenReturn(Optional.of(systemCollection));
+		TopicDTO topicDto = TopicDTO.builder().id(100L).name("Topic 1").hasChildren(true).build();
+		when(topicRepository.findByCollectionIdAndParentId(10L, 5L, pageable))
+				.thenReturn(new PageImpl<>(List.of(topicDto), pageable, 1));
+
+		PaginationObject<List<TopicDTO>> result = topicService.getTopicsByCollection(10L, 5L, pageable);
+
+		assertThat(result.getData()).hasSize(1);
+		assertThat(result.getData().get(0).getHasChildren()).isTrue();
+		verify(topicRepository).findByCollectionIdAndParentId(10L, 5L, pageable);
 	}
 
 	@Test

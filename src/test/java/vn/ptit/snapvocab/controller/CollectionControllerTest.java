@@ -2,6 +2,7 @@ package vn.ptit.snapvocab.controller;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -20,12 +21,16 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableHandlerMethodArgumentResolver;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import vn.ptit.snapvocab.domain.dto.collection.CollectionDTO;
 import vn.ptit.snapvocab.domain.dto.collection.CreateCollectionDTO;
 import vn.ptit.snapvocab.domain.dto.collection.UpdateCollectionDTO;
+import vn.ptit.snapvocab.domain.dto.common.Meta;
+import vn.ptit.snapvocab.domain.dto.common.PaginationObject;
 import vn.ptit.snapvocab.domain.dto.topic.CreateTopicDTO;
 import vn.ptit.snapvocab.domain.dto.topic.TopicDTO;
 import vn.ptit.snapvocab.domain.enumeration.CollectionType;
@@ -56,6 +61,7 @@ class CollectionControllerTest {
 	void setUp() {
 		objectMapper = new ObjectMapper();
 		mockMvc = MockMvcBuilders.standaloneSetup(collectionController)
+				.setCustomArgumentResolvers(new PageableHandlerMethodArgumentResolver())
 				.setControllerAdvice(new GlobalExceptionHandler())
 				.build();
 	}
@@ -206,16 +212,21 @@ class CollectionControllerTest {
 
 	@Test
 	void getTopicsFromCollection_returnsTopics() throws Exception {
-		when(topicService.getTopicsByCollection(10L)).thenReturn(List.of(
-				TopicDTO.builder().id(100L).name("Topic 1").build()
-		));
+		PaginationObject<List<TopicDTO>> paginationObject = PaginationObject.<List<TopicDTO>>builder()
+				.data(List.of(TopicDTO.builder().id(100L).name("Topic 1").build()))
+				.meta(Meta.builder().page(0L).pages(1L).size(10L).total(1L).build())
+				.build();
+
+		when(topicService.getTopicsByCollection(eq(10L), isNull(), any(Pageable.class)))
+				.thenReturn(paginationObject);
 
 		mockMvc.perform(get("/api/collections/10/topics"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.length()").value(1))
-				.andExpect(jsonPath("$[0].name").value("Topic 1"));
+				.andExpect(jsonPath("$.data.length()").value(1))
+				.andExpect(jsonPath("$.data[0].name").value("Topic 1"))
+				.andExpect(jsonPath("$.meta.total").value(1));
 
-		verify(topicService).getTopicsByCollection(10L);
+		verify(topicService).getTopicsByCollection(eq(10L), isNull(), any(Pageable.class));
 	}
 
 	@Test

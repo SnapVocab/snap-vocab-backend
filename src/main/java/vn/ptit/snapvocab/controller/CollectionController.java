@@ -3,6 +3,7 @@ package vn.ptit.snapvocab.controller;
 import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import vn.ptit.snapvocab.domain.dto.collection.CollectionDTO;
 import vn.ptit.snapvocab.domain.dto.collection.CreateCollectionDTO;
 import vn.ptit.snapvocab.domain.dto.collection.UpdateCollectionDTO;
+import vn.ptit.snapvocab.domain.dto.common.PaginationObject;
 import vn.ptit.snapvocab.domain.dto.topic.CreateTopicDTO;
 import vn.ptit.snapvocab.domain.dto.topic.TopicDTO;
 import vn.ptit.snapvocab.domain.enumeration.CollectionType;
@@ -71,7 +73,8 @@ public class CollectionController {
 	public ResponseEntity<CollectionDTO> createCollection(
 			@Valid @RequestBody CreateCollectionDTO createCollectionDTO) {
 		Long currentUserId = userService.getCurrentUserId().orElse(null);
-		return ResponseEntity.ok(this.collectionService.createCollection(createCollectionDTO, currentUserId));
+		return ResponseEntity.ok(
+				this.collectionService.createCollection(createCollectionDTO, currentUserId));
 	}
 
 	@PutMapping("/{collectionId:[0-9]+}")
@@ -79,7 +82,8 @@ public class CollectionController {
 			@PathVariable Long collectionId,
 			@Valid @RequestBody UpdateCollectionDTO updateCollectionDTO) {
 		Long currentUserId = userService.getCurrentUserId().orElse(null);
-		return ResponseEntity.ok(this.collectionService.updateCollection(collectionId, updateCollectionDTO, currentUserId));
+		return ResponseEntity.ok(
+				this.collectionService.updateCollection(collectionId, updateCollectionDTO, currentUserId));
 	}
 
 	@DeleteMapping("/{collectionId:[0-9]+}")
@@ -90,8 +94,10 @@ public class CollectionController {
 	}
 
 	@GetMapping("/{collectionId:[0-9]+}/topics")
-	public ResponseEntity<List<TopicDTO>> getTopicsFromCollection(@PathVariable Long collectionId) {
-		return ResponseEntity.ok(this.topicService.getTopicsByCollection(collectionId));
+	public ResponseEntity<PaginationObject<List<TopicDTO>>> getTopicsFromCollection(@PathVariable Long collectionId,
+			@RequestParam(required = false) Long parentId, Pageable pageable) {
+		return ResponseEntity.ok(
+				this.topicService.getTopicsByCollection(collectionId, parentId, pageable));
 	}
 
 	@PostMapping("/{collectionId:[0-9]+}/topics")

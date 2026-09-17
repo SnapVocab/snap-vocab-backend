@@ -6,8 +6,6 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import io.netty.buffer.ByteBuf;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.redisson.codec.JsonJacksonCodec;
 import vn.ptit.snapvocab.domain.dto.topic.TopicDTO;
@@ -23,15 +21,9 @@ class RedissonCodecTest {
 		TopicDTO dto = TopicDTO.builder()
 				.id(202L)
 				.name("Business & Office")
+				.hasChildren(true)
 				.createdAt(Instant.now())
 				.updatedAt(Instant.now())
-				.children(new ArrayList<>(List.of(
-						TopicDTO.builder()
-								.id(203L)
-								.name("General Business")
-								.createdAt(Instant.now())
-								.build()
-				)))
 				.build();
 
 		ByteBuf buf = codec.getValueEncoder().encode(dto);
@@ -40,8 +32,6 @@ class RedissonCodecTest {
 		assertThat(deserialized).isNotNull();
 		assertThat(deserialized.getId()).isEqualTo(202L);
 		assertThat(deserialized.getCreatedAt()).isNotNull();
-		assertThat(deserialized.getChildren()).hasSize(1);
-		assertThat(deserialized.getChildren().get(0).getId()).isEqualTo(203L);
-		assertThat(deserialized.getChildren().get(0).getCreatedAt()).isNotNull();
+		assertThat(deserialized.getHasChildren()).isTrue();
 	}
 }
