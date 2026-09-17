@@ -36,7 +36,6 @@ import vn.ptit.snapvocab.repository.TemplateFieldRepository;
 import vn.ptit.snapvocab.repository.TemplateRepository;
 import vn.ptit.snapvocab.repository.TopicItemRepository;
 import vn.ptit.snapvocab.repository.TopicRepository;
-import vn.ptit.snapvocab.repository.TopicSchemaRepository;
 import vn.ptit.snapvocab.repository.UserRepository;
 import vn.ptit.snapvocab.security.AuthoritiesConstants;
 import vn.ptit.snapvocab.security.DomainUserDetailsService.UserWithId;
@@ -52,9 +51,6 @@ class TopicServiceCollectionTest {
 
 	@Mock
 	private CollectionRepository collectionRepository;
-
-	@Mock
-	private TopicSchemaRepository topicSchemaRepository;
 
 	@Mock
 	private SchemaRepository schemaRepository;
@@ -212,10 +208,20 @@ class TopicServiceCollectionTest {
 				.build();
 		when(templateRepository.findBySchemaIdAndIsDefaultTrue(1L)).thenReturn(Optional.of(defaultTemplate));
 
-		Topic savedTopic = Topic.builder().id(100L).name("My New Topic").build();
-		when(topicRepository.save(any(Topic.class))).thenReturn(savedTopic);
-		when(topicMapper.toDto(savedTopic)).thenReturn(
-				TopicDTO.builder().id(100L).name("My New Topic").activeTemplateId(10L).activeTemplateCode("STANDARD").build());
+		when(topicRepository.save(any(Topic.class))).thenAnswer(invocation -> {
+			Topic t = invocation.getArgument(0);
+			t.setId(100L);
+			return t;
+		});
+		when(topicMapper.toDto(any(Topic.class))).thenAnswer(invocation -> {
+			Topic t = invocation.getArgument(0);
+			return TopicDTO.builder()
+					.id(t.getId())
+					.name(t.getName())
+					.activeTemplateId(t.getActiveTemplate() != null ? t.getActiveTemplate().getId() : null)
+					.activeTemplateCode(t.getActiveTemplate() != null ? t.getActiveTemplate().getCode() : null)
+					.build();
+		});
 
 		CreateTopicDTO dto = CreateTopicDTO.builder().name("My New Topic").build();
 		TopicDTO result = topicService.createCollectionTopic(20L, dto);
@@ -223,6 +229,6 @@ class TopicServiceCollectionTest {
 		assertThat(result).isNotNull();
 		assertThat(result.getActiveTemplateId()).isEqualTo(10L);
 		assertThat(result.getActiveTemplateCode()).isEqualTo("STANDARD");
-		assertThat(savedTopic.getActiveTemplate()).isEqualTo(defaultTemplate);
+		verify(topicRepository).save(any(Topic.class));
 	}
 }

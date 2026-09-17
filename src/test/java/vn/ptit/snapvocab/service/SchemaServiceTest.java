@@ -30,7 +30,7 @@ import vn.ptit.snapvocab.repository.SchemaAttributeGroupRepository;
 import vn.ptit.snapvocab.repository.SchemaRepository;
 import vn.ptit.snapvocab.repository.TemplateFieldRepository;
 import vn.ptit.snapvocab.repository.TopicItemAttributeValueRepository;
-import vn.ptit.snapvocab.repository.TopicSchemaRepository;
+import vn.ptit.snapvocab.repository.TopicRepository;
 import vn.ptit.snapvocab.repository.UserRepository;
 
 @ExtendWith(MockitoExtension.class)
@@ -40,7 +40,7 @@ class SchemaServiceTest {
 	private SchemaRepository schemaRepository;
 
 	@Mock
-	private TopicSchemaRepository topicSchemaRepository;
+	private TopicRepository topicRepository;
 
 	@Mock
 	private SchemaAttributeGroupRepository schemaAttributeGroupRepository;
@@ -228,7 +228,7 @@ class SchemaServiceTest {
 	@Test
 	void deleteSchema_whenAssignedToTopics_throwsIllegalStateException() {
 		when(schemaRepository.findById(100L)).thenReturn(Optional.of(schema));
-		when(topicSchemaRepository.countBySchemaId(100L)).thenReturn(2L);
+		when(topicRepository.countBySchemaId(100L)).thenReturn(2L);
 
 		assertThatThrownBy(() -> schemaService.deleteSchema(100L, 1L))
 				.isInstanceOf(IllegalStateException.class)

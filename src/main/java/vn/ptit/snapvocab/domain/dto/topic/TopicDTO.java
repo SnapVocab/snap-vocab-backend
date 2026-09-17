@@ -30,4 +30,22 @@ public class TopicDTO {
 
 	@Builder.Default
 	private List<TopicDTO> children = new ArrayList<>();
+
+	public TopicDTO(Long id, String name, String translation, String description, Long parentId,
+			String descriptionTranslation, Long activeTemplateId, String activeTemplateName,
+			String activeTemplateCode, Instant createdAt, Instant updatedAt) {
+		this.id = id;
+		this.name = name;
+		this.translation = translation;
+		this.description = description;
+		this.parentId = parentId;
+		this.descriptionTranslation = descriptionTranslation;
+		this.activeTemplateId = activeTemplateId;
+		this.activeTemplateName = activeTemplateName;
+		this.activeTemplateCode = activeTemplateCode;
+		this.createdAt = createdAt;
+		this.updatedAt = updatedAt;
+		this.children = new ArrayList<>();
+	}
 }
+
