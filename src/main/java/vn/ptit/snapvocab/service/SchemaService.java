@@ -20,7 +20,7 @@ import vn.ptit.snapvocab.repository.SchemaAttributeGroupRepository;
 import vn.ptit.snapvocab.repository.SchemaRepository;
 import vn.ptit.snapvocab.repository.TemplateFieldRepository;
 import vn.ptit.snapvocab.repository.TopicItemAttributeValueRepository;
-import vn.ptit.snapvocab.repository.TopicSchemaRepository;
+import vn.ptit.snapvocab.repository.TopicRepository;
 import vn.ptit.snapvocab.repository.UserRepository;
 import vn.ptit.snapvocab.security.AuthoritiesConstants;
 import vn.ptit.snapvocab.security.SecurityUtils;
@@ -32,8 +32,9 @@ import vn.ptit.snapvocab.util.exception.ResourceNotFoundException;
 public class SchemaService {
 
 	private final SchemaRepository schemaRepository;
-	private final TopicSchemaRepository topicSchemaRepository;
+	private final TopicRepository topicRepository;
 	private final SchemaAttributeGroupRepository schemaAttributeGroupRepository;
+
 	private final TopicItemAttributeValueRepository topicItemAttributeValueRepository;
 	private final TemplateFieldRepository templateFieldRepository;
 	private final UserRepository userRepository;
@@ -157,7 +158,8 @@ public class SchemaService {
 
 		validateSchemaModification(schema, userId);
 
-		long assignedCount = this.topicSchemaRepository.countBySchemaId(schemaId);
+		long assignedCount = this.topicRepository.countBySchemaId(schemaId);
+
 		if (assignedCount > 0) {
 			throw new IllegalStateException(
 					"Cannot delete schema because it is currently assigned to " + assignedCount + " topic(s). Fork or reassign those topics first.");

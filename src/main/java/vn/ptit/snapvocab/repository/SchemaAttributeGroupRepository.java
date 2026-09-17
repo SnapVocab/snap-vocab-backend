@@ -12,14 +12,15 @@ public interface SchemaAttributeGroupRepository extends JpaRepository<SchemaAttr
 
 	@Query("""
 			SELECT DISTINCT sag
-			FROM TopicSchema ts
-			JOIN ts.schema s
+			FROM Topic t
+			JOIN t.schema s
 			JOIN s.attributeGroups sag
 			LEFT JOIN FETCH sag.attributes sa
-			WHERE ts.topic.id = :topicId
+			WHERE t.id = :topicId
 			ORDER BY sag.position ASC, sa.position ASC
 			""")
 	List<SchemaAttributeGroup> findByTopicIdWithAttributes(@Param("topicId") Long topicId);
+
 
 	@Query("""
 			SELECT DISTINCT sag

@@ -10,7 +10,6 @@ import vn.ptit.snapvocab.domain.Schema;
 import vn.ptit.snapvocab.domain.SchemaAttribute;
 import vn.ptit.snapvocab.domain.SchemaAttributeGroup;
 import vn.ptit.snapvocab.domain.Topic;
-import vn.ptit.snapvocab.domain.TopicSchema;
 import vn.ptit.snapvocab.domain.dto.topic.CreateSchemaAttributeDTO;
 import vn.ptit.snapvocab.domain.dto.topic.CreateSchemaAttributeGroupDTO;
 import vn.ptit.snapvocab.domain.dto.topic.CreateSchemaDTO;
@@ -94,7 +93,7 @@ class TopicSchemaMapperTest {
 	void shouldMapEntityToDto() {
 		Topic topic = Topic.builder().id(99L).name("English Vocab").build();
 		Schema schema = Schema.builder().id(10L).name("English Schema").build();
-		TopicSchema topicSchema = TopicSchema.builder().id(5L).topic(topic).schema(schema).build();
+		topic.setSchema(schema);
 
 		SchemaAttributeGroup group = SchemaAttributeGroup.builder()
 				.id(100L)
@@ -117,10 +116,9 @@ class TopicSchemaMapperTest {
 		group.getAttributes().add(attr);
 		schema.getAttributeGroups().add(group);
 
-		TopicSchemaDTO dto = topicSchemaMapper.toDto(topicSchema);
+		TopicSchemaDTO dto = topicSchemaMapper.toDto(topic, schema, List.of(group));
 
 		assertThat(dto).isNotNull();
-		assertThat(dto.getTopicSchemaId()).isEqualTo(5L);
 		assertThat(dto.getSchemaId()).isEqualTo(10L);
 		assertThat(dto.getTopicId()).isEqualTo(99L);
 		assertThat(dto.getSchemaName()).isEqualTo("English Schema");

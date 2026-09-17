@@ -61,7 +61,8 @@ public class Schema extends BaseTimeEntity {
 	private Set<SchemaAttributeGroup> attributeGroups = new LinkedHashSet<>();
 	@OneToMany(mappedBy = "schema")
 	@Builder.Default
-	private List<TopicSchema> topicSchemas = new ArrayList<>();
+	private List<Topic> topics = new ArrayList<>();
+
 	@OneToMany(
 			mappedBy = "schema",
 			cascade = CascadeType.ALL,

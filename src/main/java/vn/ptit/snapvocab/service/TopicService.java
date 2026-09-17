@@ -19,15 +19,23 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.ptit.snapvocab.domain.Collection;
+import vn.ptit.snapvocab.domain.Schema;
 import vn.ptit.snapvocab.domain.SchemaAttribute;
 import vn.ptit.snapvocab.domain.SchemaAttributeGroup;
+import vn.ptit.snapvocab.domain.Template;
+import vn.ptit.snapvocab.domain.TemplateElement;
+import vn.ptit.snapvocab.domain.TemplateField;
 import vn.ptit.snapvocab.domain.Topic;
-import vn.ptit.snapvocab.domain.TopicSchema;
+import vn.ptit.snapvocab.domain.TopicItem;
+import vn.ptit.snapvocab.domain.TopicItemAttributeGroup;
+import vn.ptit.snapvocab.domain.TopicItemAttributeValue;
 import vn.ptit.snapvocab.domain.User;
 import vn.ptit.snapvocab.domain.dto.common.Meta;
 import vn.ptit.snapvocab.domain.dto.common.PaginationObject;
+import vn.ptit.snapvocab.domain.dto.template.TemplateDTO;
 import vn.ptit.snapvocab.domain.dto.topic.CreateSchemaAttributeDTO;
 import vn.ptit.snapvocab.domain.dto.topic.CreateSchemaAttributeGroupDTO;
+import vn.ptit.snapvocab.domain.dto.topic.CreateSchemaDTO;
 import vn.ptit.snapvocab.domain.dto.topic.CreateTopicDTO;
 import vn.ptit.snapvocab.domain.dto.topic.CreateTopicSchemaDTO;
 import vn.ptit.snapvocab.domain.dto.topic.SchemaAttributeDTO;
@@ -37,28 +45,18 @@ import vn.ptit.snapvocab.domain.dto.topic.TopicItemAttributeRow;
 import vn.ptit.snapvocab.domain.dto.topic.TopicItemData;
 import vn.ptit.snapvocab.domain.dto.topic.TopicSchemaDTO;
 import vn.ptit.snapvocab.domain.enumeration.CollectionType;
+import vn.ptit.snapvocab.domain.mapper.SchemaMapper;
 import vn.ptit.snapvocab.domain.mapper.SchemaMapperUtils;
 import vn.ptit.snapvocab.domain.mapper.TopicMapper;
 import vn.ptit.snapvocab.domain.mapper.TopicSchemaMapper;
 import vn.ptit.snapvocab.repository.CollectionRepository;
 import vn.ptit.snapvocab.repository.SchemaAttributeGroupRepository;
-import vn.ptit.snapvocab.repository.TopicItemRepository;
-import vn.ptit.snapvocab.repository.TopicRepository;
-import vn.ptit.snapvocab.repository.TopicSchemaRepository;
-import vn.ptit.snapvocab.repository.UserRepository;
-import vn.ptit.snapvocab.domain.Schema;
-import vn.ptit.snapvocab.domain.Template;
-import vn.ptit.snapvocab.domain.TemplateElement;
-import vn.ptit.snapvocab.domain.TemplateField;
-import vn.ptit.snapvocab.domain.TopicItem;
-import vn.ptit.snapvocab.domain.TopicItemAttributeGroup;
-import vn.ptit.snapvocab.domain.TopicItemAttributeValue;
-import vn.ptit.snapvocab.domain.dto.template.TemplateDTO;
-import vn.ptit.snapvocab.domain.dto.topic.CreateSchemaDTO;
-import vn.ptit.snapvocab.domain.mapper.SchemaMapper;
 import vn.ptit.snapvocab.repository.SchemaRepository;
 import vn.ptit.snapvocab.repository.TemplateFieldRepository;
 import vn.ptit.snapvocab.repository.TemplateRepository;
+import vn.ptit.snapvocab.repository.TopicItemRepository;
+import vn.ptit.snapvocab.repository.TopicRepository;
+import vn.ptit.snapvocab.repository.UserRepository;
 import vn.ptit.snapvocab.security.AuthoritiesConstants;
 import vn.ptit.snapvocab.security.SecurityUtils;
 import vn.ptit.snapvocab.util.exception.ResourceAlreadyExistException;
@@ -72,7 +70,6 @@ public class TopicService {
 	private final TopicItemRepository topicItemRepository;
 	private final TopicRepository topicRepository;
 	private final CollectionRepository collectionRepository;
-	private final TopicSchemaRepository topicSchemaRepository;
 	private final SchemaRepository schemaRepository;
 	private final SchemaAttributeGroupRepository schemaAttributeGroupRepository;
 	private final TemplateRepository templateRepository;
@@ -82,6 +79,7 @@ public class TopicService {
 	private final TopicSchemaMapper topicSchemaMapper;
 	private final SchemaMapper schemaMapper;
 	private final Logger LOG = LoggerFactory.getLogger(TopicService.class);
+
 
 	/**
 	 * Retrieves paginated vocabulary items for a given topic with EAV attributes aggregated into a
@@ -273,10 +271,10 @@ public class TopicService {
 	public TopicSchemaDTO getTopicSchema(Long topicId) {
 		this.validateTopicAccess(topicId);
 		LOG.info("Fetching topic schema for topic ID: {}", topicId);
-		TopicSchema topicSchema = this.topicSchemaRepository.findByTopicId(topicId)
+		Topic topic = this.topicRepository.findById(topicId)
 				.orElse(null);
 
-		if (topicSchema == null || topicSchema.getSchema() == null) {
+		if (topic == null || topic.getSchema() == null) {
 			return TopicSchemaDTO.builder()
 					.topicId(topicId)
 					.groups(new ArrayList<>())
@@ -284,9 +282,9 @@ public class TopicService {
 		}
 
 		List<SchemaAttributeGroup> groups = this.schemaAttributeGroupRepository.findBySchemaIdWithAttributes(
-				topicSchema.getSchema().getId());
-		long usageCount = this.topicSchemaRepository.countBySchemaId(topicSchema.getSchema().getId());
-		TopicSchemaDTO dto = this.topicSchemaMapper.toDto(topicSchema, groups);
+				topic.getSchema().getId());
+		long usageCount = this.topicRepository.countBySchemaId(topic.getSchema().getId());
+		TopicSchemaDTO dto = this.topicSchemaMapper.toDto(topic, topic.getSchema(), groups);
 		dto.setShared(usageCount > 1);
 		dto.setUsageCount(usageCount);
 		return dto;
@@ -311,7 +309,6 @@ public class TopicService {
 	private List<TopicDTO> buildTopicsTree(List<Topic> topics) {
 		Map<Long, TopicDTO> topicMap = new HashMap<>();
 
-		// create DTO for all nodes
 		for (Topic topic : topics) {
 			TopicDTO dto = topicMapper.toDto(topic);
 			dto.setChildren(new ArrayList<>());
@@ -337,6 +334,8 @@ public class TopicService {
 
 		return roots;
 	}
+
+
 
 	@Transactional
 	@Caching(
@@ -369,19 +368,8 @@ public class TopicService {
 			}
 		}
 
-		Topic topic = Topic.builder()
-				.collection(collection)
-				.parent(createTopicDTO.getParentId() != null ? topicRepository.findById(
-						createTopicDTO.getParentId()).orElse(null) : null)
-				.children(new ArrayList<>())
-				.name(createTopicDTO.getName())
-				.translation(createTopicDTO.getTranslation())
-				.description(createTopicDTO.getDescription())
-				.descriptionTranslation(createTopicDTO.getDescriptionTranslation())
-				.items(new ArrayList<>())
-				.build();
-
-		Topic saved = topicRepository.save(topic);
+		Topic parent = createTopicDTO.getParentId() != null ? topicRepository.findById(
+				createTopicDTO.getParentId()).orElse(null) : null;
 
 		Schema schema;
 		if (createTopicDTO.getSchemaId() != null) {
@@ -393,8 +381,8 @@ public class TopicService {
 					.orElseGet(() -> {
 						User creator = collection.getOwner();
 						Schema defaultSchema = Schema.builder()
-								.name(saved.getName() + " Schema")
-								.description("Default schema for topic " + saved.getName())
+								.name(createTopicDTO.getName() + " Schema")
+								.description("Default schema for topic " + createTopicDTO.getName())
 								.code(null)
 								.isSystem(false)
 								.user(creator)
@@ -416,14 +404,21 @@ public class TopicService {
 					.or(() -> this.templateRepository.findBySchemaId(schema.getId()).stream().findFirst())
 					.orElse(null);
 		}
-		saved.setActiveTemplate(activeTemplate);
 
-		TopicSchema topicSchema = TopicSchema.builder()
-				.topic(saved)
+		Topic topic = Topic.builder()
+				.collection(collection)
+				.parent(parent)
+				.children(new ArrayList<>())
+				.name(createTopicDTO.getName())
+				.translation(createTopicDTO.getTranslation())
+				.description(createTopicDTO.getDescription())
+				.descriptionTranslation(createTopicDTO.getDescriptionTranslation())
 				.schema(schema)
+				.activeTemplate(activeTemplate)
+				.items(new ArrayList<>())
 				.build();
-		this.topicSchemaRepository.save(topicSchema);
-		saved.setSchema(topicSchema);
+
+		Topic saved = topicRepository.save(topic);
 
 		return topicMapper.toDto(saved);
 	}
@@ -467,7 +462,6 @@ public class TopicService {
 		Topic topic = this.topicRepository.findById(topicId)
 				.orElseThrow(() -> new ResourceNotFoundException("Topic not found with id: " + topicId));
 
-		TopicSchema existingTopicSchema = this.topicSchemaRepository.findByTopicId(topicId).orElse(null);
 		List<SchemaAttributeGroup> existingGroups = this.schemaAttributeGroupRepository.findByTopicIdWithAttributes(topicId);
 		if (!existingGroups.isEmpty()) {
 			throw new ResourceAlreadyExistException("Topic already has a schema with groups for topicId: " + topicId);
@@ -489,17 +483,8 @@ public class TopicService {
 		schema.setIsSystem(false);
 		Schema savedSchema = this.schemaRepository.save(schema);
 
-		if (existingTopicSchema != null) {
-			existingTopicSchema.setSchema(savedSchema);
-			this.topicSchemaRepository.save(existingTopicSchema);
-		} else {
-			TopicSchema newTopicSchema = TopicSchema.builder()
-					.topic(topic)
-					.schema(savedSchema)
-					.build();
-			this.topicSchemaRepository.save(newTopicSchema);
-			topic.setSchema(newTopicSchema);
-		}
+		topic.setSchema(savedSchema);
+		this.topicRepository.save(topic);
 
 		return getTopicSchema(topicId);
 	}
@@ -519,19 +504,12 @@ public class TopicService {
 		Schema schema = this.schemaRepository.findById(schemaId)
 				.orElseThrow(() -> new ResourceNotFoundException("Schema not found with id: " + schemaId));
 
-		TopicSchema topicSchema = this.topicSchemaRepository.findByTopicId(topicId).orElse(null);
-		if (topicSchema == null) {
-			topicSchema = TopicSchema.builder()
-					.topic(topic)
-					.schema(schema)
-					.build();
-		} else {
-			topicSchema.setSchema(schema);
-		}
+		topic.setSchema(schema);
+		this.topicRepository.save(topic);
 
-		this.topicSchemaRepository.save(topicSchema);
 		return getTopicSchema(topicId);
 	}
+
 
 	@Transactional
 	@CacheEvict(
@@ -545,11 +523,12 @@ public class TopicService {
 		Topic topic = this.topicRepository.findById(topicId)
 				.orElseThrow(() -> new ResourceNotFoundException("Topic not found with id: " + topicId));
 
-		TopicSchema topicSchema = this.topicSchemaRepository.findByTopicId(topicId)
-				.orElseThrow(() -> new ResourceNotFoundException("TopicSchema not found for topicId: " + topicId));
+		if (topic.getSchema() == null) {
+			throw new ResourceNotFoundException("Topic has no assigned schema for topicId: " + topicId);
+		}
 
-		Schema originalSchema = topicSchema.getSchema();
-		long usageCount = this.topicSchemaRepository.countBySchemaId(originalSchema.getId());
+		Schema originalSchema = topic.getSchema();
+		long usageCount = this.topicRepository.countBySchemaId(originalSchema.getId());
 
 		if (usageCount <= 1) {
 			LOG.info("Schema {} is already dedicated to topicId {}, no fork needed", originalSchema.getId(), topicId);
@@ -657,14 +636,13 @@ public class TopicService {
 
 		Schema savedForkedSchema = this.schemaRepository.save(forkedSchema);
 
-		// 4. Update Topic active template & Re-link TopicSchema
+		// 4. Update Topic active template & schema
 		if (clonedActiveTemplate != null) {
 			topic.setActiveTemplate(clonedActiveTemplate);
-			this.topicRepository.save(topic);
 		}
 
-		topicSchema.setSchema(savedForkedSchema);
-		this.topicSchemaRepository.save(topicSchema);
+		topic.setSchema(savedForkedSchema);
+		this.topicRepository.save(topic);
 
 		// 5. Remap TopicItem EAV values for this topic
 		List<TopicItem> items = this.topicItemRepository.findByTopicIdWithEav(topicId);
@@ -703,10 +681,11 @@ public class TopicService {
 		Template template = this.templateRepository.findById(templateId)
 				.orElseThrow(() -> new ResourceNotFoundException("Template not found with id: " + templateId));
 
-		TopicSchema topicSchema = this.topicSchemaRepository.findByTopicId(topicId)
-				.orElseThrow(() -> new ResourceNotFoundException("Topic has no assigned schema"));
+		if (topic.getSchema() == null) {
+			throw new ResourceNotFoundException("Topic has no assigned schema");
+		}
 
-		if (template.getSchema() == null || !template.getSchema().getId().equals(topicSchema.getSchema().getId())) {
+		if (template.getSchema() == null || !template.getSchema().getId().equals(topic.getSchema().getId())) {
 			throw new IllegalArgumentException("Template does not belong to the schema assigned to this topic");
 		}
 
@@ -714,6 +693,7 @@ public class TopicService {
 		Topic saved = this.topicRepository.save(topic);
 		return this.topicMapper.toDto(saved);
 	}
+
 
 	public TemplateDTO createTopicTemplate() {
 		return null;

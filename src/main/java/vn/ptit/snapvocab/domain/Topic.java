@@ -63,13 +63,11 @@ public class Topic extends BaseTimeEntity {
 	@JoinColumn(name = "active_template_id")
 	private Template activeTemplate;
 
-	@OneToOne(
-			mappedBy = "topic",
-			cascade = CascadeType.ALL,
-			orphanRemoval = true,
-			fetch = FetchType.LAZY
-	)
-	private TopicSchema schema;
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "schema_id")
+	private Schema schema;
+
+
 
 	@OneToMany(
 			mappedBy = "topic",

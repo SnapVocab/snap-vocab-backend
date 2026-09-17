@@ -286,4 +286,5 @@ public class CollectionService {
 			throw new AccessDeniedException("You do not have permission to modify this collection");
 		}
 	}
+
 }

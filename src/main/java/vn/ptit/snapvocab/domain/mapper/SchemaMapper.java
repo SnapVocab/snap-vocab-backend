@@ -15,18 +15,19 @@ import vn.ptit.snapvocab.domain.dto.topic.SchemaDTO;
 public interface SchemaMapper {
 
 	@Mapping(target = "id", ignore = true)
-	@Mapping(target = "topicSchemas", ignore = true)
+	@Mapping(target = "topics", ignore = true)
 	@Mapping(target = "templates", ignore = true)
 	@Mapping(target = "user", ignore = true)
 	@Mapping(source = "schemaGroups", target = "attributeGroups")
 	Schema toEntity(CreateSchemaDTO dto);
 
 	@Mapping(target = "id", ignore = true)
-	@Mapping(target = "topicSchemas", ignore = true)
+	@Mapping(target = "topics", ignore = true)
 	@Mapping(target = "templates", ignore = true)
 	@Mapping(target = "user", ignore = true)
 	@Mapping(source = "schemaGroups", target = "attributeGroups")
 	void updateEntityFromDto(CreateSchemaDTO dto, @MappingTarget Schema schema);
+
 
 	@Mapping(source = "user.id", target = "userId")
 	@Mapping(source = "attributeGroups", target = "groups")
