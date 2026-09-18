@@ -9,6 +9,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -44,19 +45,25 @@ public class Word extends BaseCreatedAtEntity {
 	@Column(name = "lang_code", length = 20, nullable = false)
 	private String langCode;
 
+	// Ordered by id (import order) so "first meaning/pronunciation" is stable across
+	// requests; HashSet iteration order made it change between calls.
 	@OneToMany(fetch = FetchType.LAZY, mappedBy = "word")
 	@JsonIgnoreProperties(value = {"word"}, allowSetters = true)
+	@OrderBy("id ASC")
 	private Set<Pronunciation> pronunciations = new HashSet<>();
 
 	@OneToMany(fetch = FetchType.LAZY, mappedBy = "word")
 	@JsonIgnoreProperties(value = {"word"}, allowSetters = true)
+	@OrderBy("id ASC")
 	private Set<Translation> translations = new HashSet<>();
 
 	@OneToMany(fetch = FetchType.LAZY, mappedBy = "word")
 	@JsonIgnoreProperties(value = {"word", "definition"}, allowSetters = true)
+	@OrderBy("id ASC")
 	private Set<WordDefinition> wordDefinitions = new HashSet<>();
 
 	@OneToMany(fetch = FetchType.LAZY, mappedBy = "word")
 	@JsonIgnoreProperties(value = {"word"}, allowSetters = true)
+	@OrderBy("id ASC")
 	private Set<WordRelation> wordRelations = new HashSet<>();
 }
