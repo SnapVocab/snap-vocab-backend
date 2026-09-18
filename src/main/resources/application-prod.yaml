@@ -60,4 +60,7 @@ minio:
 ai-service:
   base-url: ${AI_SERVICE_URL}
   connect-timeout-ms: 5000
-  read-timeout-ms: 600000
+  # BF-06: worker -> AI timeout defaults to 60s (GPU).
+  read-timeout-ms: ${AI_SERVICE_READ_TIMEOUT_MS:60000}
+  service-token: ${AI_SERVICE_TOKEN:}
+  max-upload-mb: 10

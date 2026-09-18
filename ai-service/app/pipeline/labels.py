@@ -6,6 +6,7 @@ hard-won, empirically-tuned behavior (see inline comments) that isn't obvious
 from first principles.
 """
 import re
+from functools import lru_cache
 
 import nltk
 from nltk.corpus import wordnet
@@ -151,11 +152,13 @@ LABEL_ALIASES: dict[str, set[str]] = {
 }
 
 
+@lru_cache(maxsize=8192)
 def normalize_word(word: str) -> str:
     word = word.lower().strip()
     return _lemmatizer.lemmatize(word, pos="n")
 
 
+@lru_cache(maxsize=8192)
 def is_valid_dictionary_word(word: str) -> bool:
     word = word.lower().strip()
     if not word.replace("-", "").isalpha():
@@ -166,6 +169,7 @@ def is_valid_dictionary_word(word: str) -> bool:
     return lemma in _english_words() or bool(wordnet.synsets(lemma))
 
 
+@lru_cache(maxsize=4096)
 def is_scene_background_word(tag: str) -> bool:
     tokens = tag.strip().lower().split()
     if len(tokens) != 1:
@@ -173,6 +177,7 @@ def is_scene_background_word(tag: str) -> bool:
     return normalize_word(tokens[0]) in SCENE_BACKGROUND_STOPWORDS
 
 
+@lru_cache(maxsize=4096)
 def caption_to_label(caption: str) -> str | None:
     """Extract the trailing noun phrase before the first preposition as the flashcard label.
 
@@ -228,6 +233,7 @@ def _sense_is_concrete(syn, max_up: int = 20) -> bool:
     return False
 
 
+@lru_cache(maxsize=4096)
 def is_concrete_object_word(tag: str) -> bool | None:
     t = tag.strip().lower()
     if t in _CONCRETE_WHITELIST:
@@ -243,6 +249,7 @@ def is_concrete_object_word(tag: str) -> bool | None:
     return sum(_sense_is_concrete(s) for s in syns[1:3]) >= 2
 
 
+@lru_cache(maxsize=16384)
 def check_synonyms(word1: str, word2: str) -> bool:
     w1, w2 = word1.lower().strip(), word2.lower().strip()
     if w1 == w2:
@@ -254,6 +261,7 @@ def check_synonyms(word1: str, word2: str) -> bool:
     return w2 in syns1
 
 
+@lru_cache(maxsize=16384)
 def _hypernym_match(det_label: str, gt_label: str, max_up: int = 6) -> bool:
     det_syns = wordnet.synsets(det_label.replace(" ", "_"), pos=wordnet.NOUN)
     gt_syns = set(wordnet.synsets(gt_label.replace(" ", "_"), pos=wordnet.NOUN))
@@ -272,6 +280,7 @@ def _hypernym_match(det_label: str, gt_label: str, max_up: int = 6) -> bool:
     return False
 
 
+@lru_cache(maxsize=16384)
 def labels_match(det_label: str, gt_label: str) -> bool:
     d, g = det_label.lower().strip(), gt_label.lower().strip()
     if check_synonyms(d, g):
@@ -295,6 +304,7 @@ def compute_iou(box1: list[float], box2: list[float]) -> float:
     return inter / union if union > 0 else 0.0
 
 
+@lru_cache(maxsize=4096)
 def clean_label(
     raw_label: str | None,
     *,

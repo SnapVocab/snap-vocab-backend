@@ -2,6 +2,7 @@ package vn.ptit.snapvocab.util.exception;
 
 import java.util.HashMap;
 import java.util.Map;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.AuthenticationException;
@@ -10,6 +11,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import vn.ptit.snapvocab.domain.dto.common.RestResponse;
 
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -106,6 +108,19 @@ public class GlobalExceptionHandler {
 				.build();
 
 		return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+	}
+
+	@ExceptionHandler(ScanException.class)
+	public ResponseEntity<RestResponse<Object>> handleScan(ScanException ex) {
+
+		log.warn("Scan failed with {}: {}", ex.getCode(), ex.getMessage());
+		RestResponse<Object> response = RestResponse.builder()
+				.statusCode(ex.getCode().getStatus().value())
+				.error(ex.getCode().name())
+				.data(ex.getDetails())
+				.build();
+
+		return ResponseEntity.status(ex.getCode().getStatus()).body(response);
 	}
 
 	@ExceptionHandler(RuntimeException.class)

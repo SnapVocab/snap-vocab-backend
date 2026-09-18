@@ -1,10 +1,12 @@
 """CLIP-based verification of background-vocabulary detections.
 
 Ported from the `object_scan_florence2` research notebook (cell 10). Only the
-"gate the base-vocab boxes" path is kept -- that's what "product mode" (cell 25)
+"gate the base-vocab boxes" path is kept -- that is what "product mode" (cell 25)
 actually uses; the full-detection CLIP re-scoring path was eval-only.
 """
 from __future__ import annotations
+
+import logging
 
 import torch
 from PIL import Image
@@ -13,6 +15,8 @@ from transformers import CLIPModel, CLIPProcessor
 from app.config import Settings
 from app.pipeline.labels import BASE_VOCAB, EXTRA_HOUSEHOLD_VOCAB
 
+logger = logging.getLogger("ai-service")
+
 
 class ClipEngine:
     def __init__(self, settings: Settings, device: str):
@@ -20,14 +24,35 @@ class ClipEngine:
         self.device = device
         self.model: CLIPModel | None = None
         self.processor: CLIPProcessor | None = None
+        # The fixed vocabulary never changes between requests, so its text
+        # embeddings are computed once here instead of on every verify() call.
+        self._vocab: list[str] = []
+        self._vocab_embeds: torch.Tensor | None = None
 
     def load(self) -> None:
         self.model = CLIPModel.from_pretrained(self.settings.clip_model_id).to(self.device).eval()
         self.processor = CLIPProcessor.from_pretrained(self.settings.clip_model_id)
+        self._precompute_vocab_embeds()
 
     @property
     def loaded(self) -> bool:
         return self.model is not None
+
+    @torch.no_grad()
+    def _embed_texts(self, words: list[str]) -> torch.Tensor:
+        inputs = self.processor(
+            text=[f"a photo of a {w}" for w in words], return_tensors="pt", padding=True,
+        ).to(self.device)
+        embeds = self.model.get_text_features(**inputs)
+        return embeds / embeds.norm(dim=-1, keepdim=True)
+
+    def _precompute_vocab_embeds(self) -> None:
+        self._vocab = list(dict.fromkeys(
+            list(BASE_VOCAB)
+            + (EXTRA_HOUSEHOLD_VOCAB if self.settings.enable_extra_vocab else []),
+        ))
+        self._vocab_embeds = self._embed_texts(self._vocab)
+        logger.info("CLIP: cached text embeddings for %d vocabulary words.", len(self._vocab))
 
     @torch.no_grad()
     def verify(
@@ -46,14 +71,19 @@ class ClipEngine:
             x1, y1, x2, y2 = (int(v) for v in d["box"])
             crops.append(raw_image.crop((max(0, x1), max(0, y1), max(x1 + 1, x2), max(y1 + 1, y2))))
 
-        cand_vocab = list(BASE_VOCAB) + (EXTRA_HOUSEHOLD_VOCAB if self.settings.enable_extra_vocab else [])
-        candidates = list(dict.fromkeys(cand_vocab + [d["label"] for d in dets]))
+        # Start from the cached vocabulary; only labels not already in it need
+        # a text forward pass this request (usually none).
+        candidates = list(self._vocab)
+        index_of = {c: i for i, c in enumerate(candidates)}
+        extra = [d["label"] for d in dets if d["label"] not in index_of]
+        extra = list(dict.fromkeys(extra))
 
-        text_inputs = self.processor(
-            text=[f"a photo of a {c}" for c in candidates], return_tensors="pt", padding=True,
-        ).to(self.device)
-        text_embeds = self.model.get_text_features(**text_inputs)
-        text_embeds = text_embeds / text_embeds.norm(dim=-1, keepdim=True)
+        text_embeds = self._vocab_embeds
+        if extra:
+            text_embeds = torch.cat([text_embeds, self._embed_texts(extra)], dim=0)
+            for word in extra:
+                index_of[word] = len(candidates)
+                candidates.append(word)
 
         img_inputs = self.processor(images=crops, return_tensors="pt").to(self.device)
         img_embeds = self.model.get_image_features(**img_inputs)
@@ -63,7 +93,7 @@ class ClipEngine:
 
         kept, dropped = [], []
         for i, d in enumerate(dets):
-            own = candidates.index(d["label"])
+            own = index_of[d["label"]]
             s = float(sims[i, own])
             best = float(sims[i].max())
             if s >= threshold and s >= best - margin:

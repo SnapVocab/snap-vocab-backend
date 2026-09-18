@@ -4,3 +4,12 @@ spring:
 
   profiles:
     active: dev
+
+# Scan-to-vocabulary (BF-06). See ScanProperties for what each knob does.
+scan:
+  quota-per-day: 20
+  zone: Asia/Ho_Chi_Minh
+  workers: 1
+  queue-capacity: 3
+  stale-margin-seconds: 30
+  min-reliability: LOW
