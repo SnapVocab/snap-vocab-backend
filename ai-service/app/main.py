@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import Settings, get_settings
 from app.engines import Engines
+from app.errors import install_error_handlers
 from app.routers.detect import router
 
 logging.basicConfig(level=logging.INFO)
@@ -42,6 +43,11 @@ def _warn_on_suspicious_config(settings: Settings) -> None:
             "flight. Lower one of them if you hit CUDA out of memory.",
             settings.florence_batch_size, settings.florence_num_beams, effective_width,
         )
+    if not settings.service_token:
+        logger.warning(
+            "SERVICE_TOKEN is empty, so /api/v1/detect accepts any caller. Set it (and the "
+            "backend's ai-service.service-token) unless this port is reachable only by the backend.",
+        )
 
 
 @asynccontextmanager
@@ -70,6 +76,8 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    install_error_handlers(app)
+    app.state.settings = settings
     app.state.engines = None
     app.state.inference_slot = asyncio.Semaphore(max(1, settings.max_concurrent_requests))
     app.include_router(router)

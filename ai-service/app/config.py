@@ -11,8 +11,14 @@ class Settings(BaseSettings):
 
     # ---- runtime ----
     device: str = "cuda"  # "cuda" | "cpu" | "auto"
-    cors_origins: list[str] = ["*"]
-    max_upload_mb: int = 15
+    # Only the backend calls this service, server to server, so browsers never
+    # need CORS here. Add origins only for a local debugging UI.
+    cors_origins: list[str] = []
+    max_upload_mb: int = 10
+
+    # When set, /api/v1/detect requires a matching X-Service-Token header.
+    # Leave empty only when the service is unreachable from outside the backend's network.
+    service_token: str | None = None
 
     # Only one image is processed at a time: Florence-2 generation saturates the
     # device, and two concurrent requests on a 4GB card OOM instead of going
@@ -82,6 +88,17 @@ class Settings(BaseSettings):
     annotated_format: str = "WEBP"  # WEBP is ~15x smaller than PNG here
     annotated_quality: int = 85
 
+    # ---- reliability shown to the user ----
+    # `score` is a fixed per-source constant, not a measured confidence, so the
+    # client gets this coarse bucket instead. Keyed by Detection.source.
+    reliability_by_source: dict[str, str] = {
+        "od": "HIGH",
+        "od_tile": "HIGH",
+        "self": "MEDIUM",
+        "dense": "MEDIUM",
+        "base": "LOW",
+    }
+
     # ---- CLIP verification (only used when base-vocab grounding is enabled) ----
     clip_base_threshold: float = 0.23
     clip_rank_margin: float = 0.02
@@ -99,6 +116,22 @@ class Settings(BaseSettings):
     @property
     def needs_clip(self) -> bool:
         return self.enable_base_vocab
+
+    @property
+    def model_version(self) -> str:
+        """Model plus enabled stages, e.g. "Florence-2-base/od+self": the stages
+        change which labels come back as much as the weights do."""
+        stages = ["od"]
+        for flag, name in (
+            (self.enable_tiled_od, "tiled"),
+            (self.enable_self_grounding, "self"),
+            (self.enable_dense_caption, "dense"),
+            (self.enable_base_vocab, "base"),
+            (self.enable_extra_vocab, "extra"),
+        ):
+            if flag:
+                stages.append(name)
+        return f"{self.florence_model_id.rsplit('/', 1)[-1]}/{'+'.join(stages)}"
 
 
 @lru_cache

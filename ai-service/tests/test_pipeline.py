@@ -3,6 +3,7 @@
 Replaces the old test_lite_pipeline.py, which covered the /api/scan/lite flow
 deleted in 68f8a31 and no longer imported.
 """
+import io
 import unittest
 from unittest.mock import Mock, patch
 
@@ -168,6 +169,44 @@ class ProcessImageTests(unittest.TestCase):
         self.assertEqual([d["label"] for d in result.detections], ["bottle"])
         verified = clip.verify.call_args.args[1]
         self.assertEqual([d["source"] for d in verified], ["base"])
+
+
+class TaggingTests(unittest.TestCase):
+    def _run(self, detections, image=None, **overrides):
+        florence = Mock()
+        florence.detect.return_value = detections
+        clip = Mock()
+        clip.loaded = False
+        image = image or Image.new("RGB", (200, 200))
+        return process_image(settings(**overrides), florence, clip, image), florence
+
+    def test_headword_is_singular_last_word_of_label(self):
+        result, _ = self._run([det("coffee mugs", [10, 10, 90, 90])])
+        self.assertEqual(result.detections[0]["headword"], "mug")
+
+    def test_reliability_follows_source(self):
+        result, _ = self._run([
+            det("bottle", [10, 10, 90, 90], source="od"),
+            det("chair", [100, 100, 180, 180], source="self", score=0.8),
+        ])
+        by_label = {d["label"]: d["reliability"] for d in result.detections}
+        self.assertEqual(by_label, {"bottle": "HIGH", "chair": "MEDIUM"})
+
+    def test_unknown_source_is_low(self):
+        result, _ = self._run([det("bottle", [10, 10, 90, 90], source="mystery")])
+        self.assertEqual(result.detections[0]["reliability"], "LOW")
+
+    def test_exif_rotation_is_applied_before_detection(self):
+        # 300x100 landscape pixels tagged "rotate 90" = a 100x300 portrait photo.
+        exif = Image.Exif()
+        exif[0x0112] = 6
+        buf = io.BytesIO()
+        Image.new("RGB", (300, 100)).save(buf, "JPEG", exif=exif.tobytes())
+        buf.seek(0)
+        result, florence = self._run([], image=Image.open(buf))
+        seen = florence.detect.call_args.args[0]
+        self.assertEqual(seen.size, (100, 300))
+        self.assertEqual((result.width, result.height), (100, 300))
 
 
 class ResponseTests(unittest.TestCase):

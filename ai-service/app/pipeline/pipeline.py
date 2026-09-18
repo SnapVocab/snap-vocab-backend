@@ -3,11 +3,12 @@
 Flow (each step maps to one function below):
 
     input image
-      -> resize
-      -> Florence-2 `<OD>`            (one model call by default)
+      -> apply EXIF rotation, resize
+      -> Florence-2 `<OD>` + self-grounding  (three model calls by default)
       -> drop boxes that are too small / too large
       -> drop non-dictionary labels
       -> normalise labels, drop duplicates
+      -> tag each box with headword + reliability
       -> draw every box onto a single annotated image  (optional)
       -> return labels + boxes + that one image
 
@@ -20,13 +21,13 @@ from __future__ import annotations
 import base64
 import logging
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 from app.config import Settings
 from app.pipeline.annotate import draw_detections, encode_image, fit_within
 from app.pipeline.clip import ClipEngine
 from app.pipeline.florence import FlorenceEngine, dedup_detections
-from app.pipeline.labels import is_valid_dictionary_word
+from app.pipeline.labels import is_valid_dictionary_word, normalize_word
 from app.pipeline.timing import stage
 
 logger = logging.getLogger("ai-service.timing")
@@ -64,15 +65,31 @@ def _unique_by_label(detections: list[dict]) -> list[dict]:
     return list(best.values())
 
 
+def _tag(detections: list[dict], settings: Settings) -> None:
+    """Add the fields the backend needs to map and display each box.
+
+    headword: the dictionary check above only looks at the last word of the
+    label, so a label can pass it ("coffee mug") and still miss an exact lookup.
+    The backend retries with this word.
+    """
+    for d in detections:
+        d["headword"] = normalize_word(d["label"].split()[-1])
+        d["reliability"] = settings.reliability_by_source.get(d["source"], "LOW")
+
+
 def process_image(
     settings: Settings,
     florence: FlorenceEngine,
     clip: ClipEngine,
     raw_image: Image.Image,
 ) -> ScanResult:
-    # 1. Resize — Florence-2 works on 768x768 internally, and this also bounds
-    #    the annotated image we send back.
-    image = fit_within(raw_image.convert("RGB"), settings.max_input_size)
+    # 1. Rotate by EXIF first: phone cameras store portrait shots as landscape
+    #    pixels plus an orientation tag. The client displays the rotated image
+    #    and draws our boxes on it, so they must live in that same space.
+    #    Then resize — Florence-2 works on 768x768 internally, and this also
+    #    bounds the annotated image we send back.
+    upright = ImageOps.exif_transpose(raw_image) or raw_image
+    image = fit_within(upright.convert("RGB"), settings.max_input_size)
     logger.info("--- detect start (%dx%d) ---", image.width, image.height)
 
     # 2. Florence-2 detection
@@ -102,6 +119,8 @@ def process_image(
         with stage("3.clip.verify", f"{len(base_dets)} base boxes"):
             kept, _dropped = clip.verify(image, base_dets, settings.clip_base_threshold)
         detections = others + kept
+
+    _tag(detections, settings)
 
     # 4. One annotated image instead of one cropped image per object.
     #    Drawn on `image` (already resized in step 1) and NOT resized again, so

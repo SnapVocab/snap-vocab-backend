@@ -7,11 +7,11 @@ Service FastAPI nhận diện đồ vật trong ảnh và trả về tên tiến
 
 ```
 Ảnh đầu vào
-  → Resize (cạnh dài tối đa MAX_INPUT_SIZE)
-  → Florence-2 chạy <OD>                    (1 lượt gọi model)
+  → Xoay theo EXIF, resize (cạnh dài tối đa MAX_INPUT_SIZE)
+  → Florence-2: <OD> + self-grounding       (3 lượt gọi model)
   → Loại box quá nhỏ / quá lớn              ┐ lọc rẻ trước, vì NMS ở bước
   → Loại nhãn không có trong từ điển        ┘ sau là O(n²) kèm tra WordNet
-  → NMS 2 tầng + mỗi nhãn giữ 1 box
+  → NMS 2 tầng + mỗi nhãn giữ 1 box, gắn headword + reliability
   → Vẽ tất cả box lên MỘT ảnh duy nhất      (bỏ qua nếu RETURN_ANNOTATED_IMAGE=false)
   → Trả: danh sách từ + box + ảnh đã khoanh vùng
 ```
@@ -42,7 +42,7 @@ Mobile App (React Native)
 Backend (Spring Boot, cổng 8080)
       ↓  POST /api/v1/detect  (multipart)
 AI Service (FastAPI, cổng 8000)   ←── tài liệu này
-      ↑  trả nhãn + box + ảnh cắt nền
+      ↑  trả nhãn + box (+ ảnh vẽ sẵn box nếu bật)
 Backend tra nghĩa trong MySQL rồi gộp lại trả về App
 ```
 
@@ -105,66 +105,108 @@ docker build -t snapvocab-ai-service .
 docker run --gpus all -p 8000:8000 snapvocab-ai-service
 ```
 
+### Chạy test
+
+Test không nạp model (Florence-2 được mock), chạy vài giây:
+
+```powershell
+.venv\Scripts\pip.exe install -r requirements-dev.txt
+.venv\Scripts\python.exe -m unittest discover -s tests -t .
+```
+
 ## API
 
 ### `GET /health`
 
-Cho biết từng model đã nạp xong chưa.
+Cho biết từng model đã nạp xong chưa. Không cần token.
 
 ```json
 {
   "status": "ok",
-  "device": "cpu",
+  "device": "cuda",
+  "gpu_available": true,
+  "model_version": "Florence-2-base/od+self",
   "florence_loaded": true,
-  "clip_loaded": true
+  "clip_loaded": false
 }
 ```
 
 ### `POST /api/v1/detect`
 
 `multipart/form-data` với field `file` (`image/jpeg`, `image/png` hoặc
-`image/webp`, mặc định tối đa 15MB).
+`image/webp`, mặc định tối đa 10MB).
+
+| Header | Bắt buộc | Ý nghĩa |
+|---|---|---|
+| `X-Service-Token` | Khi `SERVICE_TOKEN` được đặt | Phải trùng `SERVICE_TOKEN`, sai hoặc thiếu → `401 UNAUTHORIZED` |
+| `X-Request-Id` | Không | ID truy vết do backend sinh; thiếu thì service tự sinh. Được trả lại trong `request_id` và ghi vào log |
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/detect -F "file=@photo.jpg"
+curl -X POST http://localhost:8000/api/v1/detect   -H "X-Request-Id: 3f2a..." -H "X-Service-Token: $SERVICE_TOKEN"   -F "file=@photo.jpg"
 ```
 
 Kết quả:
 
 ```json
 {
-  "labels": ["bottle", "person"],
+  "request_id": "3f2a...",
+  "model_version": "Florence-2-base/od+self",
+  "processing_time_ms": 21450,
+  "labels": ["coffee mug", "person"],
   "detections": [
     {
-      "label": "bottle",
+      "label": "coffee mug",
+      "headword": "mug",
       "score": 0.9,
       "source": "od",
+      "reliability": "HIGH",
       "box": { "x1": 745.0, "y1": 435.0, "x2": 785.0, "y2": 542.0 }
     }
   ],
-  "annotated_image_base64": "UklGRiQAAABXRUJQVlA4...",
-  "annotated_image_mime": "image/webp",
+  "annotated_image_base64": null,
+  "annotated_image_mime": null,
   "image_width": 900,
   "image_height": 599
 }
 ```
 
-- `annotated_image_base64` là **một ảnh duy nhất** đã vẽ sẵn toàn bộ khung +
-  nhãn + độ tin cậy. Chuỗi **không** có tiền tố `data:` — client tự ghép:
-  `data:${annotated_image_mime};base64,${annotated_image_base64}`.
-- `image_width`/`image_height` là **hệ toạ độ chung** của cả ảnh khoanh vùng
-  lẫn mọi `box`, nên client không phải quy đổi tỉ lệ.
-- Không còn ảnh cắt riêng cho từng vật thể (trước đây khiến response phình
-  lên ~2MB cho ảnh vào 193KB).
-- `source` cho biết nhãn đến từ bước nào trong pipeline:
+- **Hệ toạ độ:** mọi `box` tính theo pixel trên ảnh kích thước
+  `image_width` × `image_height`. Đó là ảnh **đã xoay theo EXIF** (ảnh chụp dọc
+  từ điện thoại hiển thị đúng chiều) rồi thu nhỏ về cạnh dài `MAX_INPUT_SIZE`.
+  Client vẽ box lên ảnh gốc bằng cách nhân với
+  `chiều_rộng_hiển_thị / image_width` (tương tự cho chiều cao).
+- `headword`: từ cuối của `label`, đưa về dạng số ít (`"coffee mugs"` → `"mug"`).
+  Backend dùng để tra từ điển khi không tìm thấy nguyên cụm `label`.
+- `score` là **hằng số theo nguồn**, chỉ dùng để xếp hạng nội bộ, **không** phải
+  độ tin cậy đo được. Hiển thị cho người dùng thì dùng `reliability`.
+- `processing_time_ms` chỉ tính thời gian chạy model, không tính thời gian xếp hàng.
+- Không nhận diện được vật nào → `200` với `detections: []`, **không** phải lỗi.
+- `annotated_image_base64` là ảnh đã vẽ sẵn các box, chỉ có khi
+  `RETURN_ANNOTATED_IMAGE=true` (giữ cho endpoint đồng bộ cũ của backend). Luồng
+  mới để mobile tự vẽ box, nên sẽ tắt cờ này khi mobile chuyển xong.
 
-| `source`  | Nguồn |
-|-----------|-------|
-| `od`      | `<OD>` — nhận diện trên toàn ảnh |
-| `od_tile` | `<OD>` trên 4 ô chồng lấn — chuyên bắt vật nhỏ |
-| `self`    | Model tự mô tả ảnh rồi ground chính caption đó |
-| `dense`   | `<DENSE_REGION_CAPTION>` |
-| `base`    | Ground bộ từ vựng nền, đã qua CLIP xác thực |
+| `source`  | Nguồn | `reliability` mặc định |
+|-----------|-------|---|
+| `od`      | `<OD>` — nhận diện trên toàn ảnh | `HIGH` |
+| `od_tile` | `<OD>` trên 4 ô chồng lấn — chuyên bắt vật nhỏ | `HIGH` |
+| `self`    | Model tự mô tả ảnh rồi ground chính caption đó | `MEDIUM` |
+| `dense`   | `<DENSE_REGION_CAPTION>` | `MEDIUM` |
+| `base`    | Ground bộ từ vựng nền, đã qua CLIP xác thực | `LOW` |
+
+Bảng map `reliability` đổi được qua `RELIABILITY_BY_SOURCE` (JSON).
+
+### Lỗi
+
+Mọi lỗi đều có dạng `{"error": {"code": "...", "message": "..."}}`. Backend rẽ
+nhánh theo `code`, không theo HTTP status hay nội dung `message`.
+
+| HTTP | `code` | Khi nào |
+|---|---|---|
+| 400 | `INVALID_REQUEST` | Request sai dạng (thiếu field `file`...) |
+| 400 / 413 / 415 | `INVALID_IMAGE` | Không giải mã được / quá dung lượng / sai định dạng |
+| 401 | `UNAUTHORIZED` | Thiếu hoặc sai `X-Service-Token` |
+| 503 | `MODEL_NOT_READY` | Model đang nạp, thử lại sau |
+| 500 | `MODEL_ERROR` | Lỗi trong lúc chạy model (vd. CUDA out of memory) |
 
 ## Cấu hình
 
