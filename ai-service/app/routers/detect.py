@@ -1,3 +1,4 @@
+import asyncio
 import io
 
 from fastapi import APIRouter, HTTPException, Request, UploadFile
@@ -16,7 +17,6 @@ def health(request: Request) -> HealthResponse:
         status="ok" if engines and engines.florence.loaded else "loading",
         device=engines.device if engines else "unknown",
         florence_loaded=bool(engines and engines.florence.loaded),
-        sam_loaded=bool(engines and engines.sam.loaded),
         clip_loaded=bool(engines and engines.clip.loaded),
     )
 
@@ -42,7 +42,16 @@ async def detect(request: Request, file: UploadFile) -> DetectResponse:
     except Exception as exc:
         raise HTTPException(status_code=400, detail="Could not decode image.") from exc
 
-    result = process_image(settings, engines.florence, engines.clip, image)
+    # process_image blocks for tens of seconds. Running it inline would freeze
+    # the event loop for that whole time, so /health would hang and no other
+    # request could even be accepted. Hand it to a worker thread instead, and
+    # let the semaphore keep concurrent inference off the device (two requests
+    # at once do not go faster, they just compete for VRAM).
+    loop = asyncio.get_running_loop()
+    async with request.app.state.inference_slot:
+        result = await loop.run_in_executor(
+            None, process_image, settings, engines.florence, engines.clip, image,
+        )
 
     detections = [
         Detection(
@@ -57,7 +66,9 @@ async def detect(request: Request, file: UploadFile) -> DetectResponse:
         detections=detections,
         labels=[d.label for d in detections],
         annotated_image_base64=encode_base64(result.annotated_image),
-        annotated_image_mime=f"image/{settings.annotated_format.lower()}",
+        annotated_image_mime=(
+            f"image/{settings.annotated_format.lower()}" if result.annotated_image else None
+        ),
         image_width=result.width,
         image_height=result.height,
     )

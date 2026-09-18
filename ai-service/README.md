@@ -9,16 +9,30 @@ Service FastAPI nhận diện đồ vật trong ảnh và trả về tên tiến
 Ảnh đầu vào
   → Resize (cạnh dài tối đa MAX_INPUT_SIZE)
   → Florence-2 chạy <OD>                    (1 lượt gọi model)
-  → Loại bounding box quá nhỏ / quá lớn
-  → Chuẩn hoá nhãn, loại nhãn trùng
-  → Vẽ tất cả box lên MỘT ảnh duy nhất
+  → Loại box quá nhỏ / quá lớn              ┐ lọc rẻ trước, vì NMS ở bước
+  → Loại nhãn không có trong từ điển        ┘ sau là O(n²) kèm tra WordNet
+  → NMS 2 tầng + mỗi nhãn giữ 1 box
+  → Vẽ tất cả box lên MỘT ảnh duy nhất      (bỏ qua nếu RETURN_ANNOTATED_IMAGE=false)
   → Trả: danh sách từ + box + ảnh đã khoanh vùng
 ```
 
 Được port từ notebook nghiên cứu `object_scan_florence2` nhưng đã rút gọn mạnh
 để chạy được với độ trễ chấp nhận được trên CPU. Các bước bổ sung của notebook
-(tiled OD, self-grounding, dense caption, từ vựng nền + CLIP, cắt nền bằng SAM)
-vẫn còn trong code nhưng **mặc định tắt** — xem [Cấu hình](#cấu-hình).
+(tiled OD, self-grounding, dense caption, từ vựng nền + CLIP) vẫn còn trong code
+nhưng **mặc định tắt** — xem [Cấu hình](#cấu-hình). Bước cắt nền bằng SAM đã bị
+gỡ hẳn: luồng hiện tại không sinh ảnh cắt nền từng vật nữa.
+
+### Gộp lô lời gọi model (batching)
+
+Các bước lặp lại cùng một task prompt được gộp vào chung một lượt `generate()`:
+tiled OD (4 lượt) gộp trọn vẹn, từ vựng nền gộp theo nhóm prompt cùng độ dài.
+
+> ⚠️ **Chỉ prompt dài BẰNG NHAU mới gộp được.** `Florence2ForConditionalGeneration`
+> tự dựng attention mask bằng `torch.ones(...)` rồi vứt đi, và chuyển thẳng
+> `attention_mask` của ta xuống language model — vừa gây lỗi lệch shape, vừa
+> khiến token PAD bị coi như từ thật. Chi tiết ở docstring
+> `FlorenceEngine._generate`. Nếu một lô lỗi, service tự lùi về chạy tuần tự
+> nên request không hỏng, chỉ chậm hơn.
 
 ## Vị trí trong hệ thống
 
@@ -70,7 +84,7 @@ copy .env.example .env
 > Ra `2.5.1+cpu False` nghĩa là bản CPU — lúc này **bắt buộc** để `DEVICE=cpu`
 > trong `.env`, nếu để `DEVICE=cuda` service sẽ crash ngay khi khởi động.
 
-Lần chạy đầu sẽ tải model (Florence-2, checkpoint SAM vào `checkpoints/`, CLIP,
+Lần chạy đầu sẽ tải model (Florence-2, CLIP,
 và bộ dữ liệu NLTK vào `nltk_data/`) — vài GB, mất vài phút trước khi `/health`
 báo `"status": "ok"`.
 
@@ -102,7 +116,6 @@ Cho biết từng model đã nạp xong chưa.
   "status": "ok",
   "device": "cpu",
   "florence_loaded": true,
-  "sam_loaded": true,
   "clip_loaded": true
 }
 ```
@@ -160,6 +173,13 @@ Toàn bộ tham số nằm trong [`app/config.py`](app/config.py), ghi đè đư
 "chế độ sản phẩm" của notebook (cell 25)** — nghĩa là nếu `.env` không ghi đè
 gì thì service chạy y hệt notebook.
 
+### Hiệu năng: hai tham số quan trọng nhất
+
+| Biến | Mặc định | Ghi chú |
+|---|---|---|
+| `FLORENCE_NUM_BEAMS` | `3` | **Đừng hạ xuống 1.** Đo trên `hell.webp` (CPU, Florence-2-base): 3 → 1 nhanh hơn 24% (45.4s → 34.6s) nhưng số nhãn đúng rơi từ 13/33 xuống 7/33, và model bịa ra vật không có trong ảnh. Một ghi chú cũ trong repo nói chỉ mất ~3% — số đo cho thấy không phải vậy. |
+| `FLORENCE_BATCH_SIZE` | `4` | Số prompt gộp chung một lượt `generate()`. Bề rộng decode thực tế = `BATCH_SIZE × NUM_BEAMS`. Gặp CUDA OOM thì hạ biến này, đừng hạ beam. |
+
 ### Các cờ quan trọng
 
 | Biến | Mặc định | Ý nghĩa |
@@ -178,8 +198,10 @@ gì thì service chạy y hệt notebook.
 | `ENABLE_EXTRA_VOCAB` | `false` | Thêm 79 từ gia dụng vào bộ nền (**+7 lượt nữa**) |
 | `MAX_UPLOAD_MB` | `15` | Giới hạn dung lượng ảnh |
 
-SAM chỉ dùng để cắt nền từng vật thể — luồng mặc định không còn cần nên
-**service không nạp SAM**, tiết kiệm 2.4GB RAM (vit_h) và thời gian khởi động.
+SAM chỉ dùng để cắt nền từng vật thể. Luồng hiện tại không sinh ảnh cắt nền nữa
+nên `sam.py` đã bị **gỡ khỏi codebase** cùng hai dependency chỉ nó dùng
+(`segment-anything`, `opencv-python-headless`). Nếu còn file
+`checkpoints/sam_vit_*.pth` trên máy thì xoá được — không gì đọc chúng nữa.
 CLIP cũng chỉ nạp khi `ENABLE_BASE_VOCAB=true`.
 
 ### Ba bộ cấu hình sẵn có
@@ -251,7 +273,7 @@ hai timeout này lên.
 ## Sự cố thường gặp
 
 **Service crash ngay khi khởi động, không có traceback (exit code 139 / segfault)**
-→ Hết RAM. `Florence-2-large` + `SAM vit_h` trên CPU/fp32 cần khoảng 8-9GB.
+→ Hết RAM. `Florence-2-large` trên CPU/fp32 cần khoảng 6-7GB.
 Kiểm tra RAM trống, đóng bớt ứng dụng, hoặc đổi sang `Florence-2-base` +
 `vit_b`.
 
@@ -292,7 +314,7 @@ khởi động; nếu mạng chặn, tải thủ công vào thư mục `nltk_dat
 ai-service/
 ├── app/
 │   ├── main.py              # FastAPI app, nạp model lúc startup
-│   ├── engines.py           # Giữ singleton Florence-2 / SAM / CLIP
+│   ├── engines.py           # Giữ singleton Florence-2 / CLIP
 │   ├── config.py            # Toàn bộ tham số (mặc định = chế độ sản phẩm notebook)
 │   ├── schemas.py           # Pydantic request/response
 │   ├── routers/detect.py    # GET /health, POST /api/v1/detect
@@ -301,10 +323,8 @@ ai-service/
 │       ├── florence.py      # Nạp Florence-2, nhận diện, khử trùng lặp
 │       ├── annotate.py      # Vẽ box + nhãn lên một ảnh, nén WebP
 │       ├── timing.py        # Đo thời gian từng bước (xem log khi chạy)
-│       ├── sam.py           # (không dùng ở luồng mặc định) cắt nền vật thể
 │       ├── clip.py          # (chỉ khi bật BASE_VOCAB) xác thực nhãn nền
 │       └── pipeline.py      # Điều phối toàn bộ luồng
-├── checkpoints/             # Checkpoint SAM (tự tải, đã .gitignore)
 ├── nltk_data/               # Dữ liệu NLTK (tự tải, đã .gitignore)
 ├── .env / .env.example / .env.notebook
 ├── requirements.txt

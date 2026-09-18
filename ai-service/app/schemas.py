@@ -20,10 +20,14 @@ class Detection(BaseModel):
 class DetectResponse(BaseModel):
     detections: list[Detection]
     labels: list[str]
-    annotated_image_base64: str = Field(
-        description="Base64 image (no data: prefix) of the input with every box drawn on it",
+    annotated_image_base64: str | None = Field(
+        default=None,
+        description="Base64 image (no data: prefix) of the input with every box drawn on it; "
+                    "null when RETURN_ANNOTATED_IMAGE is off and the client draws its own overlay",
     )
-    annotated_image_mime: str = Field(description="MIME type of annotated_image_base64")
+    annotated_image_mime: str | None = Field(
+        default=None, description="MIME type of annotated_image_base64, null when it is absent",
+    )
     image_width: int = Field(description="Width the boxes and annotated image share")
     image_height: int = Field(description="Height the boxes and annotated image share")
 
@@ -32,5 +36,4 @@ class HealthResponse(BaseModel):
     status: str
     device: str
     florence_loaded: bool
-    sam_loaded: bool
     clip_loaded: bool

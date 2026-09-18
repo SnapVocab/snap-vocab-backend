@@ -3,9 +3,15 @@
 Ported from the `object_scan_florence2` research notebook (cells 4 + 8), trimmed
 to the "product mode" behavior (see cell 25): OD + tiled OD + self-grounding +
 base/extra vocabulary grounding. Evaluation-only ablations were dropped.
+
+Stages that issue many calls sharing one task prompt (tiled OD, background
+vocabulary) go through `run_many`, which feeds them to `generate` in batches.
+Decoding is bandwidth-bound, so a batch of N prompts costs far less than N
+sequential calls on GPU -- that is where most of the per-image latency was.
 """
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any
 from unittest.mock import patch
@@ -19,11 +25,13 @@ from app.config import Settings
 from app.pipeline.labels import BASE_VOCAB, EXTRA_HOUSEHOLD_VOCAB, clean_label, compute_iou, labels_match
 from app.pipeline.timing import log_stage as _log_stage, stage
 
+logger = logging.getLogger("ai-service")
+
 PSEUDO_SCORE = {"od": 0.90, "grounding": 0.85, "self": 0.80, "dense": 0.75, "base": 0.70}
 
 
 def _fixed_get_imports(filename):
-    """flash_attn isn't installed/needed for CPU/most GPU setups; strip the import."""
+    """flash_attn is not installed/needed for CPU/most GPU setups; strip the import."""
     imports = get_imports(filename)
     if not str(filename).endswith("modeling_florence2.py"):
         return imports
@@ -54,10 +62,38 @@ class FlorenceEngine:
     def loaded(self) -> bool:
         return self.model is not None
 
+    def warmup(self) -> None:
+        """Force CUDA kernel init / cuDNN autotuning now instead of on request #1."""
+        if not self.loaded:
+            return
+        started = time.perf_counter()
+        try:
+            self.run(Image.new("RGB", (64, 64), (127, 127, 127)), "<OD>")
+        except Exception as exc:  # a failed warm-up must not stop the service
+            logger.warning("Warm-up pass failed (harmless, first request pays the cost): %s", exc)
+            return
+        logger.info("Warm-up pass done in %.2fs", time.perf_counter() - started)
+
+    # ---- generation ----
+
     @torch.no_grad()
-    def run(self, image: Image.Image, task_prompt: str, text_input: str | None = None) -> Any:
-        prompt = task_prompt if text_input is None else task_prompt + text_input
-        inputs = self.processor(text=prompt, images=image, return_tensors="pt").to(
+    def _generate(self, images: list[Image.Image], prompts: list[str], task_prompt: str) -> list[Any]:
+        """One generate() call over a batch of (image, prompt) pairs of EQUAL prompt length.
+
+        Two constraints come straight from Florence-2 remote code and drive the
+        batching strategy in `run_many` (see modeling_florence2.py):
+
+        1. Its `generate` merges image features with the text embeds and builds a
+           matching attention mask, then throws that mask away and forwards
+           `**kwargs` to the language model. Passing our own `attention_mask`
+           makes the text-length mask collide with the merged sequence length
+           (e.g. 42 vs 577+42) and generation dies. So we never pass one.
+        2. `_merge_input_ids_with_image_features` hardcodes the text mask to
+           `torch.ones(...)`. Nothing is ever masked out, so a padded batch would
+           attend to PAD tokens as if they were real words -- wrong results, no
+           error. Batching is therefore only safe when no padding is added.
+        """
+        inputs = self.processor(text=prompts, images=images, return_tensors="pt").to(
             self.device, self.torch_dtype,
         )
         generated_ids = self.model.generate(
@@ -67,10 +103,74 @@ class FlorenceEngine:
             num_beams=self.settings.florence_num_beams,
             do_sample=False,
         )
-        text = self.processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
-        return self.processor.post_process_generation(
-            text, task=task_prompt, image_size=(image.width, image.height),
-        )[task_prompt]
+        texts = self.processor.batch_decode(generated_ids, skip_special_tokens=False)
+        return [
+            self.processor.post_process_generation(
+                text, task=task_prompt, image_size=(image.width, image.height),
+            )[task_prompt]
+            for text, image in zip(texts, images)
+        ]
+
+    def run_many(
+        self,
+        images: list[Image.Image],
+        task_prompt: str,
+        text_inputs: list[str] | None = None,
+    ) -> list[Any]:
+        """Run one task prompt over many images/texts, batching what is safe to batch.
+
+        Only prompts that tokenize to the SAME length share a generate() call --
+        see `_generate` for why padding is not an option. Stages that repeat one
+        fixed prompt (tiled OD) batch completely; stages with variable text
+        (background vocabulary) batch only within equal-length groups, which is
+        why they still issue several calls.
+        """
+        if not images:
+            return []
+        prompts = (
+            [task_prompt] * len(images)
+            if text_inputs is None
+            else [task_prompt + t for t in text_inputs]
+        )
+
+        size = max(1, self.settings.florence_batch_size)
+        lengths = [len(ids) for ids in self.processor.tokenizer(prompts)["input_ids"]]
+
+        # Bucket indices by prompt length, then cut each bucket into batches.
+        buckets: dict[int, list[int]] = {}
+        for index, length in enumerate(lengths):
+            buckets.setdefault(length, []).append(index)
+
+        results: list[Any | None] = [None] * len(images)
+        for indices in buckets.values():
+            for start in range(0, len(indices), size):
+                group = indices[start:start + size]
+                batch_images = [images[i] for i in group]
+                batch_prompts = [prompts[i] for i in group]
+                try:
+                    outputs = self._generate(batch_images, batch_prompts, task_prompt)
+                except Exception as exc:
+                    if len(group) == 1:
+                        raise
+                    logger.warning(
+                        "Batched generate failed for %d prompts (%s); retrying one at a time. "
+                        "Lower FLORENCE_BATCH_SIZE to avoid this.", len(group), exc,
+                    )
+                    outputs = [
+                        self._generate([image], [prompt], task_prompt)[0]
+                        for image, prompt in zip(batch_images, batch_prompts)
+                    ]
+                for index, output in zip(group, outputs):
+                    results[index] = output
+        return results
+
+    def run(self, image: Image.Image, task_prompt: str, text_input: str | None = None) -> Any:
+        """Single-prompt convenience wrapper around `run_many`."""
+        return self.run_many(
+            [image], task_prompt, None if text_input is None else [text_input],
+        )[0]
+
+    # ---- detection ----
 
     def detect(self, image: Image.Image) -> list[dict]:
         """Return list[{"label", "score", "box", "source"}] with pixel-space boxes [x1,y1,x2,y2]."""
@@ -100,12 +200,14 @@ class FlorenceEngine:
             ]
             margin = 8
             tiles_started = time.perf_counter()
-            for (tx1, ty1, tx2, ty2) in tiles:
-                od_t = self.run(image.crop((tx1, ty1, tx2, ty2)), "<OD>")
+            crops = [image.crop(t) for t in tiles]
+            # One batched call for all 4 tiles instead of 4 sequential ones.
+            tile_results = self.run_many(crops, "<OD>")
+            for (tx1, ty1, tx2, ty2), od_t in zip(tiles, tile_results):
                 for box, raw in zip(od_t.get("bboxes", []), od_t.get("labels", [])):
                     x1, y1, x2, y2 = (float(v) for v in box)
                     tw, th = tx2 - tx1, ty2 - ty1
-                    # drop boxes touching the tile's INNER edge (object cut off by the tile);
+                    # drop boxes touching the tile INNER edge (object cut off by the tile);
                     # edges that coincide with the actual image border are fine.
                     if ((x1 < margin and tx1 > 0) or (y1 < margin and ty1 > 0)
                             or (x2 > tw - margin and tx2 < width) or (y2 > th - margin and ty2 < height)):
@@ -117,9 +219,10 @@ class FlorenceEngine:
                             "box": [x1 + tx1, y1 + ty1, x2 + tx1, y2 + ty1],
                             "source": "od_tile",
                         })
-            _log_stage("  1b.OD tiled", time.perf_counter() - tiles_started, "4 calls")
+            _log_stage("  1b.OD tiled", time.perf_counter() - tiles_started, "4 prompts, batched")
 
         # ---- 1c. Self-grounding: detailed caption -> ground that same caption ----
+        # Inherently sequential: the second call text input is the first call output.
         if settings.enable_self_grounding:
             self_started = time.perf_counter()
             try:
@@ -137,7 +240,7 @@ class FlorenceEngine:
                             })
             except Exception:
                 pass
-            _log_stage("  1c.self-grounding", time.perf_counter() - self_started, "2 calls")
+            _log_stage("  1c.self-grounding", time.perf_counter() - self_started, "2 calls (sequential)")
 
         # ---- 2. <DENSE_REGION_CAPTION> ----
         if settings.enable_dense_caption:
@@ -161,11 +264,14 @@ class FlorenceEngine:
                 if not any(labels_match(w, e) or labels_match(e, w) for e in existing)
             ]
             base_started = time.perf_counter()
-            n_chunks = (len(todo) + 11) // 12
-            for k in range(0, len(todo), 12):
-                chunk = todo[k:k + 12]
-                text = ". ".join(chunk) + "."
-                gr = self.run(image, "<CAPTION_TO_PHRASE_GROUNDING>", text_input=text)
+            chunks = [todo[k:k + 12] for k in range(0, len(todo), 12)]
+            # All chunks share the same task prompt and image, so they batch.
+            chunk_results = self.run_many(
+                [image] * len(chunks),
+                "<CAPTION_TO_PHRASE_GROUNDING>",
+                text_inputs=[". ".join(c) + "." for c in chunks],
+            )
+            for chunk, gr in zip(chunks, chunk_results):
                 for box, raw in zip(gr.get("bboxes", []), gr.get("labels", [])):
                     label = (raw or "").strip().lower()
                     if not label or label not in chunk:
@@ -177,7 +283,7 @@ class FlorenceEngine:
                         "label": label, "score": PSEUDO_SCORE["base"],
                         "box": [x1, y1, x2, y2], "source": "base",
                     })
-            _log_stage("  3.base-vocab", time.perf_counter() - base_started, f"{n_chunks} calls")
+            _log_stage("  3.base-vocab", time.perf_counter() - base_started, f"{len(chunks)} prompts, batched")
 
         return detections
 
@@ -197,10 +303,18 @@ def dedup_detections(
         for j in range(i + 1, len(survivors)):
             if suppressed[j]:
                 continue
+            # IoU is cheap and rejects most pairs; the WordNet walk behind
+            # labels_match is not, so only reach for it once IoU clears the bar.
             iou = compute_iou(survivors[i]["box"], survivors[j]["box"])
+            if iou < min(same_label_iou, related_label_iou):
+                continue
             same = survivors[i]["label"] == survivors[j]["label"]
-            related = same or labels_match(survivors[j]["label"], survivors[i]["label"]) \
+            if same and iou >= same_label_iou:
+                suppressed[j] = True
+                continue
+            if iou >= related_label_iou and (
+                labels_match(survivors[j]["label"], survivors[i]["label"])
                 or labels_match(survivors[i]["label"], survivors[j]["label"])
-            if (same and iou >= same_label_iou) or (related and iou >= related_label_iou):
+            ):
                 suppressed[j] = True
     return kept

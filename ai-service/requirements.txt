@@ -7,10 +7,10 @@ pydantic-settings==2.7.0
 torch==2.5.1
 torchvision==0.20.1
 transformers==4.49.0
+# timm and einops are not imported by this app directly -- Florence-2 ships its
+# vision tower as remote code (modeling_florence2.py) that imports both.
 timm==1.0.12
 einops==0.8.0
-segment-anything==1.0
-opencv-python-headless==4.10.0.84
 pillow==11.0.0
 numpy==1.26.4
 nltk==3.9.1

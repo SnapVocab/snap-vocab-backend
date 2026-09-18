@@ -6,8 +6,9 @@ Flow (each step maps to one function below):
       -> resize
       -> Florence-2 `<OD>`            (one model call by default)
       -> drop boxes that are too small / too large
+      -> drop non-dictionary labels
       -> normalise labels, drop duplicates
-      -> draw every box onto a single annotated image
+      -> draw every box onto a single annotated image  (optional)
       -> return labels + boxes + that one image
 
 Extra Florence-2 stages (tiled OD, self-grounding, dense captions, background
@@ -34,7 +35,7 @@ logger = logging.getLogger("ai-service.timing")
 class ScanResult:
     __slots__ = ("detections", "annotated_image", "width", "height")
 
-    def __init__(self, detections: list[dict], annotated_image: bytes, width: int, height: int):
+    def __init__(self, detections: list[dict], annotated_image: bytes | None, width: int, height: int):
         self.detections = detections
         self.annotated_image = annotated_image
         # Both the boxes and the annotated image use this one coordinate space,
@@ -79,20 +80,21 @@ def process_image(
         detections = florence.detect(image)
     n_raw = len(detections)
 
-    # 3. Drop boxes that are too small or that cover the whole scene
-    detections = _filter_by_area(detections, image.width, image.height, settings)
-
-    # 4. Normalise + drop duplicates
+    # 3. Cheap rejections first: area is pure arithmetic, and the dictionary
+    #    check is a cached lookup. Both run before dedup, whose two-tier NMS is
+    #    O(n^2) with a WordNet walk per surviving pair — every box dropped here
+    #    is a row and a column that NMS never has to consider.
     with stage("2.dedup+filter", f"{n_raw} raw"):
-        detections = dedup_detections(detections)
+        detections = _filter_by_area(detections, image.width, image.height, settings)
         if settings.require_dictionary_labels:
             detections = [
                 d for d in detections
                 if is_valid_dictionary_word(d["label"].split()[-1])
             ]
+        detections = dedup_detections(detections)
         detections = _unique_by_label(detections)
 
-    # 4b. CLIP only matters when background-vocabulary grounding produced boxes,
+    # 3b. CLIP only matters when background-vocabulary grounding produced boxes,
     #     which is the one source prone to hallucinating objects.
     base_dets = [d for d in detections if d.get("source") == "base"]
     if base_dets and clip.loaded:
@@ -101,16 +103,21 @@ def process_image(
             kept, _dropped = clip.verify(image, base_dets, settings.clip_base_threshold)
         detections = others + kept
 
-    # 5. One annotated image instead of one cropped image per object.
+    # 4. One annotated image instead of one cropped image per object.
     #    Drawn on `image` (already resized in step 1) and NOT resized again, so
-    #    the boxes above stay valid for it.
-    with stage("4.annotate", f"{len(detections)} boxes"):
-        annotated = draw_detections(image, detections)
-        encoded = encode_image(annotated, settings.annotated_format, settings.annotated_quality)
+    #    the boxes above stay valid for it. Clients that draw their own overlay
+    #    from the boxes can skip this entirely (return_annotated_image=false).
+    encoded: bytes | None = None
+    if settings.return_annotated_image:
+        with stage("4.annotate", f"{len(detections)} boxes"):
+            annotated = draw_detections(image, detections)
+            encoded = encode_image(annotated, settings.annotated_format, settings.annotated_quality)
+        logger.info("annotated image %.1f KB, %d labels", len(encoded) / 1024, len(detections))
+    else:
+        logger.info("annotated image skipped, %d labels", len(detections))
 
-    logger.info("annotated image %.1f KB, %d labels", len(encoded) / 1024, len(detections))
     return ScanResult(detections, encoded, image.width, image.height)
 
 
-def encode_base64(data: bytes) -> str:
-    return base64.b64encode(data).decode("ascii")
+def encode_base64(data: bytes | None) -> str | None:
+    return None if data is None else base64.b64encode(data).decode("ascii")
