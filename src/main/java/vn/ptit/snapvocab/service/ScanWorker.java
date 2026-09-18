@@ -109,6 +109,7 @@ public class ScanWorker {
 			});
 			return response;
 		} catch (ScanException e) {
+			log.warn("Scan {} failed with {}: {}", requestId, e.getCode(), e.getMessage());
 			fail(requestId, e.getCode(), e.getMessage());
 			throw e;
 		} catch (JsonProcessingException | RuntimeException e) {
