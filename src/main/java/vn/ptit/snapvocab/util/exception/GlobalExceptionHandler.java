@@ -117,6 +117,7 @@ public class GlobalExceptionHandler {
 		RestResponse<Object> response = RestResponse.builder()
 				.statusCode(ex.getCode().getStatus().value())
 				.error(ex.getCode().name())
+				.data(ex.getDetails())
 				.build();
 
 		return ResponseEntity.status(ex.getCode().getStatus()).body(response);

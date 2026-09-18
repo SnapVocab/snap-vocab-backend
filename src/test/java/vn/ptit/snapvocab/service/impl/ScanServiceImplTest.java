@@ -3,141 +3,217 @@ package vn.ptit.snapvocab.service.impl;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.matches;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.RejectedExecutionException;
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import vn.ptit.snapvocab.config.AiServiceProperties;
+import vn.ptit.snapvocab.domain.ScanRequest;
 import vn.ptit.snapvocab.domain.dto.scan.AiDetectResponseDTO;
 import vn.ptit.snapvocab.domain.dto.scan.BoundingBoxDTO;
 import vn.ptit.snapvocab.domain.dto.scan.DetectionDTO;
+import vn.ptit.snapvocab.domain.dto.scan.ScanDetectionsDTO;
 import vn.ptit.snapvocab.domain.dto.scan.ScanImage;
-import vn.ptit.snapvocab.domain.dto.scan.ScanItemDTO;
 import vn.ptit.snapvocab.domain.dto.scan.ScanResultDTO;
-import vn.ptit.snapvocab.domain.dto.word.BatchLookupRequest;
-import vn.ptit.snapvocab.domain.dto.word.LookupResultDTO;
+import vn.ptit.snapvocab.domain.dto.scan.ScanStatusDTO;
+import vn.ptit.snapvocab.domain.dto.scan.ScanSubmitResponse;
 import vn.ptit.snapvocab.domain.enumeration.ScanErrorCode;
-import vn.ptit.snapvocab.service.AiDetectionService;
-import vn.ptit.snapvocab.service.WordService;
+import vn.ptit.snapvocab.domain.enumeration.ScanStatus;
+import vn.ptit.snapvocab.repository.ScanRequestRepository;
+import vn.ptit.snapvocab.repository.UserRepository;
+import vn.ptit.snapvocab.service.ScanJobQueue;
+import vn.ptit.snapvocab.service.ScanQuotaService;
+import vn.ptit.snapvocab.service.ScanResultAssembler;
+import vn.ptit.snapvocab.service.ScanWorker;
+import vn.ptit.snapvocab.service.StorageService;
+import vn.ptit.snapvocab.util.exception.ResourceNotFoundException;
 import vn.ptit.snapvocab.util.exception.ScanException;
 
+@SuppressWarnings("deprecation") // also covers the legacy synchronous endpoint
 @ExtendWith(MockitoExtension.class)
 class ScanServiceImplTest {
 
-	@Mock
-	private AiDetectionService aiDetectionService;
+	private static final Long USER_ID = 7L;
+	private static final String KEY = "scans/7/abc.jpg";
 
 	@Mock
-	private WordService wordService;
+	private ScanWorker scanWorker;
+	@Mock
+	private ScanJobQueue scanJobQueue;
+	@Mock
+	private ScanQuotaService scanQuotaService;
+	@Mock
+	private ScanResultAssembler resultAssembler;
+	@Mock
+	private ScanRequestRepository scanRequestRepository;
+	@Mock
+	private UserRepository userRepository;
+	@Mock
+	private StorageService storageService;
 
+	private final ObjectMapper objectMapper = new ObjectMapper();
 	private ScanServiceImpl service;
 
 	@BeforeEach
 	void setUp() {
-		AiServiceProperties properties = new AiServiceProperties();
-		properties.setMaxUploadMb(1);
-		service = new ScanServiceImpl(aiDetectionService, wordService, properties);
+		AiServiceProperties ai = new AiServiceProperties();
+		ai.setMaxUploadMb(1);
+		service = new ScanServiceImpl(scanWorker, scanJobQueue, scanQuotaService, resultAssembler,
+				scanRequestRepository, userRepository, storageService, ai, objectMapper);
+		Jwt jwt = Jwt.withTokenValue("t").header("alg", "none").subject("a@b.c").claim("userId", USER_ID).build();
+		SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(jwt));
+	}
+
+	@AfterEach
+	void clearSecurity() {
+		SecurityContextHolder.clearContext();
 	}
 
 	@Test
-	void multiWordLabelFallsBackToHeadword() {
-		givenDetections(detection("coffee mug", "mug"));
-		when(wordService.getWordsByEnglish(any())).thenReturn(List.of(word("mug")));
+	void uploadUrlIsIssuedUnderTheCallersPrefix() {
+		service.createUploadUrl("image/webp");
 
-		ScanItemDTO item = service.scanImage(png()).getItems().get(0);
-
-		assertThat(item.getLabel()).isEqualTo("coffee mug");
-		assertThat(item.getWord().getWord()).isEqualTo("mug");
-		assertThat(item.getReliability()).isEqualTo("HIGH");
+		verify(storageService).createUploadUrl(
+				matches("scans/7/[0-9a-f-]{36}\\.webp"), eq("image/webp"));
 	}
 
 	@Test
-	void exactLabelWinsOverHeadword() {
-		givenDetections(detection("wine glass", "glass"));
-		when(wordService.getWordsByEnglish(any())).thenReturn(List.of(word("glass"), word("wine glass")));
-
-		ScanItemDTO item = service.scanImage(png()).getItems().get(0);
-
-		assertThat(item.getWord().getWord()).isEqualTo("wine glass");
+	void uploadUrlRejectsUnsupportedTypes() {
+		assertCode(() -> service.createUploadUrl("image/gif"), ScanErrorCode.INVALID_IMAGE);
+		verifyNoInteractions(storageService);
 	}
 
 	@Test
-	void labelAndHeadwordAreLookedUpInOneQuery() {
-		givenDetections(detection("coffee mug", "mug"), detection("bottle", "bottle"));
-		when(wordService.getWordsByEnglish(any())).thenReturn(List.of());
+	void submitQueuesJobAndReturnsPending() {
+		when(storageService.sizeOf(KEY)).thenReturn(Optional.of(2048L));
+		when(scanQuotaService.reserve(USER_ID, KEY, ScanStatus.PENDING)).thenReturn(job(ScanStatus.PENDING));
 
-		service.scanImage(png());
+		ScanSubmitResponse response = service.submit(KEY);
 
-		ArgumentCaptor<BatchLookupRequest> lookup = ArgumentCaptor.forClass(BatchLookupRequest.class);
-		verify(wordService).getWordsByEnglish(lookup.capture());
-		assertThat(lookup.getValue().words()).containsExactlyInAnyOrder("coffee mug", "mug", "bottle");
+		assertThat(response).isEqualTo(new ScanSubmitResponse("req-1", ScanStatus.PENDING));
+		verify(scanJobQueue).submit(any());
 	}
 
 	@Test
-	void unknownWordLeavesWordNull() {
-		givenDetections(detection("gizmo", "gizmo"));
-		when(wordService.getWordsByEnglish(any())).thenReturn(List.of());
-
-		ScanResultDTO result = service.scanImage(png());
-
-		assertThat(result.getItems()).singleElement().extracting(ScanItemDTO::getWord).isNull();
+	void submitRejectsAnotherUsersKeyWithoutChargingQuota() {
+		assertCode(() -> service.submit("scans/8/abc.jpg"), ScanErrorCode.INVALID_IMAGE);
+		verifyNoInteractions(scanQuotaService, scanJobQueue);
 	}
 
 	@Test
-	void noDetectionsSkipsDictionaryLookup() {
-		givenDetections();
+	void submitRejectsMissingUploadWithoutChargingQuota() {
+		when(storageService.sizeOf(KEY)).thenReturn(Optional.empty());
 
-		assertThat(service.scanImage(png()).getItems()).isEmpty();
-		verifyNoInteractions(wordService);
+		assertCode(() -> service.submit(KEY), ScanErrorCode.INVALID_IMAGE);
+		verifyNoInteractions(scanQuotaService);
 	}
 
 	@Test
-	void emptyUploadIsRejectedBeforeCallingAi() {
-		assertInvalid(new MockMultipartFile("file", "photo.png", "image/png", new byte[0]));
+	void submitRejectsOversizedUploadWithoutChargingQuota() {
+		when(storageService.sizeOf(KEY)).thenReturn(Optional.of(1024L * 1024 + 1));
+
+		assertCode(() -> service.submit(KEY), ScanErrorCode.INVALID_IMAGE);
+		verifyNoInteractions(scanQuotaService);
 	}
 
 	@Test
-	void unsupportedTypeIsRejectedBeforeCallingAi() {
-		assertInvalid(new MockMultipartFile("file", "anim.gif", "image/gif", new byte[] {1}));
+	void fullQueueFailsTheJobSoItIsNotCharged() {
+		when(storageService.sizeOf(KEY)).thenReturn(Optional.of(2048L));
+		when(scanQuotaService.reserve(USER_ID, KEY, ScanStatus.PENDING)).thenReturn(job(ScanStatus.PENDING));
+		doThrow(new RejectedExecutionException("full")).when(scanJobQueue).submit(any());
+
+		assertCode(() -> service.submit(KEY), ScanErrorCode.AI_QUEUE_FULL);
+		verify(scanWorker).markRejected("req-1");
 	}
 
 	@Test
-	void oversizedUploadIsRejectedBeforeCallingAi() {
-		assertInvalid(new MockMultipartFile("file", "big.png", "image/png", new byte[1024 * 1024 + 1]));
+	void statusOfDoneScanAssemblesStoredResult() throws Exception {
+		ScanRequest done = job(ScanStatus.DONE);
+		ScanDetectionsDTO stored = new ScanDetectionsDTO(640, 480, List.of(detection()));
+		done.setResultJson(objectMapper.writeValueAsString(stored));
+		when(scanRequestRepository.findByIdAndUser_Id("req-1", USER_ID)).thenReturn(Optional.of(done));
+		ScanResultDTO assembled = ScanResultDTO.builder().imageWidth(640).items(List.of()).build();
+		when(resultAssembler.assemble(stored)).thenReturn(assembled);
+
+		ScanStatusDTO status = service.getStatus("req-1");
+
+		assertThat(status.getStatus()).isEqualTo(ScanStatus.DONE);
+		assertThat(status.getResult()).isSameAs(assembled);
 	}
 
-	private void assertInvalid(MockMultipartFile file) {
-		assertThatThrownBy(() -> service.scanImage(file))
-				.isInstanceOf(ScanException.class)
-				.extracting(e -> ((ScanException) e).getCode())
-				.isEqualTo(ScanErrorCode.INVALID_IMAGE);
-		verifyNoInteractions(aiDetectionService);
+	@Test
+	void statusOfFailedScanCarriesErrorCodeAndNoResult() {
+		ScanRequest failed = job(ScanStatus.FAILED);
+		failed.setErrorCode(ScanErrorCode.AI_TIMEOUT);
+		when(scanRequestRepository.findByIdAndUser_Id("req-1", USER_ID)).thenReturn(Optional.of(failed));
+
+		ScanStatusDTO status = service.getStatus("req-1");
+
+		assertThat(status.getErrorCode()).isEqualTo(ScanErrorCode.AI_TIMEOUT);
+		assertThat(status.getResult()).isNull();
+		verifyNoInteractions(resultAssembler);
 	}
 
-	private void givenDetections(DetectionDTO... detections) {
-		when(aiDetectionService.detect(any(ScanImage.class), anyString())).thenReturn(new AiDetectResponseDTO(
-				"req", "Florence-2-base/od+self", 10, List.of(detections),
-				List.of(), null, null, 100, 100));
+	@Test
+	void statusOfSomeoneElsesScanIsNotFound() {
+		when(scanRequestRepository.findByIdAndUser_Id("req-1", USER_ID)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> service.getStatus("req-1")).isInstanceOf(ResourceNotFoundException.class);
 	}
 
-	private static DetectionDTO detection(String label, String headword) {
-		return new DetectionDTO(label, headword, 0.9, "od", "HIGH", new BoundingBoxDTO(1, 2, 3, 4));
+	@Test
+	void syncScanChargesQuotaAndKeepsAnnotatedImage() {
+		when(scanQuotaService.reserve(USER_ID, null, ScanStatus.PROCESSING)).thenReturn(job(ScanStatus.PROCESSING));
+		when(scanWorker.runSync(eq("req-1"), any(ScanImage.class))).thenReturn(new AiDetectResponseDTO(
+				"req-1", "v", 10, List.of(detection()), List.of(), "QUJD", "image/webp", 640, 480));
+		when(resultAssembler.filter(any())).thenAnswer(inv -> inv.getArgument(0));
+		when(resultAssembler.assemble(any())).thenReturn(ScanResultDTO.builder().items(List.of()).build());
+
+		ScanResultDTO result = service.scanImage(new MockMultipartFile("file", "p.png", "image/PNG", new byte[] {1}));
+
+		assertThat(result.getAnnotatedImageBase64()).isEqualTo("QUJD");
+		verify(scanWorker).runSync(eq("req-1"),
+				argThat(i -> i.contentType().equals("image/png")));
 	}
 
-	private static LookupResultDTO word(String word) {
-		return LookupResultDTO.builder().exists(true).word(word).build();
+	@Test
+	void syncScanRejectsBadUploadBeforeChargingQuota() {
+		assertCode(() -> service.scanImage(new MockMultipartFile("file", "a.gif", "image/gif", new byte[] {1})),
+				ScanErrorCode.INVALID_IMAGE);
+		assertCode(() -> service.scanImage(new MockMultipartFile("file", "a.png", "image/png", new byte[0])),
+				ScanErrorCode.INVALID_IMAGE);
+		verifyNoInteractions(scanQuotaService, scanWorker);
 	}
 
-	private static MockMultipartFile png() {
-		return new MockMultipartFile("file", "photo.png", "image/png", new byte[] {1, 2, 3});
+	private static void assertCode(ThrowingCallable call, ScanErrorCode code) {
+		assertThatThrownBy(call).isInstanceOfSatisfying(ScanException.class,
+				e -> assertThat(e.getCode()).isEqualTo(code));
+	}
+
+	private static ScanRequest job(ScanStatus status) {
+		return ScanRequest.builder().id("req-1").objectKey(KEY).status(status).build();
+	}
+
+	private static DetectionDTO detection() {
+		return new DetectionDTO("cup", "cup", 0.9, "od", "HIGH", new BoundingBoxDTO(1, 2, 3, 4));
 	}
 }

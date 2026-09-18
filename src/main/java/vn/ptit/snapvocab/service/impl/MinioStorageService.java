@@ -1,11 +1,16 @@
 package vn.ptit.snapvocab.service.impl;
 
+import io.minio.GetObjectArgs;
+import io.minio.GetObjectResponse;
 import io.minio.GetPresignedObjectUrlArgs;
 import io.minio.MinioClient;
 import io.minio.RemoveObjectArgs;
 import io.minio.StatObjectArgs;
+import io.minio.StatObjectResponse;
+import io.minio.errors.ErrorResponseException;
 import io.minio.http.Method;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import lombok.RequiredArgsConstructor;
@@ -29,8 +34,11 @@ public class MinioStorageService implements StorageService {
 
 	@Override
 	public PresignedUploadResponse createUploadUrl(String fileName) {
-		String objectName = UUID.randomUUID() + "-" + fileName;
-		String contentType = resolveContentType(fileName);
+		return createUploadUrl(UUID.randomUUID() + "-" + fileName, resolveContentType(fileName));
+	}
+
+	@Override
+	public PresignedUploadResponse createUploadUrl(String objectName, String contentType) {
 		long expirySeconds = 300;
 		long expiresAt = System.currentTimeMillis() + expirySeconds * 1000;
 
@@ -93,6 +101,38 @@ public class MinioStorageService implements StorageService {
 			return true;
 		} catch (Exception e) {
 			return false;
+		}
+	}
+
+	@Override
+	public Optional<Long> sizeOf(String objectName) {
+		try {
+			StatObjectResponse stat = minioClient.statObject(
+					StatObjectArgs.builder()
+							.bucket(properties.getBucket())
+							.object(objectName)
+							.build());
+			return Optional.of(stat.size());
+		} catch (ErrorResponseException e) {
+			if ("NoSuchKey".equals(e.errorResponse().code())) {
+				return Optional.empty();
+			}
+			throw new RuntimeException("Failed to stat object", e);
+		} catch (Exception e) {
+			throw new RuntimeException("Failed to stat object", e);
+		}
+	}
+
+	@Override
+	public byte[] download(String objectName) {
+		try (GetObjectResponse object = minioClient.getObject(
+				GetObjectArgs.builder()
+						.bucket(properties.getBucket())
+						.object(objectName)
+						.build())) {
+			return object.readAllBytes();
+		} catch (Exception e) {
+			throw new RuntimeException("Failed to download object", e);
 		}
 	}
 
