@@ -19,6 +19,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import vn.ptit.snapvocab.domain.enumeration.CardSide;
 import vn.ptit.snapvocab.domain.enumeration.TemplateElementType;
 
 @Entity
@@ -50,6 +51,18 @@ public class TemplateElement {
 	@Enumerated(EnumType.STRING)
 	@Column(nullable = false)
 	private TemplateElementType type;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "side", length = 10, nullable = false)
+	@Builder.Default
+	private vn.ptit.snapvocab.domain.enumeration.CardSide side = vn.ptit.snapvocab.domain.enumeration.CardSide.FRONT;
+
+	@Column(name = "section_label", length = 100)
+	private String sectionLabel;
+
+	@Column(name = "repeatable")
+	@Builder.Default
+	private Boolean repeatable = false;
 
 	@OneToOne(
 			mappedBy = "element",

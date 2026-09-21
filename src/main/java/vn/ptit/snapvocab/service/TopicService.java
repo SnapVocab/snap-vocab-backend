@@ -583,6 +583,9 @@ public class TopicService {
 							.template(newTemplate)
 							.position(oldElement.getPosition())
 							.type(oldElement.getType())
+							.side(oldElement.getSide())
+							.sectionLabel(oldElement.getSectionLabel())
+							.repeatable(oldElement.getRepeatable())
 							.build();
 
 					if (oldElement.getField() != null) {
