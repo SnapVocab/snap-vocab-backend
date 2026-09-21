@@ -21,6 +21,8 @@ public class ScanItemDTO {
 	private String label;
 	private double score;
 	private String source;
+	/** HIGH / MEDIUM / LOW; show this to the user rather than {@code score}. */
+	private String reliability;
 	private BoundingBoxDTO box;
 	private LookupResultDTO word;
 }

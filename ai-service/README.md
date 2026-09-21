@@ -7,18 +7,32 @@ Service FastAPI nhận diện đồ vật trong ảnh và trả về tên tiến
 
 ```
 Ảnh đầu vào
-  → Resize (cạnh dài tối đa MAX_INPUT_SIZE)
-  → Florence-2 chạy <OD>                    (1 lượt gọi model)
-  → Loại bounding box quá nhỏ / quá lớn
-  → Chuẩn hoá nhãn, loại nhãn trùng
-  → Vẽ tất cả box lên MỘT ảnh duy nhất
+  → Xoay theo EXIF, resize (cạnh dài tối đa MAX_INPUT_SIZE)
+  → Florence-2: <OD> + self-grounding       (3 lượt gọi model)
+  → Loại box quá nhỏ / quá lớn              ┐ lọc rẻ trước, vì NMS ở bước
+  → Loại nhãn không có trong từ điển        ┘ sau là O(n²) kèm tra WordNet
+  → NMS 2 tầng + mỗi nhãn giữ 1 box, gắn headword + reliability
+  → Vẽ tất cả box lên MỘT ảnh duy nhất      (bỏ qua nếu RETURN_ANNOTATED_IMAGE=false)
   → Trả: danh sách từ + box + ảnh đã khoanh vùng
 ```
 
 Được port từ notebook nghiên cứu `object_scan_florence2` nhưng đã rút gọn mạnh
 để chạy được với độ trễ chấp nhận được trên CPU. Các bước bổ sung của notebook
-(tiled OD, self-grounding, dense caption, từ vựng nền + CLIP, cắt nền bằng SAM)
-vẫn còn trong code nhưng **mặc định tắt** — xem [Cấu hình](#cấu-hình).
+(tiled OD, self-grounding, dense caption, từ vựng nền + CLIP) vẫn còn trong code
+nhưng **mặc định tắt** — xem [Cấu hình](#cấu-hình). Bước cắt nền bằng SAM đã bị
+gỡ hẳn: luồng hiện tại không sinh ảnh cắt nền từng vật nữa.
+
+### Gộp lô lời gọi model (batching)
+
+Các bước lặp lại cùng một task prompt được gộp vào chung một lượt `generate()`:
+tiled OD (4 lượt) gộp trọn vẹn, từ vựng nền gộp theo nhóm prompt cùng độ dài.
+
+> ⚠️ **Chỉ prompt dài BẰNG NHAU mới gộp được.** `Florence2ForConditionalGeneration`
+> tự dựng attention mask bằng `torch.ones(...)` rồi vứt đi, và chuyển thẳng
+> `attention_mask` của ta xuống language model — vừa gây lỗi lệch shape, vừa
+> khiến token PAD bị coi như từ thật. Chi tiết ở docstring
+> `FlorenceEngine._generate`. Nếu một lô lỗi, service tự lùi về chạy tuần tự
+> nên request không hỏng, chỉ chậm hơn.
 
 ## Vị trí trong hệ thống
 
@@ -28,7 +42,7 @@ Mobile App (React Native)
 Backend (Spring Boot, cổng 8080)
       ↓  POST /api/v1/detect  (multipart)
 AI Service (FastAPI, cổng 8000)   ←── tài liệu này
-      ↑  trả nhãn + box + ảnh cắt nền
+      ↑  trả nhãn + box (+ ảnh vẽ sẵn box nếu bật)
 Backend tra nghĩa trong MySQL rồi gộp lại trả về App
 ```
 
@@ -70,7 +84,7 @@ copy .env.example .env
 > Ra `2.5.1+cpu False` nghĩa là bản CPU — lúc này **bắt buộc** để `DEVICE=cpu`
 > trong `.env`, nếu để `DEVICE=cuda` service sẽ crash ngay khi khởi động.
 
-Lần chạy đầu sẽ tải model (Florence-2, checkpoint SAM vào `checkpoints/`, CLIP,
+Lần chạy đầu sẽ tải model (Florence-2, CLIP,
 và bộ dữ liệu NLTK vào `nltk_data/`) — vài GB, mất vài phút trước khi `/health`
 báo `"status": "ok"`.
 
@@ -91,67 +105,108 @@ docker build -t snapvocab-ai-service .
 docker run --gpus all -p 8000:8000 snapvocab-ai-service
 ```
 
+### Chạy test
+
+Test không nạp model (Florence-2 được mock), chạy vài giây:
+
+```powershell
+.venv\Scripts\pip.exe install -r requirements-dev.txt
+.venv\Scripts\python.exe -m unittest discover -s tests -t .
+```
+
 ## API
 
 ### `GET /health`
 
-Cho biết từng model đã nạp xong chưa.
+Cho biết từng model đã nạp xong chưa. Không cần token.
 
 ```json
 {
   "status": "ok",
-  "device": "cpu",
+  "device": "cuda",
+  "gpu_available": true,
+  "model_version": "Florence-2-base/od+self",
   "florence_loaded": true,
-  "sam_loaded": true,
-  "clip_loaded": true
+  "clip_loaded": false
 }
 ```
 
 ### `POST /api/v1/detect`
 
 `multipart/form-data` với field `file` (`image/jpeg`, `image/png` hoặc
-`image/webp`, mặc định tối đa 15MB).
+`image/webp`, mặc định tối đa 10MB).
+
+| Header | Bắt buộc | Ý nghĩa |
+|---|---|---|
+| `X-Service-Token` | Khi `SERVICE_TOKEN` được đặt | Phải trùng `SERVICE_TOKEN`, sai hoặc thiếu → `401 UNAUTHORIZED` |
+| `X-Request-Id` | Không | ID truy vết do backend sinh; thiếu thì service tự sinh. Được trả lại trong `request_id` và ghi vào log |
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/detect -F "file=@photo.jpg"
+curl -X POST http://localhost:8000/api/v1/detect   -H "X-Request-Id: 3f2a..." -H "X-Service-Token: $SERVICE_TOKEN"   -F "file=@photo.jpg"
 ```
 
 Kết quả:
 
 ```json
 {
-  "labels": ["bottle", "person"],
+  "request_id": "3f2a...",
+  "model_version": "Florence-2-base/od+self",
+  "processing_time_ms": 21450,
+  "labels": ["coffee mug", "person"],
   "detections": [
     {
-      "label": "bottle",
+      "label": "coffee mug",
+      "headword": "mug",
       "score": 0.9,
       "source": "od",
+      "reliability": "HIGH",
       "box": { "x1": 745.0, "y1": 435.0, "x2": 785.0, "y2": 542.0 }
     }
   ],
-  "annotated_image_base64": "UklGRiQAAABXRUJQVlA4...",
-  "annotated_image_mime": "image/webp",
+  "annotated_image_base64": null,
+  "annotated_image_mime": null,
   "image_width": 900,
   "image_height": 599
 }
 ```
 
-- `annotated_image_base64` là **một ảnh duy nhất** đã vẽ sẵn toàn bộ khung +
-  nhãn + độ tin cậy. Chuỗi **không** có tiền tố `data:` — client tự ghép:
-  `data:${annotated_image_mime};base64,${annotated_image_base64}`.
-- `image_width`/`image_height` là **hệ toạ độ chung** của cả ảnh khoanh vùng
-  lẫn mọi `box`, nên client không phải quy đổi tỉ lệ.
-- Không còn ảnh cắt riêng cho từng vật thể (trước đây khiến response phình
-  lên ~2MB cho ảnh vào 193KB).
-- `source` cho biết nhãn đến từ bước nào trong pipeline:
+- **Hệ toạ độ:** mọi `box` tính theo pixel trên ảnh kích thước
+  `image_width` × `image_height`. Đó là ảnh **đã xoay theo EXIF** (ảnh chụp dọc
+  từ điện thoại hiển thị đúng chiều) rồi thu nhỏ về cạnh dài `MAX_INPUT_SIZE`.
+  Client vẽ box lên ảnh gốc bằng cách nhân với
+  `chiều_rộng_hiển_thị / image_width` (tương tự cho chiều cao).
+- `headword`: từ cuối của `label`, đưa về dạng số ít (`"coffee mugs"` → `"mug"`).
+  Backend dùng để tra từ điển khi không tìm thấy nguyên cụm `label`.
+- `score` là **hằng số theo nguồn**, chỉ dùng để xếp hạng nội bộ, **không** phải
+  độ tin cậy đo được. Hiển thị cho người dùng thì dùng `reliability`.
+- `processing_time_ms` chỉ tính thời gian chạy model, không tính thời gian xếp hàng.
+- Không nhận diện được vật nào → `200` với `detections: []`, **không** phải lỗi.
+- `annotated_image_base64` là ảnh đã vẽ sẵn các box, chỉ có khi
+  `RETURN_ANNOTATED_IMAGE=true` (giữ cho endpoint đồng bộ cũ của backend). Luồng
+  mới để mobile tự vẽ box, nên sẽ tắt cờ này khi mobile chuyển xong.
 
-| `source`  | Nguồn |
-|-----------|-------|
-| `od`      | `<OD>` — nhận diện trên toàn ảnh |
-| `od_tile` | `<OD>` trên 4 ô chồng lấn — chuyên bắt vật nhỏ |
-| `self`    | Model tự mô tả ảnh rồi ground chính caption đó |
-| `dense`   | `<DENSE_REGION_CAPTION>` |
-| `base`    | Ground bộ từ vựng nền, đã qua CLIP xác thực |
+| `source`  | Nguồn | `reliability` mặc định |
+|-----------|-------|---|
+| `od`      | `<OD>` — nhận diện trên toàn ảnh | `HIGH` |
+| `od_tile` | `<OD>` trên 4 ô chồng lấn — chuyên bắt vật nhỏ | `HIGH` |
+| `self`    | Model tự mô tả ảnh rồi ground chính caption đó | `MEDIUM` |
+| `dense`   | `<DENSE_REGION_CAPTION>` | `MEDIUM` |
+| `base`    | Ground bộ từ vựng nền, đã qua CLIP xác thực | `LOW` |
+
+Bảng map `reliability` đổi được qua `RELIABILITY_BY_SOURCE` (JSON).
+
+### Lỗi
+
+Mọi lỗi đều có dạng `{"error": {"code": "...", "message": "..."}}`. Backend rẽ
+nhánh theo `code`, không theo HTTP status hay nội dung `message`.
+
+| HTTP | `code` | Khi nào |
+|---|---|---|
+| 400 | `INVALID_REQUEST` | Request sai dạng (thiếu field `file`...) |
+| 400 / 413 / 415 | `INVALID_IMAGE` | Không giải mã được / quá dung lượng / sai định dạng |
+| 401 | `UNAUTHORIZED` | Thiếu hoặc sai `X-Service-Token` |
+| 503 | `MODEL_NOT_READY` | Model đang nạp, thử lại sau |
+| 500 | `MODEL_ERROR` | Lỗi trong lúc chạy model (vd. CUDA out of memory) |
 
 ## Cấu hình
 
@@ -159,6 +214,13 @@ Toàn bộ tham số nằm trong [`app/config.py`](app/config.py), ghi đè đư
 `.env` hoặc biến môi trường. **Giá trị mặc định trong `config.py` chính là
 "chế độ sản phẩm" của notebook (cell 25)** — nghĩa là nếu `.env` không ghi đè
 gì thì service chạy y hệt notebook.
+
+### Hiệu năng: hai tham số quan trọng nhất
+
+| Biến | Mặc định | Ghi chú |
+|---|---|---|
+| `FLORENCE_NUM_BEAMS` | `3` | **Đừng hạ xuống 1.** Đo trên `hell.webp` (CPU, Florence-2-base): 3 → 1 nhanh hơn 24% (45.4s → 34.6s) nhưng số nhãn đúng rơi từ 13/33 xuống 7/33, và model bịa ra vật không có trong ảnh. Một ghi chú cũ trong repo nói chỉ mất ~3% — số đo cho thấy không phải vậy. |
+| `FLORENCE_BATCH_SIZE` | `4` | Số prompt gộp chung một lượt `generate()`. Bề rộng decode thực tế = `BATCH_SIZE × NUM_BEAMS`. Gặp CUDA OOM thì hạ biến này, đừng hạ beam. |
 
 ### Các cờ quan trọng
 
@@ -178,8 +240,10 @@ gì thì service chạy y hệt notebook.
 | `ENABLE_EXTRA_VOCAB` | `false` | Thêm 79 từ gia dụng vào bộ nền (**+7 lượt nữa**) |
 | `MAX_UPLOAD_MB` | `15` | Giới hạn dung lượng ảnh |
 
-SAM chỉ dùng để cắt nền từng vật thể — luồng mặc định không còn cần nên
-**service không nạp SAM**, tiết kiệm 2.4GB RAM (vit_h) và thời gian khởi động.
+SAM chỉ dùng để cắt nền từng vật thể. Luồng hiện tại không sinh ảnh cắt nền nữa
+nên `sam.py` đã bị **gỡ khỏi codebase** cùng hai dependency chỉ nó dùng
+(`segment-anything`, `opencv-python-headless`). Nếu còn file
+`checkpoints/sam_vit_*.pth` trên máy thì xoá được — không gì đọc chúng nữa.
 CLIP cũng chỉ nạp khi `ENABLE_BASE_VOCAB=true`.
 
 ### Ba bộ cấu hình sẵn có
@@ -251,7 +315,7 @@ hai timeout này lên.
 ## Sự cố thường gặp
 
 **Service crash ngay khi khởi động, không có traceback (exit code 139 / segfault)**
-→ Hết RAM. `Florence-2-large` + `SAM vit_h` trên CPU/fp32 cần khoảng 8-9GB.
+→ Hết RAM. `Florence-2-large` trên CPU/fp32 cần khoảng 6-7GB.
 Kiểm tra RAM trống, đóng bớt ứng dụng, hoặc đổi sang `Florence-2-base` +
 `vit_b`.
 
@@ -292,7 +356,7 @@ khởi động; nếu mạng chặn, tải thủ công vào thư mục `nltk_dat
 ai-service/
 ├── app/
 │   ├── main.py              # FastAPI app, nạp model lúc startup
-│   ├── engines.py           # Giữ singleton Florence-2 / SAM / CLIP
+│   ├── engines.py           # Giữ singleton Florence-2 / CLIP
 │   ├── config.py            # Toàn bộ tham số (mặc định = chế độ sản phẩm notebook)
 │   ├── schemas.py           # Pydantic request/response
 │   ├── routers/detect.py    # GET /health, POST /api/v1/detect
@@ -301,10 +365,8 @@ ai-service/
 │       ├── florence.py      # Nạp Florence-2, nhận diện, khử trùng lặp
 │       ├── annotate.py      # Vẽ box + nhãn lên một ảnh, nén WebP
 │       ├── timing.py        # Đo thời gian từng bước (xem log khi chạy)
-│       ├── sam.py           # (không dùng ở luồng mặc định) cắt nền vật thể
 │       ├── clip.py          # (chỉ khi bật BASE_VOCAB) xác thực nhãn nền
 │       └── pipeline.py      # Điều phối toàn bộ luồng
-├── checkpoints/             # Checkpoint SAM (tự tải, đã .gitignore)
 ├── nltk_data/               # Dữ liệu NLTK (tự tải, đã .gitignore)
 ├── .env / .env.example / .env.notebook
 ├── requirements.txt
