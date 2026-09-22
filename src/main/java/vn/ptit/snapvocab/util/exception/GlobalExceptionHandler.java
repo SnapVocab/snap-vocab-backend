@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import vn.ptit.snapvocab.domain.dto.common.RestResponse;
@@ -27,6 +28,18 @@ public class GlobalExceptionHandler {
 				.statusCode(400)
 				.error("Validation failed")
 				.data(errors)
+				.build();
+
+		return ResponseEntity.badRequest().body(response);
+	}
+
+	@ExceptionHandler(MissingServletRequestParameterException.class)
+	public ResponseEntity<RestResponse<Object>> handleMissingServletRequestParameter(
+			MissingServletRequestParameterException ex) {
+
+		RestResponse<Object> response = RestResponse.builder()
+				.statusCode(400)
+				.error("Missing request parameter: " + ex.getParameterName())
 				.build();
 
 		return ResponseEntity.badRequest().body(response);
