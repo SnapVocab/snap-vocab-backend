@@ -12,6 +12,5 @@ public interface TopicMapper extends EntityMapper<TopicDTO, Topic> {
 	@Mapping(source = "activeTemplate.id", target = "activeTemplateId")
 	@Mapping(source = "activeTemplate.name", target = "activeTemplateName")
 	@Mapping(source = "activeTemplate.code", target = "activeTemplateCode")
-	@Mapping(target = "children", ignore = true)
 	TopicDTO toDto(Topic topic);
 }

@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,8 +34,6 @@ import vn.ptit.snapvocab.domain.User;
 import vn.ptit.snapvocab.domain.dto.common.Meta;
 import vn.ptit.snapvocab.domain.dto.common.PaginationObject;
 import vn.ptit.snapvocab.domain.dto.template.TemplateDTO;
-import vn.ptit.snapvocab.domain.dto.topic.CreateSchemaAttributeDTO;
-import vn.ptit.snapvocab.domain.dto.topic.CreateSchemaAttributeGroupDTO;
 import vn.ptit.snapvocab.domain.dto.topic.CreateSchemaDTO;
 import vn.ptit.snapvocab.domain.dto.topic.CreateTopicDTO;
 import vn.ptit.snapvocab.domain.dto.topic.CreateTopicSchemaDTO;
@@ -120,7 +119,6 @@ public class TopicService {
 			return PaginationObject.<List<TopicItemData>>builder()
 					.data(new ArrayList<>())
 					.meta(meta)
-					.schema(getTopicSchema(topicId))
 					.build();
 		}
 
@@ -197,7 +195,6 @@ public class TopicService {
 		return PaginationObject.<List<TopicItemData>>builder()
 				.data(items)
 				.meta(meta)
-				.schema(schema)
 				.build();
 	}
 
@@ -292,54 +289,36 @@ public class TopicService {
 
 	@Cacheable(
 			cacheNames = "topic-tree",
-			key = "#collectionId"
+			key = "#collectionId + ':parent:' + (#parentId != null ? #parentId : 'root') + ':page:' + #pageable.pageNumber + ':size:' + #pageable.pageSize"
 	)
-	public List<TopicDTO> getTopicsByCollection(Long collectionId) {
+	public PaginationObject<List<TopicDTO>> getTopicsByCollection(Long collectionId, Long parentId,
+			Pageable pageable) {
 		Collection collection = this.collectionRepository.findById(collectionId)
 				.orElseThrow(
 						() -> new ResourceNotFoundException("Collection not found with id: " + collectionId));
 
 		validateCollectionAccess(collection);
 
-		List<Topic> allTopicsByCollection = this.topicRepository.findByCollectionId(collectionId);
+		Page<TopicDTO> topicPage = (parentId == null)
+				? this.topicRepository.findByCollectionIdAndParentIsNull(collectionId, pageable)
+				: this.topicRepository.findByCollectionIdAndParentId(collectionId, parentId, pageable);
 
-		return buildTopicsTree(allTopicsByCollection);
+		Meta meta = Meta.builder()
+				.page((long) pageable.getPageNumber())
+				.pages((long) topicPage.getTotalPages())
+				.size((long) pageable.getPageSize())
+				.total(topicPage.getTotalElements())
+				.build();
+
+		return PaginationObject.<List<TopicDTO>>builder()
+				.data(topicPage.getContent())
+				.meta(meta)
+				.build();
 	}
-
-	private List<TopicDTO> buildTopicsTree(List<Topic> topics) {
-		Map<Long, TopicDTO> topicMap = new HashMap<>();
-
-		for (Topic topic : topics) {
-			TopicDTO dto = topicMapper.toDto(topic);
-			dto.setChildren(new ArrayList<>());
-			topicMap.put(topic.getId(), dto);
-		}
-
-		List<TopicDTO> roots = new ArrayList<>();
-
-		for (Topic topic : topics) {
-			TopicDTO current = topicMap.get(topic.getId());
-
-			Long parentId = current.getParentId();
-			if (parentId == null) {
-				roots.add(current);
-				continue;
-			}
-
-			TopicDTO parent = topicMap.get(parentId);
-			if (parent != null) {
-				parent.getChildren().add(current);
-			}
-		}
-
-		return roots;
-	}
-
-
 
 	@Transactional
 	@Caching(
-			evict = {@CacheEvict(cacheNames = "topic-tree", key = "#collectionId")}
+			evict = {@CacheEvict(cacheNames = "topic-tree", allEntries = true)}
 	)
 	public TopicDTO createCollectionTopic(Long collectionId, CreateTopicDTO createTopicDTO) {
 		Collection collection = collectionRepository.findById(collectionId)
@@ -462,14 +441,17 @@ public class TopicService {
 		Topic topic = this.topicRepository.findById(topicId)
 				.orElseThrow(() -> new ResourceNotFoundException("Topic not found with id: " + topicId));
 
-		List<SchemaAttributeGroup> existingGroups = this.schemaAttributeGroupRepository.findByTopicIdWithAttributes(topicId);
+		List<SchemaAttributeGroup> existingGroups = this.schemaAttributeGroupRepository.findByTopicIdWithAttributes(
+				topicId);
 		if (!existingGroups.isEmpty()) {
-			throw new ResourceAlreadyExistException("Topic already has a schema with groups for topicId: " + topicId);
+			throw new ResourceAlreadyExistException(
+					"Topic already has a schema with groups for topicId: " + topicId);
 		}
 
-		String schemaName = createTopicSchemaDTO.getName() != null && !createTopicSchemaDTO.getName().isBlank()
-				? createTopicSchemaDTO.getName()
-				: topic.getName() + " Schema";
+		String schemaName =
+				createTopicSchemaDTO.getName() != null && !createTopicSchemaDTO.getName().isBlank()
+						? createTopicSchemaDTO.getName()
+						: topic.getName() + " Schema";
 
 		CreateSchemaDTO schemaDTO = CreateSchemaDTO.builder()
 				.name(schemaName)
@@ -531,7 +513,8 @@ public class TopicService {
 		long usageCount = this.topicRepository.countBySchemaId(originalSchema.getId());
 
 		if (usageCount <= 1) {
-			LOG.info("Schema {} is already dedicated to topicId {}, no fork needed", originalSchema.getId(), topicId);
+			LOG.info("Schema {} is already dedicated to topicId {}, no fork needed",
+					originalSchema.getId(), topicId);
 			return getTopicSchema(topicId);
 		}
 
@@ -548,7 +531,8 @@ public class TopicService {
 				.build();
 
 		// 2. Clone Groups and Attributes
-		List<SchemaAttributeGroup> oldGroups = this.schemaAttributeGroupRepository.findBySchemaIdWithAttributes(originalSchema.getId());
+		List<SchemaAttributeGroup> oldGroups = this.schemaAttributeGroupRepository.findBySchemaIdWithAttributes(
+				originalSchema.getId());
 		Map<Long, SchemaAttributeGroup> oldGroupToNewGroup = new HashMap<>();
 		Map<Long, SchemaAttribute> oldAttrToNewAttr = new HashMap<>();
 
@@ -599,6 +583,9 @@ public class TopicService {
 							.template(newTemplate)
 							.position(oldElement.getPosition())
 							.type(oldElement.getType())
+							.side(oldElement.getSide())
+							.sectionLabel(oldElement.getSectionLabel())
+							.repeatable(oldElement.getRepeatable())
 							.build();
 
 					if (oldElement.getField() != null) {
@@ -649,12 +636,14 @@ public class TopicService {
 		for (TopicItem item : items) {
 			if (item.getGroupInstances() != null) {
 				for (TopicItemAttributeGroup gi : item.getGroupInstances()) {
-					if (gi.getGroupDefinition() != null && oldGroupToNewGroup.containsKey(gi.getGroupDefinition().getId())) {
+					if (gi.getGroupDefinition() != null && oldGroupToNewGroup.containsKey(
+							gi.getGroupDefinition().getId())) {
 						gi.setGroupDefinition(oldGroupToNewGroup.get(gi.getGroupDefinition().getId()));
 					}
 					if (gi.getValues() != null) {
 						for (TopicItemAttributeValue val : gi.getValues()) {
-							if (val.getAttribute() != null && oldAttrToNewAttr.containsKey(val.getAttribute().getId())) {
+							if (val.getAttribute() != null && oldAttrToNewAttr.containsKey(
+									val.getAttribute().getId())) {
 								val.setAttribute(oldAttrToNewAttr.get(val.getAttribute().getId()));
 							}
 						}
@@ -663,7 +652,8 @@ public class TopicService {
 			}
 		}
 
-		LOG.info("Successfully forked schema {} to {} for topicId {}", originalSchema.getId(), savedForkedSchema.getId(), topicId);
+		LOG.info("Successfully forked schema {} to {} for topicId {}", originalSchema.getId(),
+				savedForkedSchema.getId(), topicId);
 		return getTopicSchema(topicId);
 	}
 
@@ -679,14 +669,17 @@ public class TopicService {
 				.orElseThrow(() -> new ResourceNotFoundException("Topic not found with id: " + topicId));
 
 		Template template = this.templateRepository.findById(templateId)
-				.orElseThrow(() -> new ResourceNotFoundException("Template not found with id: " + templateId));
+				.orElseThrow(
+						() -> new ResourceNotFoundException("Template not found with id: " + templateId));
 
 		if (topic.getSchema() == null) {
 			throw new ResourceNotFoundException("Topic has no assigned schema");
 		}
 
-		if (template.getSchema() == null || !template.getSchema().getId().equals(topic.getSchema().getId())) {
-			throw new IllegalArgumentException("Template does not belong to the schema assigned to this topic");
+		if (template.getSchema() == null || !template.getSchema().getId()
+				.equals(topic.getSchema().getId())) {
+			throw new IllegalArgumentException(
+					"Template does not belong to the schema assigned to this topic");
 		}
 
 		topic.setActiveTemplate(template);
