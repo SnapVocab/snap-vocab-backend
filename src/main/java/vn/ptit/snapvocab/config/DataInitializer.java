@@ -36,15 +36,18 @@ public class DataInitializer implements CommandLineRunner {
 	private final UserRepository userRepository;
 	private final PasswordEncoder passwordEncoder;
 	private final SchemaRepository schemaRepository;
+	private final SemanticBindingMigration semanticBindingMigration;
 
 	public DataInitializer(AuthorityRepository authorityRepository,
 			UserRepository userRepository,
 			PasswordEncoder passwordEncoder,
-			SchemaRepository schemaRepository) {
+			SchemaRepository schemaRepository,
+			SemanticBindingMigration semanticBindingMigration) {
 		this.authorityRepository = authorityRepository;
 		this.userRepository = userRepository;
 		this.passwordEncoder = passwordEncoder;
 		this.schemaRepository = schemaRepository;
+		this.semanticBindingMigration = semanticBindingMigration;
 	}
 
 	@Override
@@ -56,6 +59,7 @@ public class DataInitializer implements CommandLineRunner {
 
 		createAdminUserIfNotFound();
 		createDefaultEnglishSchemaIfNotFound();
+		semanticBindingMigration.migrate();
 	}
 
 	private void createAuthorityIfNotFound(String name) {
@@ -98,7 +102,7 @@ public class DataInitializer implements CommandLineRunner {
 					.templates(new ArrayList<>())
 					.build();
 
-			// 1. Group Main
+
 			SchemaAttributeGroup mainGroup = SchemaAttributeGroup.builder()
 					.schema(schema)
 					.name("main")
@@ -166,7 +170,7 @@ public class DataInitializer implements CommandLineRunner {
 					List.of(wordAttr, phoneticAttr, audioAttr, translationAttr, levelAttr,
 							defTranslationAttr));
 
-			// 2. Group Meaning
+
 			SchemaAttributeGroup meaningGroup = SchemaAttributeGroup.builder()
 					.schema(schema)
 					.name("meaning")
@@ -205,7 +209,7 @@ public class DataInitializer implements CommandLineRunner {
 
 			meaningGroup.getAttributes().addAll(List.of(meaningAttr, exampleAttr, imageAttr));
 
-			// 3. Group Examples
+
 			SchemaAttributeGroup examplesGroup = SchemaAttributeGroup.builder()
 					.schema(schema)
 					.name("examples")
@@ -239,7 +243,7 @@ public class DataInitializer implements CommandLineRunner {
 			schema.getAttributeGroups().add(meaningGroup);
 			schema.getAttributeGroups().add(examplesGroup);
 
-			// 4. Template Standard (Thẻ chuẩn)
+
 			Template standardTemplate = Template.builder()
 					.schema(schema)
 					.code("STANDARD")
@@ -248,7 +252,7 @@ public class DataInitializer implements CommandLineRunner {
 					.elements(new ArrayList<>())
 					.build();
 
-			// Front Section: Thông tin chung
+
 			standardTemplate.addElement(
 					TemplateElement.builder().position(0).side(vn.ptit.snapvocab.domain.enumeration.CardSide.FRONT)
 							.type(TemplateElementType.SECTION_BREAK).sectionLabel("Thông tin chung").repeatable(false).build());
@@ -265,7 +269,7 @@ public class DataInitializer implements CommandLineRunner {
 					createFieldElement(4, vn.ptit.snapvocab.domain.enumeration.CardSide.FRONT, audioAttr, SemanticRole.AUDIO, "Phát âm", true, true, 16,
 							Alignment.CENTER, null));
 
-			// Back Section: Nghĩa & Ví dụ
+
 			standardTemplate.addElement(
 					TemplateElement.builder().position(5).side(vn.ptit.snapvocab.domain.enumeration.CardSide.BACK)
 							.type(TemplateElementType.SECTION_BREAK).sectionLabel("Nghĩa & Ví dụ").repeatable(true).build());
@@ -279,7 +283,7 @@ public class DataInitializer implements CommandLineRunner {
 					createFieldElement(8, vn.ptit.snapvocab.domain.enumeration.CardSide.BACK, imageAttr, SemanticRole.IMAGE, "Hình ảnh", true, false, null,
 							Alignment.CENTER, null));
 
-			// 5. Template Listening (Luyện nghe)
+
 			Template listeningTemplate = Template.builder()
 					.schema(schema)
 					.code("LISTENING")
@@ -311,7 +315,7 @@ public class DataInitializer implements CommandLineRunner {
 					createFieldElement(6, vn.ptit.snapvocab.domain.enumeration.CardSide.BACK, exampleAttr, SemanticRole.EXAMPLE_SENTENCE, "Ví dụ", true, false,
 							15, Alignment.LEFT, "#4B5563"));
 
-			// 6. Template Reverse (Đảo mặt)
+
 			Template reverseTemplate = Template.builder()
 					.schema(schema)
 					.code("REVERSE")

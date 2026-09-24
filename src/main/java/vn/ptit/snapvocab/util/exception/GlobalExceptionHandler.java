@@ -11,6 +11,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import vn.ptit.snapvocab.domain.dto.common.RestResponse;
+import vn.ptit.snapvocab.quiz.exception.QuizException;
 
 @Slf4j
 @RestControllerAdvice
@@ -127,6 +128,19 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<RestResponse<Object>> handleScan(ScanException ex) {
 
 		log.warn("Scan failed with {}: {}", ex.getCode(), ex.getMessage());
+		RestResponse<Object> response = RestResponse.builder()
+				.statusCode(ex.getCode().getStatus().value())
+				.error(ex.getCode().name())
+				.data(ex.getDetails())
+				.build();
+
+		return ResponseEntity.status(ex.getCode().getStatus()).body(response);
+	}
+
+	@ExceptionHandler(QuizException.class)
+	public ResponseEntity<RestResponse<Object>> handleQuiz(QuizException ex) {
+
+		log.info("Quiz request rejected with {}: {}", ex.getCode(), ex.getMessage());
 		RestResponse<Object> response = RestResponse.builder()
 				.statusCode(ex.getCode().getStatus().value())
 				.error(ex.getCode().name())

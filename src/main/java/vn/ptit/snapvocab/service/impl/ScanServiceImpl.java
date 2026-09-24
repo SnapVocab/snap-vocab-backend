@@ -38,7 +38,8 @@ import vn.ptit.snapvocab.util.exception.ScanException;
 
 /**
  * Scan-to-vocabulary (BF-06). The main flow is asynchronous: upload to storage,
- * submit (quota + queue), then poll. The multipart endpoint is kept, synchronous,
+ * submit (quota + queue), then poll. The multipart endpoint is kept,
+ * synchronous,
  * until the app has moved over; it still goes through quota and records a
  * {@link ScanRequest} so it cannot be used to bypass the daily limit.
  */
@@ -144,7 +145,8 @@ public class ScanServiceImpl implements ScanService {
 			throw new ScanException(ScanErrorCode.INVALID_IMAGE, "Unsupported content type: " + contentType);
 		}
 		if (image.getSize() > maxUploadBytes()) {
-			throw new ScanException(ScanErrorCode.INVALID_IMAGE, "Upload exceeds " + aiServiceProperties.getMaxUploadMb() + "MB");
+			throw new ScanException(ScanErrorCode.INVALID_IMAGE,
+					"Upload exceeds " + aiServiceProperties.getMaxUploadMb() + "MB");
 		}
 		try {
 			String filename = image.getOriginalFilename() != null ? image.getOriginalFilename() : "photo";

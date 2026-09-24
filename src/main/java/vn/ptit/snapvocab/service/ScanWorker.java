@@ -23,7 +23,8 @@ import vn.ptit.snapvocab.util.exception.ScanException;
 /**
  * Runs scans: PENDING -> PROCESSING -> DONE / FAILED.
  *
- * <p>Each status change is its own short transaction; nothing is held open
+ * <p>
+ * Each status change is its own short transaction; nothing is held open
  * while the AI service works. If the sweeper failed the job in the meantime,
  * the worker's late write loses (status check + optimistic lock) and the job
  * stays FAILED.
@@ -52,7 +53,9 @@ public class ScanWorker {
 		this.clock = clock;
 	}
 
-	/** Queue entry point for a PENDING job whose image is in storage. Never throws. */
+	/**
+	 * Queue entry point for a PENDING job whose image is in storage. Never throws.
+	 */
 	public void process(String requestId) {
 		MDC.put("requestId", requestId);
 		try {
@@ -85,7 +88,10 @@ public class ScanWorker {
 		}
 	}
 
-	/** The queue refused the job: fail it so it neither lingers nor counts toward quota. */
+	/**
+	 * The queue refused the job: fail it so it neither lingers nor counts toward
+	 * quota.
+	 */
 	public void markRejected(String requestId) {
 		finish(requestId, ScanStatus.PENDING, r -> {
 			r.setStatus(ScanStatus.FAILED);
@@ -119,7 +125,10 @@ public class ScanWorker {
 		}
 	}
 
-	/** PENDING -> PROCESSING; null when the job is gone or no longer pending (e.g. swept). */
+	/**
+	 * PENDING -> PROCESSING; null when the job is gone or no longer pending (e.g.
+	 * swept).
+	 */
 	private ScanRequest start(String requestId) {
 		return transactionTemplate.execute(status -> {
 			ScanRequest job = scanRequestRepository.findById(requestId).orElse(null);
@@ -148,13 +157,17 @@ public class ScanWorker {
 		});
 	}
 
-	/** Moves the job out of {@code expected}, unless someone else (the sweeper) already did. */
+	/**
+	 * Moves the job out of {@code expected}, unless someone else (the sweeper)
+	 * already did.
+	 */
 	private void finish(String requestId, ScanStatus expected, Consumer<ScanRequest> update) {
 		try {
 			transactionTemplate.executeWithoutResult(status -> {
 				ScanRequest job = scanRequestRepository.findById(requestId).orElse(null);
 				if (job == null || job.getStatus() != expected) {
-					log.warn("Scan {} result dropped: already {}", requestId, job == null ? "deleted" : job.getStatus());
+					log.warn("Scan {} result dropped: already {}", requestId,
+							job == null ? "deleted" : job.getStatus());
 					return;
 				}
 				update.accept(job);

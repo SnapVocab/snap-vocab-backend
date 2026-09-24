@@ -17,6 +17,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.ColumnDefault;
 import vn.ptit.snapvocab.domain.enumeration.Alignment;
 import vn.ptit.snapvocab.domain.enumeration.SemanticRole;
 
@@ -72,4 +73,13 @@ public class TemplateField {
 
 	@Column(name = "color")
 	private String color;
+
+	/**
+	 * Server-side semantic binding: resolved by Quiz through {@link #semanticRole} but never
+	 * rendered. The whole FIELD element is left out of template DTOs sent to clients.
+	 */
+	@Builder.Default
+	@ColumnDefault("0")
+	@Column(name = "hidden", nullable = false)
+	private boolean hidden = false;
 }

@@ -79,27 +79,26 @@ public class TopicService {
 	private final SchemaMapper schemaMapper;
 	private final Logger LOG = LoggerFactory.getLogger(TopicService.class);
 
-
 	/**
-	 * Retrieves paginated vocabulary items for a given topic with EAV attributes aggregated into a
+	 * Retrieves paginated vocabulary items for a given topic with EAV attributes
+	 * aggregated into a
 	 * clean, client-friendly structure, including the topic schema definition.
 	 * <p>
 	 * Query Strategy:
 	 * <ol>
-	 *   <li>Fetch paginated {@code topicItemIds} for the given topic ID.</li>
-	 *   <li>Batch fetch attribute rows for those IDs (avoiding N+1 queries).</li>
-	 *   <li>Aggregate rows into dynamic item properties and extract schema metadata with English labels.</li>
+	 * <li>Fetch paginated {@code topicItemIds} for the given topic ID.</li>
+	 * <li>Batch fetch attribute rows for those IDs (avoiding N+1 queries).</li>
+	 * <li>Aggregate rows into dynamic item properties and extract schema metadata
+	 * with English labels.</li>
 	 * </ol>
 	 *
 	 * @param topicId  The topic ID to fetch items for.
 	 * @param pageable Pagination parameters (page, size, sort).
-	 * @return A {@link PaginationObject} containing the aggregated items, pagination meta, and schema
-	 * metadata.
+	 * @return A {@link PaginationObject} containing the aggregated items,
+	 *         pagination meta, and schema
+	 *         metadata.
 	 */
-	@Cacheable(
-			cacheNames = "topic-items",
-			key = "#topicId + ':page:' + #pageable.pageNumber + ':size:' + #pageable.pageSize"
-	)
+	@Cacheable(cacheNames = "topic-items", key = "#topicId + ':page:' + #pageable.pageNumber + ':size:' + #pageable.pageSize")
 	public PaginationObject<List<TopicItemData>> getTopicItems(Long topicId, Pageable pageable) {
 		this.validateTopicAccess(topicId);
 		LOG.info("Fetching topic items for topic ID: {}", topicId);
@@ -150,22 +149,20 @@ public class TopicService {
 				@SuppressWarnings("unchecked")
 				Map<String, Object> groupAttrs = (Map<String, Object>) itemGroups.computeIfAbsent(
 						groupName,
-						k -> new LinkedHashMap<String, Object>()
-				);
+						k -> new LinkedHashMap<String, Object>());
 				if (attrName != null) {
 					groupAttrs.put(attrName, value);
 				}
 			} else {
 				// Multiple group: collect instances by instanceId preserving position order
-				Map<String, Map<Long, Map<String, Object>>> itemMultiGroups =
-						multiGroupsByItem.computeIfAbsent(itemId, k -> new LinkedHashMap<>());
-				Map<Long, Map<String, Object>> instances =
-						itemMultiGroups.computeIfAbsent(groupName, k -> new LinkedHashMap<>());
+				Map<String, Map<Long, Map<String, Object>>> itemMultiGroups = multiGroupsByItem.computeIfAbsent(itemId,
+						k -> new LinkedHashMap<>());
+				Map<Long, Map<String, Object>> instances = itemMultiGroups.computeIfAbsent(groupName,
+						k -> new LinkedHashMap<>());
 				if (instanceId != null) {
 					Map<String, Object> instanceAttrs = instances.computeIfAbsent(
 							instanceId,
-							k -> new LinkedHashMap<>()
-					);
+							k -> new LinkedHashMap<>());
 					if (attrName != null) {
 						instanceAttrs.put(attrName, value);
 					}
@@ -199,8 +196,10 @@ public class TopicService {
 	}
 
 	/**
-	 * Builds structured schema metadata from attribute rows. Returns a {@link TopicSchemaDTO}
-	 * containing a list of groups, where each group has a list of attributes. Preserves group and
+	 * Builds structured schema metadata from attribute rows. Returns a
+	 * {@link TopicSchemaDTO}
+	 * containing a list of groups, where each group has a list of attributes.
+	 * Preserves group and
 	 * attribute position ordering.
 	 */
 	private TopicSchemaDTO buildSchema(List<TopicItemAttributeRow> rows, Long topicId) {
@@ -222,13 +221,12 @@ public class TopicService {
 							.multiple(row.isGroupMultiple())
 							.position(row.getGroupInstancePosition())
 							.attributes(new ArrayList<>())
-							.build()
-			);
+							.build());
 
 			String attrName = row.getAttributeName();
 			if (attrName != null) {
-				Map<String, SchemaAttributeDTO> groupAttrs =
-						attributeMapByGroup.computeIfAbsent(groupName, k -> new LinkedHashMap<>());
+				Map<String, SchemaAttributeDTO> groupAttrs = attributeMapByGroup.computeIfAbsent(groupName,
+						k -> new LinkedHashMap<>());
 
 				groupAttrs.computeIfAbsent(
 						attrName,
@@ -239,8 +237,7 @@ public class TopicService {
 								.dataType(row.getDataType())
 								.required(row.isAttributeRequired())
 								.position(row.getAttributePosition())
-								.build()
-				);
+								.build());
 			}
 		}
 
@@ -258,13 +255,11 @@ public class TopicService {
 	}
 
 	/**
-	 * Retrieves the full schema definition for a topic directly from the database, containing a list
+	 * Retrieves the full schema definition for a topic directly from the database,
+	 * containing a list
 	 * of groups and their respective lists of attributes.
 	 */
-	@Cacheable(
-			cacheNames = "topic-schema",
-			key = "#topicId"
-	)
+	@Cacheable(cacheNames = "topic-schema", key = "#topicId")
 	public TopicSchemaDTO getTopicSchema(Long topicId) {
 		this.validateTopicAccess(topicId);
 		LOG.info("Fetching topic schema for topic ID: {}", topicId);
@@ -287,10 +282,7 @@ public class TopicService {
 		return dto;
 	}
 
-	@Cacheable(
-			cacheNames = "topic-tree",
-			key = "#collectionId + ':parent:' + (#parentId != null ? #parentId : 'root') + ':page:' + #pageable.pageNumber + ':size:' + #pageable.pageSize"
-	)
+	@Cacheable(cacheNames = "topic-tree", key = "#collectionId + ':parent:' + (#parentId != null ? #parentId : 'root') + ':page:' + #pageable.pageNumber + ':size:' + #pageable.pageSize")
 	public PaginationObject<List<TopicDTO>> getTopicsByCollection(Long collectionId, Long parentId,
 			Pageable pageable) {
 		Collection collection = this.collectionRepository.findById(collectionId)
@@ -317,9 +309,7 @@ public class TopicService {
 	}
 
 	@Transactional
-	@Caching(
-			evict = {@CacheEvict(cacheNames = "topic-tree", allEntries = true)}
-	)
+	@Caching(evict = { @CacheEvict(cacheNames = "topic-tree", allEntries = true) })
 	public TopicDTO createCollectionTopic(Long collectionId, CreateTopicDTO createTopicDTO) {
 		Collection collection = collectionRepository.findById(collectionId)
 				.orElseThrow(
@@ -338,8 +328,7 @@ public class TopicService {
 			if (currentUserId == null) {
 				throw new AccessDeniedException("Authentication required to add topics to this collection");
 			}
-			boolean isOwner =
-					collection.getOwner() != null && collection.getOwner().getId().equals(currentUserId);
+			boolean isOwner = collection.getOwner() != null && collection.getOwner().getId().equals(currentUserId);
 			boolean isAdmin = SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.ADMIN);
 			if (!isOwner && !isAdmin) {
 				throw new AccessDeniedException(
@@ -419,8 +408,7 @@ public class TopicService {
 				throw new AccessDeniedException(
 						"Authentication required to access this private collection");
 			}
-			boolean isOwner =
-					collection.getOwner() != null && collection.getOwner().getId().equals(currentUserId);
+			boolean isOwner = collection.getOwner() != null && collection.getOwner().getId().equals(currentUserId);
 			boolean isAdmin = SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.ADMIN);
 			if (!isOwner && !isAdmin) {
 				throw new AccessDeniedException("You do not have permission to access this collection");
@@ -429,10 +417,7 @@ public class TopicService {
 	}
 
 	@Transactional
-	@CacheEvict(
-			cacheNames = "topic-schema",
-			key = "#topicId"
-	)
+	@CacheEvict(cacheNames = "topic-schema", key = "#topicId")
 	public TopicSchemaDTO createTopicSchema(Long topicId,
 			CreateTopicSchemaDTO createTopicSchemaDTO) {
 		this.validateTopicAccess(topicId);
@@ -448,10 +433,9 @@ public class TopicService {
 					"Topic already has a schema with groups for topicId: " + topicId);
 		}
 
-		String schemaName =
-				createTopicSchemaDTO.getName() != null && !createTopicSchemaDTO.getName().isBlank()
-						? createTopicSchemaDTO.getName()
-						: topic.getName() + " Schema";
+		String schemaName = createTopicSchemaDTO.getName() != null && !createTopicSchemaDTO.getName().isBlank()
+				? createTopicSchemaDTO.getName()
+				: topic.getName() + " Schema";
 
 		CreateSchemaDTO schemaDTO = CreateSchemaDTO.builder()
 				.name(schemaName)
@@ -472,10 +456,7 @@ public class TopicService {
 	}
 
 	@Transactional
-	@CacheEvict(
-			cacheNames = "topic-schema",
-			key = "#topicId"
-	)
+	@CacheEvict(cacheNames = "topic-schema", key = "#topicId")
 	public TopicSchemaDTO assignSchemaToTopic(Long topicId, Long schemaId) {
 		this.validateTopicAccess(topicId);
 		LOG.info("Assigning schemaId {} to topicId {}", schemaId, topicId);
@@ -492,12 +473,8 @@ public class TopicService {
 		return getTopicSchema(topicId);
 	}
 
-
 	@Transactional
-	@CacheEvict(
-			cacheNames = "topic-schema",
-			key = "#topicId"
-	)
+	@CacheEvict(cacheNames = "topic-schema", key = "#topicId")
 	public TopicSchemaDTO forkTopicSchema(Long topicId) {
 		this.validateTopicAccess(topicId);
 		LOG.info("Forking schema for topicId: {}", topicId);
@@ -592,7 +569,8 @@ public class TopicService {
 						TemplateField oldField = oldElement.getField();
 						SchemaAttribute oldAttr = oldField.getSchemaAttribute();
 						SchemaAttribute newAttr = (oldAttr != null && oldAttr.getId() != null)
-								? oldAttrToNewAttr.get(oldAttr.getId()) : null;
+								? oldAttrToNewAttr.get(oldAttr.getId())
+								: null;
 
 						TemplateField newField = TemplateField.builder()
 								.element(newElement)
@@ -604,6 +582,7 @@ public class TopicService {
 								.fontSize(oldField.getFontSize())
 								.alignment(oldField.getAlignment())
 								.color(oldField.getColor())
+								.hidden(oldField.isHidden())
 								.build();
 						newElement.setField(newField);
 					}
@@ -658,9 +637,7 @@ public class TopicService {
 	}
 
 	@Transactional
-	@Caching(
-			evict = {@CacheEvict(cacheNames = "topic-tree", allEntries = true)}
-	)
+	@Caching(evict = { @CacheEvict(cacheNames = "topic-tree", allEntries = true) })
 	public TopicDTO setActiveTemplate(Long topicId, Long templateId) {
 		this.validateTopicAccess(topicId);
 		LOG.info("Setting active template {} for topicId {}", templateId, topicId);
@@ -686,7 +663,6 @@ public class TopicService {
 		Topic saved = this.topicRepository.save(topic);
 		return this.topicMapper.toDto(saved);
 	}
-
 
 	public TemplateDTO createTopicTemplate() {
 		return null;

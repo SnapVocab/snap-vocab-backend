@@ -89,7 +89,8 @@ public class SchemaService {
 		}
 		return schemas.stream()
 				.map(schema -> {
-					List<SchemaAttributeGroup> groups = this.schemaAttributeGroupRepository.findBySchemaIdWithAttributes(schema.getId());
+					List<SchemaAttributeGroup> groups = this.schemaAttributeGroupRepository
+							.findBySchemaIdWithAttributes(schema.getId());
 					return this.schemaMapper.toDto(schema, groups);
 				})
 				.toList();
@@ -107,14 +108,17 @@ public class SchemaService {
 
 		validateSchemaModification(schema, userId);
 
-		// Additive Evolution protection: verify that no attribute currently in use is being deleted
-		List<SchemaAttributeGroup> existingGroups = this.schemaAttributeGroupRepository.findBySchemaIdWithAttributes(schemaId);
+		// Additive Evolution protection: verify that no attribute currently in use is
+		// being deleted
+		List<SchemaAttributeGroup> existingGroups = this.schemaAttributeGroupRepository
+				.findBySchemaIdWithAttributes(schemaId);
 		Set<String> newGroupAttrKeys = new HashSet<>();
 		if (createSchemaDTO.getSchemaGroups() != null) {
 			for (var g : createSchemaDTO.getSchemaGroups()) {
 				if (g.getAttributes() != null) {
 					for (var a : g.getAttributes()) {
-						newGroupAttrKeys.add(g.getName().trim().toLowerCase() + "::" + a.getName().trim().toLowerCase());
+						newGroupAttrKeys
+								.add(g.getName().trim().toLowerCase() + "::" + a.getName().trim().toLowerCase());
 					}
 				}
 			}
@@ -131,8 +135,7 @@ public class SchemaService {
 							throw new IllegalStateException(
 									"Cannot delete attribute '" + ea.getName() + "' because it is currently used by "
 											+ valueCount + " vocabulary item(s) and " + templateCount
-											+ " template field(s). Please fork the schema for your topic to customize it independently."
-							);
+											+ " template field(s). Please fork the schema for your topic to customize it independently.");
 						}
 					}
 				}
@@ -162,7 +165,8 @@ public class SchemaService {
 
 		if (assignedCount > 0) {
 			throw new IllegalStateException(
-					"Cannot delete schema because it is currently assigned to " + assignedCount + " topic(s). Fork or reassign those topics first.");
+					"Cannot delete schema because it is currently assigned to " + assignedCount
+							+ " topic(s). Fork or reassign those topics first.");
 		}
 
 		this.schemaRepository.delete(schema);
