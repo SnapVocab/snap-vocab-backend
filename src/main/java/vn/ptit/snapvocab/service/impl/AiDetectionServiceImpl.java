@@ -26,7 +26,8 @@ import vn.ptit.snapvocab.service.AiDetectionService;
 import vn.ptit.snapvocab.util.exception.ScanException;
 
 /**
- * Calls the AI service and turns every failure into a {@link ScanException} with
+ * Calls the AI service and turns every failure into a {@link ScanException}
+ * with
  * a code the app can act on, instead of a bare 500.
  */
 @Slf4j
@@ -44,7 +45,8 @@ public class AiDetectionServiceImpl implements AiDetectionService {
 	public AiDetectResponseDTO detect(ScanImage image, String requestId) {
 		MultipartBodyBuilder body = new MultipartBodyBuilder();
 		// Set the part type explicitly: inferring it from the filename yields
-		// application/octet-stream for names without an extension, which the AI rejects.
+		// application/octet-stream for names without an extension, which the AI
+		// rejects.
 		body.part("file", new ByteArrayResource(image.bytes()))
 				.filename(image.filename())
 				.contentType(MediaType.parseMediaType(image.contentType()));
@@ -114,7 +116,10 @@ public class AiDetectionServiceImpl implements AiDetectionService {
 		}
 	}
 
-	/** Connect timeouts mean the service is down; only read timeouts mean it is too slow. */
+	/**
+	 * Connect timeouts mean the service is down; only read timeouts mean it is too
+	 * slow.
+	 */
 	private boolean isReadTimeout(ResourceAccessException e) {
 		if (!(e.getCause() instanceof SocketTimeoutException timeout)) {
 			return false;

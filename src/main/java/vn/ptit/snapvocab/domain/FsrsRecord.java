@@ -27,15 +27,9 @@ import vn.ptit.snapvocab.domain.enumeration.CardState;
 @AllArgsConstructor
 @Builder
 @Entity
-@Table(
-		name = "fsrs_records",
-		uniqueConstraints = {
-				@UniqueConstraint(
-						name = "uq_fsrs_user_topic_item",
-						columnNames = {"user_id", "topic_item_id"}
-				)
-		}
-)
+@Table(name = "fsrs_records", uniqueConstraints = {
+		@UniqueConstraint(name = "uq_fsrs_user_topic_item", columnNames = { "user_id", "topic_item_id" })
+})
 public class FsrsRecord extends BaseTimeEntity {
 
 	@Id

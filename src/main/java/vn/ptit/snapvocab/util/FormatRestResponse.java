@@ -32,11 +32,9 @@ public class FormatRestResponse implements ResponseBodyAdvice<Object> {
 			ServerHttpRequest request,
 			ServerHttpResponse response) {
 
-		HttpServletResponse servletResponse =
-				((ServletServerHttpResponse) response).getServletResponse();
+		HttpServletResponse servletResponse = ((ServletServerHttpResponse) response).getServletResponse();
 
-		HttpServletRequest servletRequest =
-				((ServletServerHttpRequest) request).getServletRequest();
+		HttpServletRequest servletRequest = ((ServletServerHttpRequest) request).getServletRequest();
 
 		String path = servletRequest.getRequestURI();
 

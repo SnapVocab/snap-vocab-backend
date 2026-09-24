@@ -45,25 +45,26 @@ public class Word extends BaseCreatedAtEntity {
 	@Column(name = "lang_code", length = 20, nullable = false)
 	private String langCode;
 
-	// Ordered by id (import order) so "first meaning/pronunciation" is stable across
+	// Ordered by id (import order) so "first meaning/pronunciation" is stable
+	// across
 	// requests; HashSet iteration order made it change between calls.
 	@OneToMany(fetch = FetchType.LAZY, mappedBy = "word")
-	@JsonIgnoreProperties(value = {"word"}, allowSetters = true)
+	@JsonIgnoreProperties(value = { "word" }, allowSetters = true)
 	@OrderBy("id ASC")
 	private Set<Pronunciation> pronunciations = new HashSet<>();
 
 	@OneToMany(fetch = FetchType.LAZY, mappedBy = "word")
-	@JsonIgnoreProperties(value = {"word"}, allowSetters = true)
+	@JsonIgnoreProperties(value = { "word" }, allowSetters = true)
 	@OrderBy("id ASC")
 	private Set<Translation> translations = new HashSet<>();
 
 	@OneToMany(fetch = FetchType.LAZY, mappedBy = "word")
-	@JsonIgnoreProperties(value = {"word", "definition"}, allowSetters = true)
+	@JsonIgnoreProperties(value = { "word", "definition" }, allowSetters = true)
 	@OrderBy("id ASC")
 	private Set<WordDefinition> wordDefinitions = new HashSet<>();
 
 	@OneToMany(fetch = FetchType.LAZY, mappedBy = "word")
-	@JsonIgnoreProperties(value = {"word"}, allowSetters = true)
+	@JsonIgnoreProperties(value = { "word" }, allowSetters = true)
 	@OrderBy("id ASC")
 	private Set<WordRelation> wordRelations = new HashSet<>();
 }
