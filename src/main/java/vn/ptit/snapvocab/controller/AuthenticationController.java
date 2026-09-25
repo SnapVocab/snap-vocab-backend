@@ -18,6 +18,9 @@ import vn.ptit.snapvocab.domain.dto.auth.ResetPasswordRequest;
 import vn.ptit.snapvocab.domain.dto.auth.ResponseLoginDTO;
 import vn.ptit.snapvocab.domain.dto.auth.ResponseRegisterDTO;
 import vn.ptit.snapvocab.domain.dto.auth.VerifyMailRequest;
+import vn.ptit.snapvocab.domain.dto.user.ChangePasswordRequest;
+import vn.ptit.snapvocab.security.SecurityUtils;
+import vn.ptit.snapvocab.util.exception.ResourceNotFoundException;
 import vn.ptit.snapvocab.service.AuthenticationService;
 
 @RestController
@@ -85,5 +88,24 @@ public class AuthenticationController {
 		LOG.info("POST /auth/refresh");
 
 		return ResponseEntity.ok(this.authenticationService.refreshToken(refreshTokenRequest));
+	}
+
+	@PostMapping("/logout")
+	public ResponseEntity<Void> logout(@Valid @RequestBody RefreshTokenRequest request) {
+		LOG.info("POST /auth/logout");
+		this.authenticationService.logout(request.refreshToken());
+
+		return ResponseEntity.noContent().build();
+	}
+
+	/** Signs every other device out; this device gets a fresh pair of tokens. */
+	@PostMapping("/change-password")
+	public ResponseEntity<ResponseLoginDTO> changePassword(
+			@Valid @RequestBody ChangePasswordRequest request) {
+		LOG.info("POST /auth/change-password");
+		String email = SecurityUtils.getCurrentUserLogin()
+				.orElseThrow(() -> new ResourceNotFoundException("Not authenticated"));
+
+		return ResponseEntity.ok(this.authenticationService.changePassword(email, request));
 	}
 }

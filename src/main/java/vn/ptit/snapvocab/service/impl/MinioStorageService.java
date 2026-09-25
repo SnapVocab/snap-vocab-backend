@@ -23,10 +23,13 @@ import vn.ptit.snapvocab.domain.enumeration.UploadPurpose;
 import vn.ptit.snapvocab.repository.UserRepository;
 import vn.ptit.snapvocab.security.SecurityUtils;
 import vn.ptit.snapvocab.service.StorageService;
+import vn.ptit.snapvocab.util.exception.BadRequestAlertException;
 
 @Service
 @RequiredArgsConstructor
 public class MinioStorageService implements StorageService {
+
+	private static final long MAX_AVATAR_BYTES = 5L * 1024 * 1024;
 
 	private final MinioClient minioClient;
 	private final MinioProperties properties;
@@ -104,6 +107,17 @@ public class MinioStorageService implements StorageService {
 		}
 	}
 
+	/** BF-04: an avatar must be an image of at most 5MB, checked server side. */
+	private void validateAvatar(String objectName) {
+		if (!resolveContentType(objectName).startsWith("image/")) {
+			throw new BadRequestAlertException("Avatar must be an image");
+		}
+		long size = sizeOf(objectName).orElse(0L);
+		if (size > MAX_AVATAR_BYTES) {
+			throw new BadRequestAlertException("Avatar exceeds " + (MAX_AVATAR_BYTES / 1024 / 1024) + "MB");
+		}
+	}
+
 	@Override
 	public Optional<Long> sizeOf(String objectName) {
 		try {
@@ -147,11 +161,14 @@ public class MinioStorageService implements StorageService {
 
 		switch (purpose) {
 			case AVATAR -> {
+				validateAvatar(objectName);
 				String email = SecurityUtils.getCurrentUserLogin()
 						.orElseThrow(() -> new RuntimeException("Not authenticated"));
 				User user = userRepository.findOneByEmailIgnoreCase(email)
 						.orElseThrow(() -> new RuntimeException("User not found"));
-				user.setAvatarUrl(downloadUrl);
+				// Store the object key, not the presigned URL: that URL expires
+				// (BF-04: TTL <= 15 min) and a stored copy stops loading.
+				user.setAvatarUrl(objectName);
 				userRepository.save(user);
 			}
 		}

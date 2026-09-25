@@ -38,6 +38,9 @@ import vn.ptit.snapvocab.domain.dto.auth.ResetPasswordRequest;
 import vn.ptit.snapvocab.domain.dto.auth.ResponseLoginDTO;
 import vn.ptit.snapvocab.domain.dto.auth.ResponseRegisterDTO;
 import vn.ptit.snapvocab.domain.dto.auth.VerifyMailRequest;
+import vn.ptit.snapvocab.domain.dto.user.ChangePasswordRequest;
+import vn.ptit.snapvocab.domain.dto.user.UserDTO;
+import vn.ptit.snapvocab.util.exception.ResourceNotFoundException;
 import vn.ptit.snapvocab.domain.mapper.UserMapper;
 import vn.ptit.snapvocab.repository.AuthorityRepository;
 import vn.ptit.snapvocab.repository.UserRepository;
@@ -65,6 +68,7 @@ public class AuthenticationService {
 	private final AuthorityRepository authorityRepository;
 	private final MailService mailService;
 	private final PasswordEncoder passwordEncoder;
+	private final AvatarUrlService avatarUrlService;
 	@Value("${jwt.access-expiration:90000}")
 	private long accessTokenValidityInSeconds;
 
@@ -116,10 +120,14 @@ public class AuthenticationService {
 		String accessToken = createToken(authentication);
 		String refreshToken = refreshTokenService.createRefreshToken(user.getEmail());
 
+		UserDTO userDTO = userMapper.toDto(user);
+		// The stored value is a storage key; the app needs a URL it can load.
+		userDTO.setAvatarUrl(avatarUrlService.resolve(user.getAvatarUrl()));
+
 		return ResponseLoginDTO.builder()
 				.accessToken(accessToken)
 				.refreshToken(refreshToken)
-				.userDTO(userMapper.toDto(user))
+				.userDTO(userDTO)
 				.build();
 	}
 
@@ -334,6 +342,38 @@ public class AuthenticationService {
 
 		ResponseLoginDTO response = generateAuthResponse(u);
 		securityAuditLogger.success("REFRESH_TOKEN_ROTATION", u.getId());
+		return response;
+	}
+
+	/** Signs the caller out of this device only (BF-02: revoke the refresh token). */
+	public void logout(String refreshToken) {
+		refreshTokenService.revokeToken(refreshToken);
+	}
+
+	/**
+	 * Changes the password of the signed-in user and signs every device out,
+	 * then hands this device a fresh pair of tokens so the user stays signed in
+	 * where they made the change.
+	 */
+	@Transactional
+	public ResponseLoginDTO changePassword(String email, ChangePasswordRequest request) {
+		User user = userRepository.findOneWithAuthoritiesByEmailIgnoreCase(email)
+				.orElseThrow(() -> new ResourceNotFoundException("User not found: " + email));
+
+		if (!passwordEncoder.matches(request.currentPassword(), user.getPassword())) {
+			securityAuditLogger.failure("CHANGE_PASSWORD", email, "INVALID_CURRENT_PASSWORD");
+			throw new BadRequestAlertException("Current password is incorrect");
+		}
+		if (passwordEncoder.matches(request.newPassword(), user.getPassword())) {
+			throw new BadRequestAlertException("New password must differ from the current one");
+		}
+
+		user.setPassword(passwordEncoder.encode(request.newPassword()));
+		userRepository.save(user);
+
+		refreshTokenService.revokeAllTokens(email);
+		ResponseLoginDTO response = generateAuthResponse(user);
+		securityAuditLogger.success("CHANGE_PASSWORD", user.getId());
 		return response;
 	}
 }
