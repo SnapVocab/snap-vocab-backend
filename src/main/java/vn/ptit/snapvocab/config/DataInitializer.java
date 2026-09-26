@@ -10,22 +10,23 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
-import vn.ptit.snapvocab.domain.Authority;
-import vn.ptit.snapvocab.domain.Schema;
-import vn.ptit.snapvocab.domain.SchemaAttribute;
-import vn.ptit.snapvocab.domain.SchemaAttributeGroup;
-import vn.ptit.snapvocab.domain.Template;
-import vn.ptit.snapvocab.domain.TemplateElement;
-import vn.ptit.snapvocab.domain.TemplateField;
-import vn.ptit.snapvocab.domain.User;
-import vn.ptit.snapvocab.domain.enumeration.Alignment;
-import vn.ptit.snapvocab.domain.enumeration.DataType;
-import vn.ptit.snapvocab.domain.enumeration.SemanticRole;
-import vn.ptit.snapvocab.domain.enumeration.TemplateElementType;
-import vn.ptit.snapvocab.repository.AuthorityRepository;
-import vn.ptit.snapvocab.repository.SchemaRepository;
-import vn.ptit.snapvocab.repository.UserRepository;
+import vn.ptit.snapvocab.user.domain.Authority;
+import vn.ptit.snapvocab.vocab.domain.Schema;
+import vn.ptit.snapvocab.vocab.domain.SchemaAttribute;
+import vn.ptit.snapvocab.vocab.domain.SchemaAttributeGroup;
+import vn.ptit.snapvocab.vocab.domain.Template;
+import vn.ptit.snapvocab.vocab.domain.TemplateElement;
+import vn.ptit.snapvocab.vocab.domain.TemplateField;
+import vn.ptit.snapvocab.user.domain.User;
+import vn.ptit.snapvocab.vocab.domain.enumeration.Alignment;
+import vn.ptit.snapvocab.vocab.domain.enumeration.DataType;
+import vn.ptit.snapvocab.vocab.domain.enumeration.SemanticRole;
+import vn.ptit.snapvocab.vocab.domain.enumeration.TemplateElementType;
+import vn.ptit.snapvocab.user.repository.AuthorityRepository;
+import vn.ptit.snapvocab.vocab.repository.SchemaRepository;
+import vn.ptit.snapvocab.user.repository.UserRepository;
 import vn.ptit.snapvocab.security.AuthoritiesConstants;
+import vn.ptit.snapvocab.vocab.config.SemanticBindingMigration;
 
 @Component
 public class DataInitializer implements CommandLineRunner {
@@ -254,33 +255,33 @@ public class DataInitializer implements CommandLineRunner {
 
 
 			standardTemplate.addElement(
-					TemplateElement.builder().position(0).side(vn.ptit.snapvocab.domain.enumeration.CardSide.FRONT)
+					TemplateElement.builder().position(0).side(vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.FRONT)
 							.type(TemplateElementType.SECTION_BREAK).sectionLabel("Thông tin chung").repeatable(false).build());
 			standardTemplate.addElement(
-					createFieldElement(1, vn.ptit.snapvocab.domain.enumeration.CardSide.FRONT, wordAttr, SemanticRole.TARGET_WORD, "Từ vựng", false, false, 24,
+					createFieldElement(1, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.FRONT, wordAttr, SemanticRole.TARGET_WORD, "Từ vựng", false, false, 24,
 							Alignment.CENTER, "#111827"));
 			standardTemplate.addElement(
-					TemplateElement.builder().position(2).side(vn.ptit.snapvocab.domain.enumeration.CardSide.FRONT)
+					TemplateElement.builder().position(2).side(vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.FRONT)
 							.type(TemplateElementType.COLUMN_BREAK).build());
 			standardTemplate.addElement(
-					createFieldElement(3, vn.ptit.snapvocab.domain.enumeration.CardSide.FRONT, phoneticAttr, null, "Phiên âm", true, true, 16, Alignment.CENTER,
+					createFieldElement(3, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.FRONT, phoneticAttr, null, "Phiên âm", true, true, 16, Alignment.CENTER,
 							"#0284C7"));
 			standardTemplate.addElement(
-					createFieldElement(4, vn.ptit.snapvocab.domain.enumeration.CardSide.FRONT, audioAttr, SemanticRole.AUDIO, "Phát âm", true, true, 16,
+					createFieldElement(4, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.FRONT, audioAttr, SemanticRole.AUDIO, "Phát âm", true, true, 16,
 							Alignment.CENTER, null));
 
 
 			standardTemplate.addElement(
-					TemplateElement.builder().position(5).side(vn.ptit.snapvocab.domain.enumeration.CardSide.BACK)
+					TemplateElement.builder().position(5).side(vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.BACK)
 							.type(TemplateElementType.SECTION_BREAK).sectionLabel("Nghĩa & Ví dụ").repeatable(true).build());
 			standardTemplate.addElement(
-					createFieldElement(6, vn.ptit.snapvocab.domain.enumeration.CardSide.BACK, meaningAttr, SemanticRole.DEFINITION, "Bản dịch / Nghĩa", false, false, 20,
+					createFieldElement(6, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.BACK, meaningAttr, SemanticRole.DEFINITION, "Bản dịch / Nghĩa", false, false, 20,
 							Alignment.LEFT, "#111827"));
 			standardTemplate.addElement(
-					createFieldElement(7, vn.ptit.snapvocab.domain.enumeration.CardSide.BACK, exampleAttr, SemanticRole.EXAMPLE_SENTENCE, "Câu ví dụ (Sentence)", true, false,
+					createFieldElement(7, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.BACK, exampleAttr, SemanticRole.EXAMPLE_SENTENCE, "Câu ví dụ (Sentence)", true, false,
 							15, Alignment.LEFT, "#6B7280"));
 			standardTemplate.addElement(
-					createFieldElement(8, vn.ptit.snapvocab.domain.enumeration.CardSide.BACK, imageAttr, SemanticRole.IMAGE, "Hình ảnh", true, false, null,
+					createFieldElement(8, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.BACK, imageAttr, SemanticRole.IMAGE, "Hình ảnh", true, false, null,
 							Alignment.CENTER, null));
 
 
@@ -293,26 +294,26 @@ public class DataInitializer implements CommandLineRunner {
 					.build();
 
 			listeningTemplate.addElement(
-					TemplateElement.builder().position(0).side(vn.ptit.snapvocab.domain.enumeration.CardSide.FRONT)
+					TemplateElement.builder().position(0).side(vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.FRONT)
 							.type(TemplateElementType.SECTION_BREAK).sectionLabel("Luyện nghe").repeatable(false).build());
 			listeningTemplate.addElement(
-					createFieldElement(1, vn.ptit.snapvocab.domain.enumeration.CardSide.FRONT, audioAttr, SemanticRole.AUDIO, "Nghe phát âm", false, true, 32,
+					createFieldElement(1, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.FRONT, audioAttr, SemanticRole.AUDIO, "Nghe phát âm", false, true, 32,
 							Alignment.CENTER, null));
 
 			listeningTemplate.addElement(
-					TemplateElement.builder().position(2).side(vn.ptit.snapvocab.domain.enumeration.CardSide.BACK)
+					TemplateElement.builder().position(2).side(vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.BACK)
 							.type(TemplateElementType.SECTION_BREAK).sectionLabel("Thông tin từ vựng").repeatable(false).build());
 			listeningTemplate.addElement(
-					createFieldElement(3, vn.ptit.snapvocab.domain.enumeration.CardSide.BACK, wordAttr, SemanticRole.TARGET_WORD, "Từ vựng", false, false, 24,
+					createFieldElement(3, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.BACK, wordAttr, SemanticRole.TARGET_WORD, "Từ vựng", false, false, 24,
 							Alignment.CENTER, "#111827"));
 			listeningTemplate.addElement(
-					createFieldElement(4, vn.ptit.snapvocab.domain.enumeration.CardSide.BACK, phoneticAttr, null, "Phiên âm", true, true, 16, Alignment.CENTER,
+					createFieldElement(4, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.BACK, phoneticAttr, null, "Phiên âm", true, true, 16, Alignment.CENTER,
 							"#6B7280"));
 			listeningTemplate.addElement(
-					createFieldElement(5, vn.ptit.snapvocab.domain.enumeration.CardSide.BACK, meaningAttr, SemanticRole.DEFINITION, "Nghĩa", false, false, 20,
+					createFieldElement(5, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.BACK, meaningAttr, SemanticRole.DEFINITION, "Nghĩa", false, false, 20,
 							Alignment.LEFT, "#1F2937"));
 			listeningTemplate.addElement(
-					createFieldElement(6, vn.ptit.snapvocab.domain.enumeration.CardSide.BACK, exampleAttr, SemanticRole.EXAMPLE_SENTENCE, "Ví dụ", true, false,
+					createFieldElement(6, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.BACK, exampleAttr, SemanticRole.EXAMPLE_SENTENCE, "Ví dụ", true, false,
 							15, Alignment.LEFT, "#4B5563"));
 
 
@@ -325,26 +326,26 @@ public class DataInitializer implements CommandLineRunner {
 					.build();
 
 			reverseTemplate.addElement(
-					TemplateElement.builder().position(0).side(vn.ptit.snapvocab.domain.enumeration.CardSide.FRONT)
+					TemplateElement.builder().position(0).side(vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.FRONT)
 							.type(TemplateElementType.SECTION_BREAK).sectionLabel("Giải nghĩa").repeatable(false).build());
 			reverseTemplate.addElement(
-					createFieldElement(1, vn.ptit.snapvocab.domain.enumeration.CardSide.FRONT, meaningAttr, SemanticRole.DEFINITION, "Nghĩa", false, false, 22,
+					createFieldElement(1, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.FRONT, meaningAttr, SemanticRole.DEFINITION, "Nghĩa", false, false, 22,
 							Alignment.CENTER, "#1F2937"));
 			reverseTemplate.addElement(
-					createFieldElement(2, vn.ptit.snapvocab.domain.enumeration.CardSide.FRONT, imageAttr, SemanticRole.IMAGE, "Hình ảnh", true, false, null,
+					createFieldElement(2, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.FRONT, imageAttr, SemanticRole.IMAGE, "Hình ảnh", true, false, null,
 							Alignment.CENTER, null));
 
 			reverseTemplate.addElement(
-					TemplateElement.builder().position(3).side(vn.ptit.snapvocab.domain.enumeration.CardSide.BACK)
+					TemplateElement.builder().position(3).side(vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.BACK)
 							.type(TemplateElementType.SECTION_BREAK).sectionLabel("Từ vựng").repeatable(false).build());
 			reverseTemplate.addElement(
-					createFieldElement(4, vn.ptit.snapvocab.domain.enumeration.CardSide.BACK, wordAttr, SemanticRole.TARGET_WORD, "Từ vựng", false, false, 24,
+					createFieldElement(4, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.BACK, wordAttr, SemanticRole.TARGET_WORD, "Từ vựng", false, false, 24,
 							Alignment.CENTER, "#111827"));
 			reverseTemplate.addElement(
-					createFieldElement(5, vn.ptit.snapvocab.domain.enumeration.CardSide.BACK, phoneticAttr, null, "Phiên âm", true, true, 16, Alignment.CENTER,
+					createFieldElement(5, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.BACK, phoneticAttr, null, "Phiên âm", true, true, 16, Alignment.CENTER,
 							"#6B7280"));
 			reverseTemplate.addElement(
-					createFieldElement(6, vn.ptit.snapvocab.domain.enumeration.CardSide.BACK, audioAttr, SemanticRole.AUDIO, "Phát âm", true, true, 16,
+					createFieldElement(6, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.BACK, audioAttr, SemanticRole.AUDIO, "Phát âm", true, true, 16,
 							Alignment.CENTER, null));
 
 			schema.getTemplates().addAll(List.of(standardTemplate, listeningTemplate, reverseTemplate));
@@ -354,7 +355,7 @@ public class DataInitializer implements CommandLineRunner {
 		}
 	}
 
-	private TemplateElement createFieldElement(int position, vn.ptit.snapvocab.domain.enumeration.CardSide side,
+	private TemplateElement createFieldElement(int position, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide side,
 			SchemaAttribute attr, SemanticRole role, String label, boolean hideIfEmpty, boolean audioAction,
 			Integer fontSize, Alignment alignment, String color) {
 		TemplateElement element = TemplateElement.builder()
@@ -379,3 +380,4 @@ public class DataInitializer implements CommandLineRunner {
 		return element;
 	}
 }
+

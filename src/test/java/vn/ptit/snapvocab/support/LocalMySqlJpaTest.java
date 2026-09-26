@@ -23,3 +23,4 @@ import vn.ptit.snapvocab.config.AuditConfig;
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 public @interface LocalMySqlJpaTest {
 }
+

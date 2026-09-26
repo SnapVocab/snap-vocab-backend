@@ -10,15 +10,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.springframework.stereotype.Component;
-import vn.ptit.snapvocab.domain.Template;
-import vn.ptit.snapvocab.domain.TemplateField;
-import vn.ptit.snapvocab.domain.Topic;
-import vn.ptit.snapvocab.domain.dto.topic.TopicItemValueRow;
+import vn.ptit.snapvocab.vocab.domain.Template;
+import vn.ptit.snapvocab.vocab.domain.TemplateField;
+import vn.ptit.snapvocab.vocab.domain.Topic;
+import vn.ptit.snapvocab.vocab.domain.dto.topic.TopicItemValueRow;
 import vn.ptit.snapvocab.quiz.domain.enumeration.QuizErrorCode;
 import vn.ptit.snapvocab.quiz.domain.enumeration.QuizMode;
-import vn.ptit.snapvocab.domain.enumeration.SemanticRole;
-import vn.ptit.snapvocab.repository.TemplateFieldRepository;
-import vn.ptit.snapvocab.repository.TopicItemAttributeValueRepository;
+import vn.ptit.snapvocab.vocab.domain.enumeration.SemanticRole;
+import vn.ptit.snapvocab.vocab.repository.TemplateFieldRepository;
+import vn.ptit.snapvocab.vocab.repository.TopicItemAttributeValueRepository;
 import vn.ptit.snapvocab.quiz.exception.QuizException;
 
 @Component
@@ -107,3 +107,4 @@ public class QuizContentResolver {
 		return values != null && values.size() == 1 ? values.iterator().next() : null;
 	}
 }
+

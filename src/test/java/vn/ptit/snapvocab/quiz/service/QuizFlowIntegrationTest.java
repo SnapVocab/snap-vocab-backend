@@ -24,8 +24,8 @@ import org.springframework.test.context.event.RecordApplicationEvents;
 import vn.ptit.snapvocab.quiz.domain.Quiz;
 import vn.ptit.snapvocab.quiz.domain.QuizMatchingAttempt;
 import vn.ptit.snapvocab.quiz.domain.QuizQuestion;
-import vn.ptit.snapvocab.domain.Topic;
-import vn.ptit.snapvocab.domain.User;
+import vn.ptit.snapvocab.vocab.domain.Topic;
+import vn.ptit.snapvocab.user.domain.User;
 import vn.ptit.snapvocab.quiz.domain.dto.CheckQuestionRequest;
 import vn.ptit.snapvocab.quiz.domain.dto.CreateQuizRequest;
 import vn.ptit.snapvocab.quiz.domain.dto.MatchingAttemptDTO;
@@ -640,3 +640,4 @@ class QuizFlowIntegrationTest extends QuizIntegrationTestBase {
 		}
 	}
 }
+

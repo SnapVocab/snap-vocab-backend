@@ -10,3 +10,4 @@ public record CreateQuizRequest(
 		QuizDirection direction,
 		@NotNull Integer requestedCount) {
 }
+

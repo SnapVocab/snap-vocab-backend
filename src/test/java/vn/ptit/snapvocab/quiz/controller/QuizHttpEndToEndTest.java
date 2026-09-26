@@ -1,5 +1,7 @@
 package vn.ptit.snapvocab.quiz.controller;
 
+import vn.ptit.snapvocab.common.util.FormatRestResponse;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -45,14 +47,14 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import vn.ptit.snapvocab.quiz.domain.Quiz;
 import vn.ptit.snapvocab.quiz.domain.QuizQuestion;
-import vn.ptit.snapvocab.domain.Schema;
-import vn.ptit.snapvocab.domain.SchemaAttribute;
-import vn.ptit.snapvocab.domain.SchemaAttributeGroup;
-import vn.ptit.snapvocab.domain.Topic;
-import vn.ptit.snapvocab.domain.TopicItem;
-import vn.ptit.snapvocab.domain.TopicItemAttributeGroup;
-import vn.ptit.snapvocab.domain.TopicItemAttributeValue;
-import vn.ptit.snapvocab.domain.User;
+import vn.ptit.snapvocab.vocab.domain.Schema;
+import vn.ptit.snapvocab.vocab.domain.SchemaAttribute;
+import vn.ptit.snapvocab.vocab.domain.SchemaAttributeGroup;
+import vn.ptit.snapvocab.vocab.domain.Topic;
+import vn.ptit.snapvocab.vocab.domain.TopicItem;
+import vn.ptit.snapvocab.vocab.domain.TopicItemAttributeGroup;
+import vn.ptit.snapvocab.vocab.domain.TopicItemAttributeValue;
+import vn.ptit.snapvocab.user.domain.User;
 import vn.ptit.snapvocab.quiz.domain.dto.CheckQuestionRequest;
 import vn.ptit.snapvocab.quiz.domain.dto.CreateQuizRequest;
 import vn.ptit.snapvocab.quiz.domain.dto.MatchingAttemptDTO;
@@ -60,21 +62,21 @@ import vn.ptit.snapvocab.quiz.domain.dto.MatchingAttemptRequest;
 import vn.ptit.snapvocab.quiz.domain.dto.QuestionCheckDTO;
 import vn.ptit.snapvocab.quiz.domain.dto.QuizPlayDTO;
 import vn.ptit.snapvocab.quiz.domain.dto.QuizResultDTO;
-import vn.ptit.snapvocab.domain.enumeration.CollectionType;
+import vn.ptit.snapvocab.vocab.domain.enumeration.CollectionType;
 import vn.ptit.snapvocab.quiz.domain.enumeration.QuizDirection;
 import vn.ptit.snapvocab.quiz.domain.enumeration.QuizMode;
 import vn.ptit.snapvocab.quiz.domain.enumeration.QuizOutcome;
 import vn.ptit.snapvocab.quiz.domain.enumeration.QuizStatus;
-import vn.ptit.snapvocab.repository.CollectionRepository;
+import vn.ptit.snapvocab.vocab.repository.CollectionRepository;
 import vn.ptit.snapvocab.quiz.repository.QuizMatchingAttemptRepository;
 import vn.ptit.snapvocab.quiz.repository.QuizQuestionRepository;
 import vn.ptit.snapvocab.quiz.repository.QuizRepository;
-import vn.ptit.snapvocab.repository.SchemaAttributeGroupRepository;
-import vn.ptit.snapvocab.repository.SchemaRepository;
-import vn.ptit.snapvocab.repository.TemplateRepository;
-import vn.ptit.snapvocab.repository.TopicItemRepository;
-import vn.ptit.snapvocab.repository.TopicRepository;
-import vn.ptit.snapvocab.repository.UserRepository;
+import vn.ptit.snapvocab.vocab.repository.SchemaAttributeGroupRepository;
+import vn.ptit.snapvocab.vocab.repository.SchemaRepository;
+import vn.ptit.snapvocab.vocab.repository.TemplateRepository;
+import vn.ptit.snapvocab.vocab.repository.TopicItemRepository;
+import vn.ptit.snapvocab.vocab.repository.TopicRepository;
+import vn.ptit.snapvocab.user.repository.UserRepository;
 import vn.ptit.snapvocab.security.DomainUserDetailsService.UserWithId;
 import vn.ptit.snapvocab.security.SecurityUtils;
 import vn.ptit.snapvocab.support.LocalDatabaseGuard;
@@ -253,7 +255,7 @@ public class QuizHttpEndToEndTest {
 
 	private Topic createTopic(String templateCode) {
 		Schema schema = defaultSchema();
-		vn.ptit.snapvocab.domain.Collection collection = collectionRepository.save(vn.ptit.snapvocab.domain.Collection.builder()
+		vn.ptit.snapvocab.vocab.domain.Collection collection = collectionRepository.save(vn.ptit.snapvocab.vocab.domain.Collection.builder()
 				.name("SYSTEM Collection")
 				.type(CollectionType.SYSTEM)
 				.build());
@@ -887,3 +889,4 @@ public class QuizHttpEndToEndTest {
 		}
 	}
 }
+

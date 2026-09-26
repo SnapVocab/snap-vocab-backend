@@ -8,7 +8,7 @@ import io.netty.buffer.ByteBuf;
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
 import org.redisson.codec.JsonJacksonCodec;
-import vn.ptit.snapvocab.domain.dto.topic.TopicDTO;
+import vn.ptit.snapvocab.vocab.domain.dto.topic.TopicDTO;
 
 class RedissonCodecTest {
 
@@ -35,3 +35,4 @@ class RedissonCodecTest {
 		assertThat(deserialized.getHasChildren()).isTrue();
 	}
 }
+
