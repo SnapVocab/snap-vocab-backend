@@ -43,3 +43,4 @@ public class QuizOption {
 	@Column(name = "display_order", nullable = false)
 	private int displayOrder;
 }
+

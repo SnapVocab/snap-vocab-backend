@@ -5,3 +5,4 @@ public enum QuizMode {
 	MATCHING,
 	FILL_BLANK
 }
+

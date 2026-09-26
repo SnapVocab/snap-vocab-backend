@@ -25,8 +25,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import vn.ptit.snapvocab.domain.User;
-import vn.ptit.snapvocab.domain.common.BaseTimeEntity;
+import vn.ptit.snapvocab.user.domain.User;
+import vn.ptit.snapvocab.common.domain.BaseTimeEntity;
 import vn.ptit.snapvocab.quiz.domain.enumeration.QuizDirection;
 import vn.ptit.snapvocab.quiz.domain.enumeration.QuizMode;
 import vn.ptit.snapvocab.quiz.domain.enumeration.QuizStatus;
@@ -112,3 +112,4 @@ public class Quiz extends BaseTimeEntity {
 		tile.setQuiz(this);
 	}
 }
+

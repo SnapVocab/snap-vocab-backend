@@ -47,3 +47,4 @@ class LocalDatabaseGuardTest {
 				.initialize(contextWithUrl("jdbc:mysql://localhost:3306/snapvocab_it"))).doesNotThrowAnyException();
 	}
 }
+

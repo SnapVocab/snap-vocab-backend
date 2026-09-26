@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import vn.ptit.snapvocab.domain.dto.common.PaginationObject;
+import vn.ptit.snapvocab.common.dto.PaginationObject;
 import vn.ptit.snapvocab.quiz.domain.dto.CheckQuestionRequest;
 import vn.ptit.snapvocab.quiz.domain.dto.MatchingAttemptDTO;
 import vn.ptit.snapvocab.quiz.domain.dto.QuestionCheckDTO;
@@ -91,3 +91,4 @@ public class QuizController {
 		return ResponseEntity.ok(quizService.getHistory(page, size));
 	}
 }
+

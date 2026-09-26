@@ -5,3 +5,4 @@ import vn.ptit.snapvocab.quiz.domain.enumeration.QuizStatus;
 
 public record QuizLifecycleDTO(Long quizId, QuizStatus status, Instant cancelledAt) {
 }
+

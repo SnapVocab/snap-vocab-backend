@@ -8,3 +8,4 @@ public record MatchingAttemptDTO(Long quizId, int roundNo, String leftTileKey, S
 	public record Round(int matchedCount, int totalPairs, boolean completed) {
 	}
 }
+

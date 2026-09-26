@@ -27,3 +27,4 @@ public record QuizResultDTO(
 			String correctAnswer, QuizOutcome outcome, boolean resolved, int attemptCount) {
 	}
 }
+

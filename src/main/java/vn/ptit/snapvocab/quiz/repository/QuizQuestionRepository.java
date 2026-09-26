@@ -13,3 +13,4 @@ public interface QuizQuestionRepository extends JpaRepository<QuizQuestion, Long
 	@Query("SELECT q.quiz.id FROM QuizQuestion q WHERE q.id = :id")
 	Optional<Long> findQuizIdById(@Param("id") Long id);
 }
+
