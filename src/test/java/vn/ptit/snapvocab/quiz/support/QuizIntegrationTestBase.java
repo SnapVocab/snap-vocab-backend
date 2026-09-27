@@ -46,10 +46,11 @@ import vn.ptit.snapvocab.support.LocalMySqlJpaTest;
 import vn.ptit.snapvocab.quiz.repository.QuizMatchingAttemptRepository;
 import vn.ptit.snapvocab.quiz.repository.QuizQuestionRepository;
 import vn.ptit.snapvocab.quiz.repository.QuizRepository;
+import vn.ptit.snapvocab.xp.service.XpService;
 
 @LocalMySqlJpaTest
 @Import({ DataInitializer.class, SemanticBindingMigration.class, QuizService.class, QuizContentResolver.class,
-		QuizGenerator.class, QuizIntegrationTestBase.Beans.class })
+		QuizGenerator.class, XpService.class, QuizIntegrationTestBase.Beans.class })
 public abstract class QuizIntegrationTestBase {
 
 	@TestConfiguration
@@ -99,6 +100,8 @@ public abstract class QuizIntegrationTestBase {
 				"topic_items", "topics", "collections")) {
 			jdbc.update("DELETE FROM " + table);
 		}
+		jdbc.update("DELETE FROM experience_logs WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'it-%')");
+		jdbc.update("DELETE FROM booster_activations WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'it-%')");
 		jdbc.update("DELETE FROM users WHERE email LIKE 'it-%'");
 	}
 
