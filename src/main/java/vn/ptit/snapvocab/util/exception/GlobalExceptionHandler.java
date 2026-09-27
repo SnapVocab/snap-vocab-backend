@@ -3,8 +3,10 @@ package vn.ptit.snapvocab.util.exception;
 import java.util.HashMap;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -12,6 +14,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import vn.ptit.snapvocab.domain.dto.common.RestResponse;
 import vn.ptit.snapvocab.quiz.exception.QuizException;
+import vn.ptit.snapvocab.shop.exception.ShopException;
 
 @Slf4j
 @RestControllerAdvice
@@ -41,6 +44,17 @@ public class GlobalExceptionHandler {
 		RestResponse<Object> response = RestResponse.builder()
 				.statusCode(400)
 				.error("Missing request parameter: " + ex.getParameterName())
+				.build();
+
+		return ResponseEntity.badRequest().body(response);
+	}
+
+	@ExceptionHandler(HttpMessageNotReadableException.class)
+	public ResponseEntity<RestResponse<Object>> handleUnreadableBody(HttpMessageNotReadableException ex) {
+
+		RestResponse<Object> response = RestResponse.builder()
+				.statusCode(400)
+				.error("Malformed request body")
 				.build();
 
 		return ResponseEntity.badRequest().body(response);
@@ -148,6 +162,32 @@ public class GlobalExceptionHandler {
 				.build();
 
 		return ResponseEntity.status(ex.getCode().getStatus()).body(response);
+	}
+
+	@ExceptionHandler(ShopException.class)
+	public ResponseEntity<RestResponse<Object>> handleShop(ShopException ex) {
+
+		log.info("Shop request rejected with {}: {}", ex.getCode(), ex.getMessage());
+		RestResponse<Object> response = RestResponse.builder()
+				.statusCode(ex.getCode().getStatus().value())
+				.error(ex.getCode().name())
+				.data(ex.getDetails())
+				.build();
+
+		return ResponseEntity.status(ex.getCode().getStatus()).body(response);
+	}
+
+	/** Constraint races that survive service-level handling; never leak SQL to the client. */
+	@ExceptionHandler(DataIntegrityViolationException.class)
+	public ResponseEntity<RestResponse<Object>> handleDataIntegrity(DataIntegrityViolationException ex) {
+
+		log.warn("Data integrity violation: {}", ex.getMostSpecificCause().getMessage());
+		RestResponse<Object> response = RestResponse.builder()
+				.statusCode(409)
+				.error("CONCURRENT_MODIFICATION")
+				.build();
+
+		return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
 	}
 
 	@ExceptionHandler(RuntimeException.class)

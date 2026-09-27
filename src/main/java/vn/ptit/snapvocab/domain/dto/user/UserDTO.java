@@ -34,10 +34,10 @@ public class UserDTO {
 	private String avatarUrl;
 
 	@Min(value = 0)
-	private Integer exp;
+	private Long exp;
 
 	@Min(value = 0)
-	private Integer coin;
+	private Long coin;
 
 	@Min(value = 0)
 	private Integer streakDays;
