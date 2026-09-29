@@ -143,6 +143,37 @@ jwt:
 ./mvnw spring-boot:run
 ```
 
+### Tests
+
+```bash
+./mvnw test
+```
+
+Unit tests run anywhere. The integration tests (`QuizFlowIntegrationTest`,
+`SemanticBindingMigrationIntegrationTest`) need a MySQL server on the machine
+running them: `LocalDatabaseGuard` aborts the context before connecting to a
+remote host, so they can never touch a shared database.
+
+They default to `root` / `123456` on `127.0.0.1:3306` and create the
+`snapvocab_it` database themselves. If your local MySQL differs, override:
+
+```bash
+SNAPVOCAB_TEST_DB_URL='jdbc:mysql://127.0.0.1:3306/snapvocab_it?createDatabaseIfNotExist=true&serverTimezone=UTC' \
+SNAPVOCAB_TEST_DB_USERNAME=root \
+SNAPVOCAB_TEST_DB_PASSWORD=your_password \
+./mvnw test
+```
+
+Without a reachable local MySQL those two classes report context-load errors
+while every other test still passes. A throwaway server works just as well:
+
+```bash
+docker run -d --name snapvocab-test-db -e MYSQL_ROOT_PASSWORD=123456 \
+  -e MYSQL_DATABASE=snapvocab_it -p 3307:3306 mysql:8.0
+```
+
+then point `SNAPVOCAB_TEST_DB_URL` at port 3307.
+
 ### Dictionary Database
 
 Import the English-Vietnamese dictionary data:
