@@ -1,13 +1,14 @@
 package vn.ptit.snapvocab.vocab.service;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,6 +20,15 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vn.ptit.snapvocab.common.dto.Meta;
+import vn.ptit.snapvocab.common.dto.PaginationObject;
+import vn.ptit.snapvocab.common.exception.BadRequestAlertException;
+import vn.ptit.snapvocab.common.exception.ResourceAlreadyExistException;
+import vn.ptit.snapvocab.common.exception.ResourceNotFoundException;
+import vn.ptit.snapvocab.security.AuthoritiesConstants;
+import vn.ptit.snapvocab.security.SecurityUtils;
+import vn.ptit.snapvocab.user.domain.User;
+import vn.ptit.snapvocab.user.repository.UserRepository;
 import vn.ptit.snapvocab.vocab.domain.Collection;
 import vn.ptit.snapvocab.vocab.domain.Schema;
 import vn.ptit.snapvocab.vocab.domain.SchemaAttribute;
@@ -30,12 +40,10 @@ import vn.ptit.snapvocab.vocab.domain.Topic;
 import vn.ptit.snapvocab.vocab.domain.TopicItem;
 import vn.ptit.snapvocab.vocab.domain.TopicItemAttributeGroup;
 import vn.ptit.snapvocab.vocab.domain.TopicItemAttributeValue;
-import vn.ptit.snapvocab.user.domain.User;
-import vn.ptit.snapvocab.common.dto.Meta;
-import vn.ptit.snapvocab.common.dto.PaginationObject;
 import vn.ptit.snapvocab.vocab.domain.dto.template.TemplateDTO;
 import vn.ptit.snapvocab.vocab.domain.dto.topic.CreateSchemaDTO;
 import vn.ptit.snapvocab.vocab.domain.dto.topic.CreateTopicDTO;
+import vn.ptit.snapvocab.vocab.domain.dto.topic.CreateTopicItemDTO;
 import vn.ptit.snapvocab.vocab.domain.dto.topic.CreateTopicSchemaDTO;
 import vn.ptit.snapvocab.vocab.domain.dto.topic.SchemaAttributeDTO;
 import vn.ptit.snapvocab.vocab.domain.dto.topic.SchemaAttributeGroupDTO;
@@ -55,11 +63,6 @@ import vn.ptit.snapvocab.vocab.repository.TemplateFieldRepository;
 import vn.ptit.snapvocab.vocab.repository.TemplateRepository;
 import vn.ptit.snapvocab.vocab.repository.TopicItemRepository;
 import vn.ptit.snapvocab.vocab.repository.TopicRepository;
-import vn.ptit.snapvocab.user.repository.UserRepository;
-import vn.ptit.snapvocab.security.AuthoritiesConstants;
-import vn.ptit.snapvocab.security.SecurityUtils;
-import vn.ptit.snapvocab.common.exception.ResourceAlreadyExistException;
-import vn.ptit.snapvocab.common.exception.ResourceNotFoundException;
 
 @Service
 @RequiredArgsConstructor
@@ -80,8 +83,7 @@ public class TopicService {
 	private final Logger LOG = LoggerFactory.getLogger(TopicService.class);
 
 	/**
-	 * Retrieves paginated vocabulary items for a given topic with EAV attributes
-	 * aggregated into a
+	 * Retrieves paginated vocabulary items for a given topic with EAV attributes aggregated into a
 	 * clean, client-friendly structure, including the topic schema definition.
 	 * <p>
 	 * Query Strategy:
@@ -94,9 +96,8 @@ public class TopicService {
 	 *
 	 * @param topicId  The topic ID to fetch items for.
 	 * @param pageable Pagination parameters (page, size, sort).
-	 * @return A {@link PaginationObject} containing the aggregated items,
-	 *         pagination meta, and schema
-	 *         metadata.
+	 * @return A {@link PaginationObject} containing the aggregated items, pagination meta, and schema
+	 * metadata.
 	 */
 	@Cacheable(cacheNames = "topic-items", key = "#topicId + ':page:' + #pageable.pageNumber + ':size:' + #pageable.pageSize")
 	public PaginationObject<List<TopicItemData>> getTopicItems(Long topicId, Pageable pageable) {
@@ -155,7 +156,8 @@ public class TopicService {
 				}
 			} else {
 				// Multiple group: collect instances by instanceId preserving position order
-				Map<String, Map<Long, Map<String, Object>>> itemMultiGroups = multiGroupsByItem.computeIfAbsent(itemId,
+				Map<String, Map<Long, Map<String, Object>>> itemMultiGroups = multiGroupsByItem.computeIfAbsent(
+						itemId,
 						k -> new LinkedHashMap<>());
 				Map<Long, Map<String, Object>> instances = itemMultiGroups.computeIfAbsent(groupName,
 						k -> new LinkedHashMap<>());
@@ -196,10 +198,8 @@ public class TopicService {
 	}
 
 	/**
-	 * Builds structured schema metadata from attribute rows. Returns a
-	 * {@link TopicSchemaDTO}
-	 * containing a list of groups, where each group has a list of attributes.
-	 * Preserves group and
+	 * Builds structured schema metadata from attribute rows. Returns a {@link TopicSchemaDTO}
+	 * containing a list of groups, where each group has a list of attributes. Preserves group and
 	 * attribute position ordering.
 	 */
 	private TopicSchemaDTO buildSchema(List<TopicItemAttributeRow> rows, Long topicId) {
@@ -255,8 +255,7 @@ public class TopicService {
 	}
 
 	/**
-	 * Retrieves the full schema definition for a topic directly from the database,
-	 * containing a list
+	 * Retrieves the full schema definition for a topic directly from the database, containing a list
 	 * of groups and their respective lists of attributes.
 	 */
 	@Cacheable(cacheNames = "topic-schema", key = "#topicId")
@@ -309,7 +308,7 @@ public class TopicService {
 	}
 
 	@Transactional
-	@Caching(evict = { @CacheEvict(cacheNames = "topic-tree", allEntries = true) })
+	@Caching(evict = {@CacheEvict(cacheNames = "topic-tree", allEntries = true)})
 	public TopicDTO createCollectionTopic(Long collectionId, CreateTopicDTO createTopicDTO) {
 		Collection collection = collectionRepository.findById(collectionId)
 				.orElseThrow(
@@ -328,7 +327,8 @@ public class TopicService {
 			if (currentUserId == null) {
 				throw new AccessDeniedException("Authentication required to add topics to this collection");
 			}
-			boolean isOwner = collection.getOwner() != null && collection.getOwner().getId().equals(currentUserId);
+			boolean isOwner =
+					collection.getOwner() != null && collection.getOwner().getId().equals(currentUserId);
 			boolean isAdmin = SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.ADMIN);
 			if (!isOwner && !isAdmin) {
 				throw new AccessDeniedException(
@@ -408,10 +408,38 @@ public class TopicService {
 				throw new AccessDeniedException(
 						"Authentication required to access this private collection");
 			}
-			boolean isOwner = collection.getOwner() != null && collection.getOwner().getId().equals(currentUserId);
+			boolean isOwner =
+					collection.getOwner() != null && collection.getOwner().getId().equals(currentUserId);
 			boolean isAdmin = SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.ADMIN);
 			if (!isOwner && !isAdmin) {
 				throw new AccessDeniedException("You do not have permission to access this collection");
+			}
+		}
+	}
+
+	public void validateTopicWriteAccess(Topic topic) {
+		Collection collection = topic.getCollection();
+		if (collection == null) {
+			return;
+		}
+		if (collection.getType() == CollectionType.SYSTEM) {
+			if (!SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.ADMIN)) {
+				throw new AccessDeniedException("Only administrators can modify topics in system collections");
+			}
+		} else {
+			Long currentUserId = SecurityUtils.getCurrentUserId()
+					.or(() -> SecurityUtils.getCurrentUserLogin()
+							.flatMap(userRepository::findOneByEmailIgnoreCase).map(User::getId))
+					.orElse(null);
+
+			if (currentUserId == null) {
+				throw new AccessDeniedException("Authentication required to modify this topic");
+			}
+			boolean isOwner =
+					collection.getOwner() != null && collection.getOwner().getId().equals(currentUserId);
+			boolean isAdmin = SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.ADMIN);
+			if (!isOwner && !isAdmin) {
+				throw new AccessDeniedException("You do not have permission to modify this topic");
 			}
 		}
 	}
@@ -420,11 +448,11 @@ public class TopicService {
 	@CacheEvict(cacheNames = "topic-schema", key = "#topicId")
 	public TopicSchemaDTO createTopicSchema(Long topicId,
 			CreateTopicSchemaDTO createTopicSchemaDTO) {
-		this.validateTopicAccess(topicId);
 		LOG.info("Creating schema for topicId: {}", topicId);
 
 		Topic topic = this.topicRepository.findById(topicId)
 				.orElseThrow(() -> new ResourceNotFoundException("Topic not found with id: " + topicId));
+		validateTopicWriteAccess(topic);
 
 		List<SchemaAttributeGroup> existingGroups = this.schemaAttributeGroupRepository.findByTopicIdWithAttributes(
 				topicId);
@@ -433,9 +461,10 @@ public class TopicService {
 					"Topic already has a schema with groups for topicId: " + topicId);
 		}
 
-		String schemaName = createTopicSchemaDTO.getName() != null && !createTopicSchemaDTO.getName().isBlank()
-				? createTopicSchemaDTO.getName()
-				: topic.getName() + " Schema";
+		String schemaName =
+				createTopicSchemaDTO.getName() != null && !createTopicSchemaDTO.getName().isBlank()
+						? createTopicSchemaDTO.getName()
+						: topic.getName() + " Schema";
 
 		CreateSchemaDTO schemaDTO = CreateSchemaDTO.builder()
 				.name(schemaName)
@@ -445,6 +474,7 @@ public class TopicService {
 
 		Schema schema = this.schemaMapper.toEntity(schemaDTO);
 		User topicOwner = topic.getCollection() != null ? topic.getCollection().getOwner() : null;
+		scherma_user:
 		schema.setUser(topicOwner);
 		schema.setIsSystem(false);
 		Schema savedSchema = this.schemaRepository.save(schema);
@@ -458,11 +488,11 @@ public class TopicService {
 	@Transactional
 	@CacheEvict(cacheNames = "topic-schema", key = "#topicId")
 	public TopicSchemaDTO assignSchemaToTopic(Long topicId, Long schemaId) {
-		this.validateTopicAccess(topicId);
 		LOG.info("Assigning schemaId {} to topicId {}", schemaId, topicId);
 
 		Topic topic = this.topicRepository.findById(topicId)
 				.orElseThrow(() -> new ResourceNotFoundException("Topic not found with id: " + topicId));
+		validateTopicWriteAccess(topic);
 
 		Schema schema = this.schemaRepository.findById(schemaId)
 				.orElseThrow(() -> new ResourceNotFoundException("Schema not found with id: " + schemaId));
@@ -476,11 +506,11 @@ public class TopicService {
 	@Transactional
 	@CacheEvict(cacheNames = "topic-schema", key = "#topicId")
 	public TopicSchemaDTO forkTopicSchema(Long topicId) {
-		this.validateTopicAccess(topicId);
 		LOG.info("Forking schema for topicId: {}", topicId);
 
 		Topic topic = this.topicRepository.findById(topicId)
 				.orElseThrow(() -> new ResourceNotFoundException("Topic not found with id: " + topicId));
+		validateTopicWriteAccess(topic);
 
 		if (topic.getSchema() == null) {
 			throw new ResourceNotFoundException("Topic has no assigned schema for topicId: " + topicId);
@@ -637,13 +667,13 @@ public class TopicService {
 	}
 
 	@Transactional
-	@Caching(evict = { @CacheEvict(cacheNames = "topic-tree", allEntries = true) })
+	@Caching(evict = {@CacheEvict(cacheNames = "topic-tree", allEntries = true)})
 	public TopicDTO setActiveTemplate(Long topicId, Long templateId) {
-		this.validateTopicAccess(topicId);
 		LOG.info("Setting active template {} for topicId {}", templateId, topicId);
 
 		Topic topic = this.topicRepository.findById(topicId)
 				.orElseThrow(() -> new ResourceNotFoundException("Topic not found with id: " + topicId));
+		validateTopicWriteAccess(topic);
 
 		Template template = this.templateRepository.findById(templateId)
 				.orElseThrow(
@@ -667,5 +697,177 @@ public class TopicService {
 	public TemplateDTO createTopicTemplate() {
 		return null;
 	}
-}
 
+	@Transactional
+	@CacheEvict(cacheNames = "topic-items", allEntries = true)
+	public TopicItemData addTopicItem(Long topicId, CreateTopicItemDTO createTopicItemDTO) {
+		Topic topic = this.topicRepository.findById(topicId)
+				.orElseThrow(() -> new ResourceNotFoundException("Topic not found with id: " + topicId));
+
+		validateTopicWriteAccess(topic);
+
+		// kiểm tra schema của topic
+		if (topic.getSchema() == null) {
+			throw new BadRequestAlertException("Topic has no assigned schema");
+		}
+
+		List<SchemaAttributeGroup> schemaGroups = schemaAttributeGroupRepository.findBySchemaIdWithAttributes(
+				topic.getSchema().getId());
+
+		Map<String, Object> inputGroups =
+				createTopicItemDTO.getGroups() != null ? createTopicItemDTO.getGroups()
+						: Collections.emptyMap();
+
+		TopicItem topicItem = TopicItem.builder()
+				.topic(topic)
+				.groupInstances(new ArrayList<>())
+				.build();
+
+		Map<String, Object> responseGroups = new LinkedHashMap<>();
+
+		// xử lý mapping và validate từng SchemaAttributeGroup
+		for (var groupDef : schemaGroups) {
+			String groupName = groupDef.getName();
+			Object rawGroupData = inputGroups.get(groupName);
+
+			if (!groupDef.isMultiple()) {
+				// group đơn
+				Map<String, Object> attrData = Collections.emptyMap();
+				if (rawGroupData != null) {
+					if (!(rawGroupData instanceof Map<?, ?> map)) {
+						throw new BadRequestAlertException("Group '" + groupName + "' must be a JSON object");
+					}
+					@SuppressWarnings("unchecked")
+					Map<String, Object> casted = (Map<String, Object>) map;
+					attrData = casted;
+				}
+
+				TopicItemAttributeGroup groupInstance = TopicItemAttributeGroup.builder()
+						.item(topicItem)
+						.groupDefinition(groupDef)
+						.position((short) 1)
+						.values(new ArrayList<>())
+						.build();
+
+				// Validate & add values
+				Map<String, Object> savedAttrs = buildAndValidateValues(groupInstance, groupDef.getAttributes(), attrData);
+				if (!groupInstance.getValues().isEmpty()) {
+					topicItem.getGroupInstances().add(groupInstance);
+				}
+				if (!savedAttrs.isEmpty()) {
+					responseGroups.put(groupName, savedAttrs);
+				}
+
+			} else {
+				// group lặp
+				if (rawGroupData != null) {
+					if (!(rawGroupData instanceof List<?> list)) {
+						throw new BadRequestAlertException("Group '" + groupName + "' must be a JSON array");
+					}
+
+					short pos = 1;
+					List<Map<String, Object>> groupInstanceResponses = new ArrayList<>();
+					for (Object itemObj : list) {
+						if (!(itemObj instanceof Map<?, ?> map)) {
+							throw new BadRequestAlertException(
+									"Item in group '" + groupName + "' must be a JSON object");
+						}
+
+						@SuppressWarnings("unchecked")
+						Map<String, Object> attrData = (Map<String, Object>) map;
+
+						TopicItemAttributeGroup groupInstance = TopicItemAttributeGroup.builder()
+								.item(topicItem)
+								.groupDefinition(groupDef)
+								.position(pos++)
+								.values(new ArrayList<>())
+								.build();
+
+						Map<String, Object> savedAttrs = buildAndValidateValues(groupInstance, groupDef.getAttributes(), attrData);
+						if (!groupInstance.getValues().isEmpty()) {
+							topicItem.getGroupInstances().add(groupInstance);
+						}
+						if (!savedAttrs.isEmpty()) {
+							groupInstanceResponses.add(savedAttrs);
+						}
+					}
+					if (!groupInstanceResponses.isEmpty()) {
+						responseGroups.put(groupName, groupInstanceResponses);
+					}
+				}
+			}
+		}
+
+		TopicItem savedItem = this.topicItemRepository.save(topicItem);
+		return TopicItemData.builder()
+				.topicItemId(savedItem.getId())
+				.createdAt(savedItem.getCreatedAt())
+				.groups(responseGroups)
+				.build();
+	}
+
+	private Map<String, Object> buildAndValidateValues(TopicItemAttributeGroup groupInstance,
+			List<SchemaAttribute> attributes, Map<String, Object> attrData) {
+		Map<String, Object> savedValues = new LinkedHashMap<>();
+		if (attributes == null) {
+			return savedValues;
+		}
+
+		for (SchemaAttribute attr : attributes) {
+			String attrName = attr.getName();
+			Object rawVal = attrData.get(attrName);
+
+			// Kiểm tra bắt buộc (required)
+			if (attr.isRequired() && (rawVal == null || rawVal.toString().trim().isEmpty())) {
+				throw new BadRequestAlertException("Field '" + attrName + "' in group '"
+						+ groupInstance.getGroupDefinition().getName() + "' is required");
+			}
+
+			if (rawVal != null) {
+				String strVal = rawVal.toString().trim();
+				if (!strVal.isEmpty()) {
+					// Validate datatype
+					validateDataType(attr, strVal);
+
+					TopicItemAttributeValue valEntity = TopicItemAttributeValue.builder()
+							.groupInstance(groupInstance)
+							.attribute(attr)
+							.value(strVal)
+							.build();
+
+					groupInstance.getValues().add(valEntity);
+					savedValues.put(attrName, strVal);
+				}
+			}
+		}
+		return savedValues;
+	}
+
+	private void validateDataType(SchemaAttribute attr, String value) {
+		if (value == null || value.isEmpty()) {
+			return;
+		}
+		if (attr.getDataType() == null) {
+			return;
+		}
+		try {
+			switch (attr.getDataType()) {
+				case NUMBER -> Double.parseDouble(value);
+				case BOOLEAN -> {
+					if (!value.equalsIgnoreCase("true") && !value.equalsIgnoreCase("false")) {
+						throw new IllegalArgumentException();
+					}
+				}
+				case DATE -> LocalDate.parse(value);
+				case TEXT, AUDIO, IMAGE -> {
+					// kiểm tra độ dài tối đa hoặc regex URL nếu cần
+				}
+			}
+		} catch (Exception e) {
+			throw new BadRequestAlertException(
+					"Invalid value '" + value + "' for type " + attr.getDataType() + " in field '"
+							+ attr.getName() + "'");
+		}
+	}
+
+}
