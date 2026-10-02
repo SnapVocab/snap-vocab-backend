@@ -30,3 +30,4 @@ public class LocalDatabaseGuard implements ApplicationContextInitializer<Configu
 		}
 	}
 }
+

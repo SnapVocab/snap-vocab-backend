@@ -25,3 +25,4 @@ public class QuizException extends RuntimeException {
 		return details;
 	}
 }
+

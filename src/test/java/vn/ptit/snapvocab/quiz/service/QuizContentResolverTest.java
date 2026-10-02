@@ -1,5 +1,6 @@
 package vn.ptit.snapvocab.quiz.service;
 
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyCollection;
@@ -13,16 +14,16 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import vn.ptit.snapvocab.domain.SchemaAttribute;
-import vn.ptit.snapvocab.domain.Template;
-import vn.ptit.snapvocab.domain.TemplateField;
-import vn.ptit.snapvocab.domain.Topic;
-import vn.ptit.snapvocab.domain.dto.topic.TopicItemValueRow;
+import vn.ptit.snapvocab.vocab.domain.SchemaAttribute;
+import vn.ptit.snapvocab.vocab.domain.Template;
+import vn.ptit.snapvocab.vocab.domain.TemplateField;
+import vn.ptit.snapvocab.vocab.domain.Topic;
+import vn.ptit.snapvocab.vocab.domain.dto.topic.TopicItemValueRow;
 import vn.ptit.snapvocab.quiz.domain.enumeration.QuizErrorCode;
 import vn.ptit.snapvocab.quiz.domain.enumeration.QuizMode;
-import vn.ptit.snapvocab.domain.enumeration.SemanticRole;
-import vn.ptit.snapvocab.repository.TemplateFieldRepository;
-import vn.ptit.snapvocab.repository.TopicItemAttributeValueRepository;
+import vn.ptit.snapvocab.vocab.domain.enumeration.SemanticRole;
+import vn.ptit.snapvocab.vocab.repository.TemplateFieldRepository;
+import vn.ptit.snapvocab.vocab.repository.TopicItemAttributeValueRepository;
 import vn.ptit.snapvocab.quiz.service.QuizContentResolver.ItemContent;
 import vn.ptit.snapvocab.quiz.exception.QuizException;
 
@@ -163,3 +164,4 @@ class QuizContentResolverTest {
 				.isEqualTo(Set.of(SemanticRole.TARGET_WORD, SemanticRole.EXAMPLE_SENTENCE));
 	}
 }
+

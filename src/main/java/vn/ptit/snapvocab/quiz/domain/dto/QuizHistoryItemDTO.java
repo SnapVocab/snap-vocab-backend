@@ -9,3 +9,4 @@ public record QuizHistoryItemDTO(Long quizId, Long topicId, String topicName, Qu
 		QuizDirection direction, QuizStatus status, int questionCount, Integer correctCount,
 		Integer incorrectCount, Double accuracy, Instant createdAt, Instant completedAt) {
 }
+

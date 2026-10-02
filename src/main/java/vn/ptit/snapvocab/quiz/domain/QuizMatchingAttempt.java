@@ -15,7 +15,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import vn.ptit.snapvocab.domain.common.BaseCreatedAtEntity;
+import vn.ptit.snapvocab.common.domain.BaseCreatedAtEntity;
 
 @Entity
 @Table(name = "quiz_matching_attempts", uniqueConstraints = @UniqueConstraint(name = "uk_quiz_attempt_key", columnNames = {
@@ -63,3 +63,4 @@ public class QuizMatchingAttempt extends BaseCreatedAtEntity {
 	@Column(name = "idempotency_key", nullable = false, length = 128)
 	private String idempotencyKey;
 }
+

@@ -92,3 +92,4 @@ public final class SecurityUtils {
 		return authentication.getAuthorities().stream().map(GrantedAuthority::getAuthority);
 	}
 }
+

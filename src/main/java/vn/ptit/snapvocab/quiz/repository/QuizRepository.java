@@ -42,3 +42,4 @@ public interface QuizRepository extends JpaRepository<Quiz, Long> {
 	int expireStaleById(@Param("quizId") Long quizId, @Param("userId") Long userId,
 			@Param("cutoff") Instant cutoff);
 }
+

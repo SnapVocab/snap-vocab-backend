@@ -25,10 +25,10 @@ import vn.ptit.snapvocab.quiz.domain.QuizMatchingAttempt;
 import vn.ptit.snapvocab.quiz.domain.QuizMatchingTile;
 import vn.ptit.snapvocab.quiz.domain.QuizOption;
 import vn.ptit.snapvocab.quiz.domain.QuizQuestion;
-import vn.ptit.snapvocab.domain.Topic;
-import vn.ptit.snapvocab.domain.User;
-import vn.ptit.snapvocab.domain.dto.common.Meta;
-import vn.ptit.snapvocab.domain.dto.common.PaginationObject;
+import vn.ptit.snapvocab.vocab.domain.Topic;
+import vn.ptit.snapvocab.user.domain.User;
+import vn.ptit.snapvocab.common.dto.Meta;
+import vn.ptit.snapvocab.common.dto.PaginationObject;
 import vn.ptit.snapvocab.quiz.domain.dto.CheckQuestionRequest;
 import vn.ptit.snapvocab.quiz.domain.dto.CreateQuizRequest;
 import vn.ptit.snapvocab.quiz.domain.dto.MatchingAttemptDTO;
@@ -46,12 +46,12 @@ import vn.ptit.snapvocab.quiz.domain.enumeration.QuizStatus;
 import vn.ptit.snapvocab.quiz.repository.QuizMatchingAttemptRepository;
 import vn.ptit.snapvocab.quiz.repository.QuizQuestionRepository;
 import vn.ptit.snapvocab.quiz.repository.QuizRepository;
-import vn.ptit.snapvocab.repository.TopicRepository;
-import vn.ptit.snapvocab.repository.UserRepository;
-import vn.ptit.snapvocab.service.TopicService;
+import vn.ptit.snapvocab.vocab.repository.TopicRepository;
+import vn.ptit.snapvocab.user.repository.UserRepository;
+import vn.ptit.snapvocab.vocab.service.TopicService;
 import vn.ptit.snapvocab.security.SecurityUtils;
 import vn.ptit.snapvocab.quiz.exception.QuizException;
-import vn.ptit.snapvocab.util.exception.ResourceNotFoundException;
+import vn.ptit.snapvocab.common.exception.ResourceNotFoundException;
 import vn.ptit.snapvocab.xp.domain.XpSourceType;
 import vn.ptit.snapvocab.xp.repository.ExperienceLogRepository;
 import vn.ptit.snapvocab.xp.service.XpService;
@@ -528,3 +528,4 @@ public class QuizService {
 		return total == null || total == 0 ? 0.0 : (double) correct / total;
 	}
 }
+

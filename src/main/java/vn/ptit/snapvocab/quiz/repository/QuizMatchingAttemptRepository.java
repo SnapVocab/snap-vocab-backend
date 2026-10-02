@@ -10,3 +10,4 @@ public interface QuizMatchingAttemptRepository extends JpaRepository<QuizMatchin
 
 	Optional<QuizMatchingAttempt> findByQuizIdAndIdempotencyKey(Long quizId, String idempotencyKey);
 }
+

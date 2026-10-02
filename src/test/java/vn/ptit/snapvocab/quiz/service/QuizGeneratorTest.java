@@ -241,3 +241,4 @@ class QuizGeneratorTest {
 		assertThat(QuizGenerator.normalize(null)).isEmpty();
 	}
 }
+

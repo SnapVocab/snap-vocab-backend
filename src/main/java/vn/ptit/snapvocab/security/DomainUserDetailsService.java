@@ -1,5 +1,6 @@
 package vn.ptit.snapvocab.security;
 
+
 import java.util.Collection;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.validator.internal.constraintvalidators.bv.EmailValidator;
@@ -11,10 +12,10 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Component;
-import vn.ptit.snapvocab.domain.Authority;
-import vn.ptit.snapvocab.domain.User;
-import vn.ptit.snapvocab.repository.UserRepository;
-import vn.ptit.snapvocab.util.exception.UserNotActivatedException;
+import vn.ptit.snapvocab.user.domain.Authority;
+import vn.ptit.snapvocab.user.domain.User;
+import vn.ptit.snapvocab.user.repository.UserRepository;
+import vn.ptit.snapvocab.common.exception.UserNotActivatedException;
 
 @Component("userDetailsService")
 @RequiredArgsConstructor
@@ -84,3 +85,4 @@ public class DomainUserDetailsService implements UserDetailsService {
 		}
 	}
 }
+
