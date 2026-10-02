@@ -2,7 +2,7 @@ package vn.ptit.snapvocab.shop.service;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
-import vn.ptit.snapvocab.service.StorageService;
+import vn.ptit.snapvocab.storage.service.StorageService;
 import vn.ptit.snapvocab.shop.domain.BoosterActivation;
 import vn.ptit.snapvocab.shop.domain.ShopItem;
 import vn.ptit.snapvocab.shop.domain.UserItem;

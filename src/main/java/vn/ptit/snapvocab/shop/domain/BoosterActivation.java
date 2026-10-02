@@ -19,7 +19,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import vn.ptit.snapvocab.domain.User;
+import vn.ptit.snapvocab.user.domain.User;
 
 @Entity
 @Table(

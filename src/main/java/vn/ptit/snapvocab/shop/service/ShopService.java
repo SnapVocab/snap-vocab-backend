@@ -15,8 +15,8 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
-import vn.ptit.snapvocab.domain.User;
-import vn.ptit.snapvocab.repository.UserRepository;
+import vn.ptit.snapvocab.user.domain.User;
+import vn.ptit.snapvocab.user.repository.UserRepository;
 import vn.ptit.snapvocab.shop.domain.CoinTransaction;
 import vn.ptit.snapvocab.shop.domain.ShopItem;
 import vn.ptit.snapvocab.shop.domain.UserItem;
@@ -32,7 +32,7 @@ import vn.ptit.snapvocab.shop.exception.ShopException;
 import vn.ptit.snapvocab.shop.repository.CoinTransactionRepository;
 import vn.ptit.snapvocab.shop.repository.ShopItemRepository;
 import vn.ptit.snapvocab.shop.repository.UserItemRepository;
-import vn.ptit.snapvocab.util.exception.ResourceNotFoundException;
+import vn.ptit.snapvocab.common.exception.ResourceNotFoundException;
 
 @Service
 public class ShopService {

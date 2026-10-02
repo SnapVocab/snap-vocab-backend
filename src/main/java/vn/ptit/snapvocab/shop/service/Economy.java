@@ -2,11 +2,11 @@ package vn.ptit.snapvocab.shop.service;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import vn.ptit.snapvocab.domain.User;
-import vn.ptit.snapvocab.repository.UserRepository;
+import vn.ptit.snapvocab.user.domain.User;
+import vn.ptit.snapvocab.user.repository.UserRepository;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopErrorCode;
 import vn.ptit.snapvocab.shop.exception.ShopException;
-import vn.ptit.snapvocab.util.exception.ResourceNotFoundException;
+import vn.ptit.snapvocab.common.exception.ResourceNotFoundException;
 
 /** Conventions shared by every economy mutation (shop.md §7.1). */
 public final class Economy {

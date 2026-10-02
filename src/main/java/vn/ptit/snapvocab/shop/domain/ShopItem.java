@@ -17,7 +17,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import vn.ptit.snapvocab.domain.common.BaseTimeEntity;
+import vn.ptit.snapvocab.common.domain.BaseTimeEntity;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopItemStatus;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopItemType;
 import vn.ptit.snapvocab.shop.domain.enumeration.ThemeKey;

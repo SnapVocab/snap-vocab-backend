@@ -36,8 +36,8 @@ import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import vn.ptit.snapvocab.domain.User;
-import vn.ptit.snapvocab.repository.UserRepository;
+import vn.ptit.snapvocab.user.domain.User;
+import vn.ptit.snapvocab.user.repository.UserRepository;
 import vn.ptit.snapvocab.security.SecurityUtils;
 import vn.ptit.snapvocab.support.LocalDatabaseGuard;
 

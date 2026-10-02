@@ -7,15 +7,15 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import vn.ptit.snapvocab.domain.User;
-import vn.ptit.snapvocab.repository.UserRepository;
+import vn.ptit.snapvocab.user.domain.User;
+import vn.ptit.snapvocab.user.repository.UserRepository;
 import vn.ptit.snapvocab.shop.domain.CoinTransaction;
 import vn.ptit.snapvocab.shop.domain.dto.WalletDTO;
 import vn.ptit.snapvocab.shop.domain.enumeration.CoinSourceType;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopErrorCode;
 import vn.ptit.snapvocab.shop.exception.ShopException;
 import vn.ptit.snapvocab.shop.repository.CoinTransactionRepository;
-import vn.ptit.snapvocab.util.exception.ResourceNotFoundException;
+import vn.ptit.snapvocab.common.exception.ResourceNotFoundException;
 
 @Service
 @RequiredArgsConstructor

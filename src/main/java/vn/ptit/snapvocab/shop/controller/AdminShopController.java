@@ -18,15 +18,14 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import vn.ptit.snapvocab.domain.dto.common.PaginationObject;
-import vn.ptit.snapvocab.domain.dto.storage.PresignedUploadResponse;
-import vn.ptit.snapvocab.domain.dto.storage.UploadUrlRequest;
+import vn.ptit.snapvocab.common.dto.PaginationObject;
+import vn.ptit.snapvocab.storage.domain.dto.PresignedUploadResponse;
+import vn.ptit.snapvocab.storage.domain.dto.UploadUrlRequest;
 import vn.ptit.snapvocab.shop.domain.dto.AdminShopItemDTO;
 import vn.ptit.snapvocab.shop.domain.dto.ShopItemForm;
 import vn.ptit.snapvocab.shop.domain.dto.ShopItemTypeMetadataDTO;
 import vn.ptit.snapvocab.shop.service.AdminShopService;
 
-/** Admin Shop API (shop.md §10.2). ROLE_ADMIN is enforced for /api/admin/** in SecurityConfiguration. */
 @RestController
 @RequestMapping("/api/admin/shop")
 @RequiredArgsConstructor

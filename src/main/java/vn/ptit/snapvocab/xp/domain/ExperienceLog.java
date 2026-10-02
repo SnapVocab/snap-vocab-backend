@@ -16,7 +16,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import vn.ptit.snapvocab.domain.User;
+import vn.ptit.snapvocab.user.domain.User;
 
 /** Append-only XP ledger. {@code amount = baseAmount + bonusAmount}; Weekly XP / Leaderboard use {@code amount}. */
 @Entity
