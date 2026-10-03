@@ -6,7 +6,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.ptit.snapvocab.user.domain.User;
+import vn.ptit.snapvocab.user.domain.Level;
+import vn.ptit.snapvocab.user.repository.LevelRepository;
 import vn.ptit.snapvocab.user.repository.UserRepository;
+import vn.ptit.snapvocab.common.exception.ResourceNotFoundException;
+import vn.ptit.snapvocab.xp.domain.dto.XpOverviewDTO;
 import vn.ptit.snapvocab.shop.domain.BoosterActivation;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopItemType;
 import vn.ptit.snapvocab.shop.repository.BoosterActivationRepository;
@@ -23,6 +27,33 @@ public class XpService {
 	private final UserRepository userRepository;
 	private final ExperienceLogRepository experienceLogRepository;
 	private final BoosterActivationRepository activationRepository;
+	private final LevelRepository levelRepository;
+
+	/** Level = highest {@code levels.required_exp <= users.exp}; null if no level is configured that low. */
+	@Transactional(readOnly = true)
+	public XpOverviewDTO getOverview(Long userId) {
+		User user = userRepository.findById(userId)
+				.orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
+		long exp = user.getExp();
+		XpOverviewDTO.LevelInfo level = levelRepository.findFirstByRequiredExpLessThanEqualOrderByRequiredExpDesc(exp)
+				.map(current -> levelInfo(current, levelRepository
+						.findFirstByRequiredExpGreaterThanOrderByRequiredExpAsc(exp).orElse(null), exp))
+				.orElse(null);
+		return new XpOverviewDTO(exp, level, experienceLogRepository.findTop10ByUserIdOrderByCreatedAtDesc(userId)
+				.stream()
+				.map(log -> new XpOverviewDTO.XpEvent(log.getSourceType(), log.getAmount(), log.getCreatedAt()))
+				.toList());
+	}
+
+	static XpOverviewDTO.LevelInfo levelInfo(Level current, Level next, long exp) {
+		long min = current.getRequiredExp();
+		if (next == null) {
+			return new XpOverviewDTO.LevelInfo(current.getLevelNumber(), current.getTitle(), min, null, 1);
+		}
+		double progress = (double) (exp - min) / (next.getRequiredExp() - min);
+		return new XpOverviewDTO.LevelInfo(current.getLevelNumber(), current.getTitle(), min, next.getRequiredExp(),
+				progress);
+	}
 
 	/**
 	 * Awards XP idempotently by {@code eventKey} (a replay returns the original log, bonus included, and adds nothing).
