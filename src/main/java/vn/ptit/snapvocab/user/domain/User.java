@@ -98,6 +98,11 @@ public class User extends BaseTimeEntity {
 	@Builder.Default
 	private Integer streakDays = 0;
 
+	@Min(value = 0, message = "Longest streak days must be greater than or equal to 0")
+	@Column(name = "longest_streak_days", nullable = false, columnDefinition = "INT NOT NULL DEFAULT 0")
+	@Builder.Default
+	private Integer longestStreakDays = 0;
+
 	@Column(name = "last_studied_at")
 	private Instant lastStudiedAt;
 
