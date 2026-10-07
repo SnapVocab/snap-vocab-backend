@@ -20,6 +20,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vn.ptit.snapvocab.common.dto.CursorPaginationResponse;
 import vn.ptit.snapvocab.common.dto.Meta;
 import vn.ptit.snapvocab.common.dto.PaginationObject;
 import vn.ptit.snapvocab.common.exception.BadRequestAlertException;
@@ -115,21 +116,21 @@ public class TopicService {
 				.total(topicItemIds.getTotalElements())
 				.build();
 
-		if (topicItemIds.isEmpty()) {
-			return PaginationObject.<List<TopicItemData>>builder()
-					.data(new ArrayList<>())
-					.meta(meta)
-					.build();
+		return PaginationObject.<List<TopicItemData>>builder()
+				.data(buildTopicItemDataList(topicItemIds.getContent()))
+				.meta(meta)
+				.build();
+	}
+
+	private List<TopicItemData> buildTopicItemDataList(List<Long> topicItemIds) {
+		if (topicItemIds == null || topicItemIds.isEmpty()) {
+			return new ArrayList<>();
 		}
 
-		// Step 2: Batch fetch EAV attribute rows for the page's item IDs
-		List<TopicItemAttributeRow> rows = this.topicItemRepository.findAttributeRows(
-				topicItemIds.getContent());
+		// Step 2: Batch fetch EAV attribute rows for the item IDs
+		List<TopicItemAttributeRow> rows = this.topicItemRepository.findAttributeRows(topicItemIds);
 
-		// Step 3: Build schema definition
-		TopicSchemaDTO schema = buildSchema(rows, topicId);
-
-		// Step 4: Aggregate item data values by single vs multiple groups
+		// Step 3: Aggregate item data values by single vs multiple groups
 		Map<Long, Instant> createdAtByItem = new LinkedHashMap<>();
 		Map<Long, Map<String, Object>> singleGroupsByItem = new LinkedHashMap<>();
 		Map<Long, Map<String, Map<Long, Map<String, Object>>>> multiGroupsByItem = new LinkedHashMap<>();
@@ -172,9 +173,9 @@ public class TopicService {
 			}
 		}
 
-		// Step 5: Assemble TopicItemData list in original pagination order
+		// Step 4: Assemble TopicItemData list in original ID order
 		List<TopicItemData> items = new ArrayList<>();
-		for (Long itemId : topicItemIds.getContent()) {
+		for (Long itemId : topicItemIds) {
 			Map<String, Object> groupMap = singleGroupsByItem.getOrDefault(itemId, new LinkedHashMap<>());
 
 			Map<String, Map<Long, Map<String, Object>>> multiGroups = multiGroupsByItem.get(itemId);
@@ -191,10 +192,7 @@ public class TopicService {
 					.build());
 		}
 
-		return PaginationObject.<List<TopicItemData>>builder()
-				.data(items)
-				.meta(meta)
-				.build();
+		return items;
 	}
 
 	/**
@@ -424,7 +422,8 @@ public class TopicService {
 		}
 		if (collection.getType() == CollectionType.SYSTEM) {
 			if (!SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.ADMIN)) {
-				throw new AccessDeniedException("Only administrators can modify topics in system collections");
+				throw new AccessDeniedException(
+						"Only administrators can modify topics in system collections");
 			}
 		} else {
 			Long currentUserId = SecurityUtils.getCurrentUserId()
@@ -474,7 +473,6 @@ public class TopicService {
 
 		Schema schema = this.schemaMapper.toEntity(schemaDTO);
 		User topicOwner = topic.getCollection() != null ? topic.getCollection().getOwner() : null;
-		scherma_user:
 		schema.setUser(topicOwner);
 		schema.setIsSystem(false);
 		Schema savedSchema = this.schemaRepository.save(schema);
@@ -750,7 +748,8 @@ public class TopicService {
 						.build();
 
 				// Validate & add values
-				Map<String, Object> savedAttrs = buildAndValidateValues(groupInstance, groupDef.getAttributes(), attrData);
+				Map<String, Object> savedAttrs = buildAndValidateValues(groupInstance,
+						groupDef.getAttributes(), attrData);
 				if (!groupInstance.getValues().isEmpty()) {
 					topicItem.getGroupInstances().add(groupInstance);
 				}
@@ -783,7 +782,8 @@ public class TopicService {
 								.values(new ArrayList<>())
 								.build();
 
-						Map<String, Object> savedAttrs = buildAndValidateValues(groupInstance, groupDef.getAttributes(), attrData);
+						Map<String, Object> savedAttrs = buildAndValidateValues(groupInstance,
+								groupDef.getAttributes(), attrData);
 						if (!groupInstance.getValues().isEmpty()) {
 							topicItem.getGroupInstances().add(groupInstance);
 						}
@@ -870,4 +870,34 @@ public class TopicService {
 		}
 	}
 
+	public CursorPaginationResponse<List<TopicItemData>> getTopicItemsByCursor(Long topicId,
+			Long cursor, Long limit) {
+		validateTopicAccess(topicId);
+
+		// lấy limit + 1 để lấy về kết quả hasMore
+		long fetchSize = limit + 1;
+		List<Long> topicItemIds =
+				(cursor == null) ? this.topicItemRepository.findTopIdsByTopicId(topicId, fetchSize)
+						: this.topicItemRepository.findIdsByTopicIdAndCursor(topicId, cursor, fetchSize);
+
+		boolean hasMore = !topicItemIds.isEmpty() && topicItemIds.size() > limit;
+		List<Long> targetIds = hasMore ? topicItemIds.subList(0, limit.intValue()) : topicItemIds;
+
+		// Lấy nextCursor
+		Long nextCursor = targetIds.isEmpty() ? null : targetIds.get(targetIds.size() - 1);
+
+		if (targetIds.isEmpty()) {
+			return CursorPaginationResponse.<List<TopicItemData>>builder()
+					.data(Collections.emptyList())
+					.nextCursor(null)
+					.hasNext(false)
+					.build();
+		}
+
+		return CursorPaginationResponse.<List<TopicItemData>>builder()
+				.hasNext(hasMore)
+				.nextCursor(nextCursor)
+				.data(this.buildTopicItemDataList(targetIds))
+				.build();
+	}
 }

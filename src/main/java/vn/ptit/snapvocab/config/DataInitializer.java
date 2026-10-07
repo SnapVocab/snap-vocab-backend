@@ -10,23 +10,24 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import vn.ptit.snapvocab.security.AuthoritiesConstants;
 import vn.ptit.snapvocab.user.domain.Authority;
+import vn.ptit.snapvocab.user.domain.User;
+import vn.ptit.snapvocab.user.repository.AuthorityRepository;
+import vn.ptit.snapvocab.user.repository.UserRepository;
+import vn.ptit.snapvocab.vocab.config.SemanticBindingMigration;
 import vn.ptit.snapvocab.vocab.domain.Schema;
 import vn.ptit.snapvocab.vocab.domain.SchemaAttribute;
 import vn.ptit.snapvocab.vocab.domain.SchemaAttributeGroup;
 import vn.ptit.snapvocab.vocab.domain.Template;
 import vn.ptit.snapvocab.vocab.domain.TemplateElement;
 import vn.ptit.snapvocab.vocab.domain.TemplateField;
-import vn.ptit.snapvocab.user.domain.User;
 import vn.ptit.snapvocab.vocab.domain.enumeration.Alignment;
+import vn.ptit.snapvocab.vocab.domain.enumeration.CardSide;
 import vn.ptit.snapvocab.vocab.domain.enumeration.DataType;
 import vn.ptit.snapvocab.vocab.domain.enumeration.SemanticRole;
 import vn.ptit.snapvocab.vocab.domain.enumeration.TemplateElementType;
-import vn.ptit.snapvocab.user.repository.AuthorityRepository;
 import vn.ptit.snapvocab.vocab.repository.SchemaRepository;
-import vn.ptit.snapvocab.user.repository.UserRepository;
-import vn.ptit.snapvocab.security.AuthoritiesConstants;
-import vn.ptit.snapvocab.vocab.config.SemanticBindingMigration;
 
 @Component
 public class DataInitializer implements CommandLineRunner {
@@ -103,7 +104,6 @@ public class DataInitializer implements CommandLineRunner {
 					.templates(new ArrayList<>())
 					.build();
 
-
 			SchemaAttributeGroup mainGroup = SchemaAttributeGroup.builder()
 					.schema(schema)
 					.name("main")
@@ -131,22 +131,13 @@ public class DataInitializer implements CommandLineRunner {
 					.position((short) 1)
 					.build();
 
-			SchemaAttribute audioAttr = SchemaAttribute.builder()
-					.group(mainGroup)
-					.name("audio")
-					.label("Phát âm")
-					.dataType(DataType.AUDIO)
-					.required(false)
-					.position((short) 2)
-					.build();
-
 			SchemaAttribute translationAttr = SchemaAttribute.builder()
 					.group(mainGroup)
 					.name("translation")
 					.label("Bản dịch tiếng Việt")
 					.dataType(DataType.TEXT)
 					.required(false)
-					.position((short) 3)
+					.position((short) 2)
 					.build();
 
 			SchemaAttribute levelAttr = SchemaAttribute.builder()
@@ -155,7 +146,7 @@ public class DataInitializer implements CommandLineRunner {
 					.label("Cấp độ")
 					.dataType(DataType.TEXT)
 					.required(false)
-					.position((short) 4)
+					.position((short) 3)
 					.build();
 
 			SchemaAttribute defTranslationAttr = SchemaAttribute.builder()
@@ -164,13 +155,21 @@ public class DataInitializer implements CommandLineRunner {
 					.label("Dịch định nghĩa")
 					.dataType(DataType.TEXT)
 					.required(false)
+					.position((short) 4)
+					.build();
+
+			SchemaAttribute definitionAttr = SchemaAttribute.builder()
+					.group(mainGroup)
+					.name("definition")
+					.label("Định nghĩa tiếng Anh")
+					.dataType(DataType.TEXT)
+					.required(false)
 					.position((short) 5)
 					.build();
 
 			mainGroup.getAttributes().addAll(
-					List.of(wordAttr, phoneticAttr, audioAttr, translationAttr, levelAttr,
-							defTranslationAttr));
-
+					List.of(wordAttr, phoneticAttr, translationAttr, levelAttr,
+							defTranslationAttr, definitionAttr));
 
 			SchemaAttributeGroup meaningGroup = SchemaAttributeGroup.builder()
 					.schema(schema)
@@ -186,7 +185,7 @@ public class DataInitializer implements CommandLineRunner {
 					.name("meaning")
 					.label("Giải nghĩa")
 					.dataType(DataType.TEXT)
-					.required(true)
+					.required(false)
 					.position((short) 0)
 					.build();
 
@@ -209,7 +208,6 @@ public class DataInitializer implements CommandLineRunner {
 					.build();
 
 			meaningGroup.getAttributes().addAll(List.of(meaningAttr, exampleAttr, imageAttr));
-
 
 			SchemaAttributeGroup examplesGroup = SchemaAttributeGroup.builder()
 					.schema(schema)
@@ -244,7 +242,9 @@ public class DataInitializer implements CommandLineRunner {
 			schema.getAttributeGroups().add(meaningGroup);
 			schema.getAttributeGroups().add(examplesGroup);
 
-
+			// =========================================================================
+			// Template 1: STANDARD (Thẻ Chuẩn: Chữ -> Nghĩa)
+			// =========================================================================
 			Template standardTemplate = Template.builder()
 					.schema(schema)
 					.code("STANDARD")
@@ -253,38 +253,50 @@ public class DataInitializer implements CommandLineRunner {
 					.elements(new ArrayList<>())
 					.build();
 
-
+			// FRONT
 			standardTemplate.addElement(
-					TemplateElement.builder().position(0).side(vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.FRONT)
-							.type(TemplateElementType.SECTION_BREAK).sectionLabel("Thông tin chung").repeatable(false).build());
+					TemplateElement.builder().position(0).side(CardSide.FRONT)
+							.type(TemplateElementType.SECTION_BREAK).sectionLabel("Thông tin chính").repeatable(false).build());
 			standardTemplate.addElement(
-					createFieldElement(1, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.FRONT, wordAttr, SemanticRole.TARGET_WORD, "Từ vựng", false, false, 24,
-							Alignment.CENTER, "#111827"));
+					createFieldElement(1, CardSide.FRONT, wordAttr, SemanticRole.TARGET_WORD, "Từ vựng", false, false, 32,
+							Alignment.CENTER, "#0F172A"));
 			standardTemplate.addElement(
-					TemplateElement.builder().position(2).side(vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.FRONT)
-							.type(TemplateElementType.COLUMN_BREAK).build());
-			standardTemplate.addElement(
-					createFieldElement(3, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.FRONT, phoneticAttr, null, "Phiên âm", true, true, 16, Alignment.CENTER,
+					createFieldElement(2, CardSide.FRONT, phoneticAttr, null, "Phiên âm", true, true, 18, Alignment.CENTER,
 							"#0284C7"));
 			standardTemplate.addElement(
-					createFieldElement(4, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.FRONT, audioAttr, SemanticRole.AUDIO, "Phát âm", true, true, 16,
+					createFieldElement(3, CardSide.FRONT, levelAttr, null, "Cấp độ", true, false, 12,
+							Alignment.CENTER, "#15803D"));
+
+			// BACK
+			standardTemplate.addElement(
+					TemplateElement.builder().position(4).side(CardSide.BACK)
+							.type(TemplateElementType.SECTION_BREAK).sectionLabel("Giải nghĩa").repeatable(false).build());
+			standardTemplate.addElement(
+					createFieldElement(5, CardSide.BACK, translationAttr, SemanticRole.NATIVE_TRANSLATION, "Bản dịch tiếng Việt", false, false, 24,
+							Alignment.CENTER, "#15803D"));
+			standardTemplate.addElement(
+					createFieldElement(6, CardSide.BACK, definitionAttr, SemanticRole.DEFINITION, "Định nghĩa tiếng Anh", true, false,
+							15, Alignment.LEFT, "#334155"));
+			standardTemplate.addElement(
+					createFieldElement(7, CardSide.BACK, defTranslationAttr, null, "Dịch định nghĩa", true, false,
+							14, Alignment.LEFT, "#64748B"));
+			standardTemplate.addElement(
+					createFieldElement(8, CardSide.BACK, imageAttr, SemanticRole.IMAGE, "Hình ảnh", true, false, null,
 							Alignment.CENTER, null));
 
+			standardTemplate.addElement(
+					TemplateElement.builder().position(9).side(CardSide.BACK)
+							.type(TemplateElementType.SECTION_BREAK).sectionLabel("Ví dụ & Ngữ cảnh").repeatable(true).build());
+			standardTemplate.addElement(
+					createFieldElement(10, CardSide.BACK, contentAttr, SemanticRole.EXAMPLE_SENTENCE, "Câu ví dụ", false, false,
+							15, Alignment.LEFT, "#1E293B"));
+			standardTemplate.addElement(
+					createFieldElement(11, CardSide.BACK, exTranslationAttr, SemanticRole.NATIVE_TRANSLATION, "Dịch câu ví dụ", true, false,
+							14, Alignment.LEFT, "#64748B"));
 
-			standardTemplate.addElement(
-					TemplateElement.builder().position(5).side(vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.BACK)
-							.type(TemplateElementType.SECTION_BREAK).sectionLabel("Nghĩa & Ví dụ").repeatable(true).build());
-			standardTemplate.addElement(
-					createFieldElement(6, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.BACK, meaningAttr, SemanticRole.DEFINITION, "Bản dịch / Nghĩa", false, false, 20,
-							Alignment.LEFT, "#111827"));
-			standardTemplate.addElement(
-					createFieldElement(7, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.BACK, exampleAttr, SemanticRole.EXAMPLE_SENTENCE, "Câu ví dụ (Sentence)", true, false,
-							15, Alignment.LEFT, "#6B7280"));
-			standardTemplate.addElement(
-					createFieldElement(8, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.BACK, imageAttr, SemanticRole.IMAGE, "Hình ảnh", true, false, null,
-							Alignment.CENTER, null));
-
-
+			// =========================================================================
+			// Template 2: LISTENING (Luyện Nghe: Âm thanh -> Chữ)
+			// =========================================================================
 			Template listeningTemplate = Template.builder()
 					.schema(schema)
 					.code("LISTENING")
@@ -293,30 +305,44 @@ public class DataInitializer implements CommandLineRunner {
 					.elements(new ArrayList<>())
 					.build();
 
+			// FRONT
 			listeningTemplate.addElement(
-					TemplateElement.builder().position(0).side(vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.FRONT)
+					TemplateElement.builder().position(0).side(CardSide.FRONT)
 							.type(TemplateElementType.SECTION_BREAK).sectionLabel("Luyện nghe").repeatable(false).build());
 			listeningTemplate.addElement(
-					createFieldElement(1, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.FRONT, audioAttr, SemanticRole.AUDIO, "Nghe phát âm", false, true, 32,
+					createFieldElement(1, CardSide.FRONT, wordAttr, SemanticRole.AUDIO, "Nghe phát âm", false, true, 32,
 							Alignment.CENTER, null));
 
+			// BACK
 			listeningTemplate.addElement(
-					TemplateElement.builder().position(2).side(vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.BACK)
-							.type(TemplateElementType.SECTION_BREAK).sectionLabel("Thông tin từ vựng").repeatable(false).build());
+					TemplateElement.builder().position(2).side(CardSide.BACK)
+							.type(TemplateElementType.SECTION_BREAK).sectionLabel("Từ vựng & Giải nghĩa").repeatable(false).build());
 			listeningTemplate.addElement(
-					createFieldElement(3, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.BACK, wordAttr, SemanticRole.TARGET_WORD, "Từ vựng", false, false, 24,
-							Alignment.CENTER, "#111827"));
+					createFieldElement(3, CardSide.BACK, wordAttr, SemanticRole.TARGET_WORD, "Từ vựng", false, true, 24,
+							Alignment.CENTER, "#0F172A"));
 			listeningTemplate.addElement(
-					createFieldElement(4, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.BACK, phoneticAttr, null, "Phiên âm", true, true, 16, Alignment.CENTER,
-							"#6B7280"));
+					createFieldElement(4, CardSide.BACK, phoneticAttr, null, "Phiên âm", true, true, 16, Alignment.CENTER,
+							"#0284C7"));
 			listeningTemplate.addElement(
-					createFieldElement(5, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.BACK, meaningAttr, SemanticRole.DEFINITION, "Nghĩa", false, false, 20,
-							Alignment.LEFT, "#1F2937"));
+					createFieldElement(5, CardSide.BACK, translationAttr, SemanticRole.NATIVE_TRANSLATION, "Bản dịch tiếng Việt", false, false, 18,
+							Alignment.LEFT, "#15803D"));
 			listeningTemplate.addElement(
-					createFieldElement(6, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.BACK, exampleAttr, SemanticRole.EXAMPLE_SENTENCE, "Ví dụ", true, false,
-							15, Alignment.LEFT, "#4B5563"));
+					createFieldElement(6, CardSide.BACK, definitionAttr, SemanticRole.DEFINITION, "Định nghĩa tiếng Anh", true, false, 15,
+							Alignment.LEFT, "#334155"));
 
+			listeningTemplate.addElement(
+					TemplateElement.builder().position(7).side(CardSide.BACK)
+							.type(TemplateElementType.SECTION_BREAK).sectionLabel("Ví dụ & Ngữ cảnh").repeatable(true).build());
+			listeningTemplate.addElement(
+					createFieldElement(8, CardSide.BACK, contentAttr, SemanticRole.EXAMPLE_SENTENCE, "Câu ví dụ", false, false,
+							15, Alignment.LEFT, "#1E293B"));
+			listeningTemplate.addElement(
+					createFieldElement(9, CardSide.BACK, exTranslationAttr, SemanticRole.NATIVE_TRANSLATION, "Dịch câu ví dụ", true, false,
+							14, Alignment.LEFT, "#64748B"));
 
+			// =========================================================================
+			// Template 3: REVERSE (Đảo Mặt Thẻ: Nghĩa -> Đoán từ)
+			// =========================================================================
 			Template reverseTemplate = Template.builder()
 					.schema(schema)
 					.code("REVERSE")
@@ -325,28 +351,40 @@ public class DataInitializer implements CommandLineRunner {
 					.elements(new ArrayList<>())
 					.build();
 
+			// FRONT
 			reverseTemplate.addElement(
-					TemplateElement.builder().position(0).side(vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.FRONT)
+					TemplateElement.builder().position(0).side(CardSide.FRONT)
 							.type(TemplateElementType.SECTION_BREAK).sectionLabel("Giải nghĩa").repeatable(false).build());
 			reverseTemplate.addElement(
-					createFieldElement(1, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.FRONT, meaningAttr, SemanticRole.DEFINITION, "Nghĩa", false, false, 22,
-							Alignment.CENTER, "#1F2937"));
+					createFieldElement(1, CardSide.FRONT, translationAttr, SemanticRole.NATIVE_TRANSLATION, "Bản dịch tiếng Việt", false, false, 22,
+							Alignment.CENTER, "#15803D"));
 			reverseTemplate.addElement(
-					createFieldElement(2, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.FRONT, imageAttr, SemanticRole.IMAGE, "Hình ảnh", true, false, null,
+					createFieldElement(2, CardSide.FRONT, definitionAttr, SemanticRole.DEFINITION, "Định nghĩa tiếng Anh", true, false, 16,
+							Alignment.CENTER, "#334155"));
+			reverseTemplate.addElement(
+					createFieldElement(3, CardSide.FRONT, imageAttr, SemanticRole.IMAGE, "Hình ảnh", true, false, null,
 							Alignment.CENTER, null));
 
+			// BACK
 			reverseTemplate.addElement(
-					TemplateElement.builder().position(3).side(vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.BACK)
+					TemplateElement.builder().position(4).side(CardSide.BACK)
 							.type(TemplateElementType.SECTION_BREAK).sectionLabel("Từ vựng").repeatable(false).build());
 			reverseTemplate.addElement(
-					createFieldElement(4, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.BACK, wordAttr, SemanticRole.TARGET_WORD, "Từ vựng", false, false, 24,
-							Alignment.CENTER, "#111827"));
+					createFieldElement(5, CardSide.BACK, wordAttr, SemanticRole.TARGET_WORD, "Từ vựng", false, true, 24,
+							Alignment.CENTER, "#0F172A"));
 			reverseTemplate.addElement(
-					createFieldElement(5, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.BACK, phoneticAttr, null, "Phiên âm", true, true, 16, Alignment.CENTER,
-							"#6B7280"));
+					createFieldElement(6, CardSide.BACK, phoneticAttr, null, "Phiên âm", true, true, 16, Alignment.CENTER,
+							"#0284C7"));
+
 			reverseTemplate.addElement(
-					createFieldElement(6, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide.BACK, audioAttr, SemanticRole.AUDIO, "Phát âm", true, true, 16,
-							Alignment.CENTER, null));
+					TemplateElement.builder().position(7).side(CardSide.BACK)
+							.type(TemplateElementType.SECTION_BREAK).sectionLabel("Ví dụ & Ngữ cảnh").repeatable(true).build());
+			reverseTemplate.addElement(
+					createFieldElement(8, CardSide.BACK, contentAttr, SemanticRole.EXAMPLE_SENTENCE, "Câu ví dụ", false, false,
+							15, Alignment.LEFT, "#1E293B"));
+			reverseTemplate.addElement(
+					createFieldElement(9, CardSide.BACK, exTranslationAttr, SemanticRole.NATIVE_TRANSLATION, "Dịch câu ví dụ", true, false,
+							14, Alignment.LEFT, "#64748B"));
 
 			schema.getTemplates().addAll(List.of(standardTemplate, listeningTemplate, reverseTemplate));
 
@@ -355,7 +393,7 @@ public class DataInitializer implements CommandLineRunner {
 		}
 	}
 
-	private TemplateElement createFieldElement(int position, vn.ptit.snapvocab.vocab.domain.enumeration.CardSide side,
+	private TemplateElement createFieldElement(int position, CardSide side,
 			SchemaAttribute attr, SemanticRole role, String label, boolean hideIfEmpty, boolean audioAction,
 			Integer fontSize, Alignment alignment, String color) {
 		TemplateElement element = TemplateElement.builder()
@@ -380,4 +418,3 @@ public class DataInitializer implements CommandLineRunner {
 		return element;
 	}
 }
-
