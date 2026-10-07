@@ -3,6 +3,7 @@ package vn.ptit.snapvocab.shop.service;
 import jakarta.persistence.EntityManager;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -14,6 +15,9 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
+import vn.ptit.snapvocab.mission.domain.enumeration.MissionTriggerEvent;
+import vn.ptit.snapvocab.mission.service.MissionFacts;
+import vn.ptit.snapvocab.mission.service.MissionTracker;
 import vn.ptit.snapvocab.user.domain.User;
 import vn.ptit.snapvocab.user.repository.UserRepository;
 import vn.ptit.snapvocab.shop.domain.BoosterActivation;
@@ -40,11 +44,13 @@ public class InventoryService {
 	private final ApplicationEventPublisher eventPublisher;
 	private final EntityManager entityManager;
 	private final TransactionTemplate transaction;
+	private final MissionTracker missionTracker;
 
 	public InventoryService(UserRepository userRepository, UserItemRepository userItemRepository,
 			BoosterActivationRepository activationRepository, ShopMapper mapper,
 			ApplicationEventPublisher eventPublisher, EntityManager entityManager,
-			PlatformTransactionManager transactionManager) {
+			PlatformTransactionManager transactionManager, MissionTracker missionTracker) {
+		this.missionTracker = missionTracker;
 		this.userRepository = userRepository;
 		this.userItemRepository = userItemRepository;
 		this.activationRepository = activationRepository;
@@ -150,17 +156,24 @@ public class InventoryService {
 					Map.of("expiresAt", active.getExpiresAt()));
 		}
 
+		// Daily Mission (daily_mission.md §3.2): one actionInstant after validation; assign on the pre-activation state.
+		Instant actionInstant = Economy.now();
+		LocalDate missionDate = MissionTracker.missionDate(actionInstant);
+		missionTracker.ensureAssigned(userId, missionDate, actionInstant);
+
 		owned.setQuantity(owned.getQuantity() - 1);
 		BoosterActivation activation = activationRepository.save(BoosterActivation.builder()
 				.user(user)
 				.shopItem(owned.getItem())
-				.startedAt(now)
-				.expiresAt(now.plus(Duration.ofMinutes(owned.getItem().boostDurationMinutesOrDefault())))
+				.startedAt(actionInstant)
+				.expiresAt(actionInstant.plus(Duration.ofMinutes(owned.getItem().boostDurationMinutesOrDefault())))
 				.idempotencyKey(key)
 				.build());
 		userItemRepository.saveAndFlush(owned);
+		missionTracker.apply(userId, missionDate, MissionTriggerEvent.BOOSTER_USED, "BOOSTER_USED:" + activation.getId(),
+				MissionFacts.NONE, actionInstant);
 		LOG.info("User {} activated booster item {} until {}", userId, itemId, activation.getExpiresAt());
-		return new ActivationResultDTO(ShopMapper.toActiveBooster(activation), owned.getQuantity(), now, false);
+		return new ActivationResultDTO(ShopMapper.toActiveBooster(activation), owned.getQuantity(), actionInstant, false);
 	}
 
 	private BoosterActivation findActive(Long userId, Instant now) {

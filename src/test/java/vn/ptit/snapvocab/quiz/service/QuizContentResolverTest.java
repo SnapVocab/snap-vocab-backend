@@ -71,7 +71,7 @@ class QuizContentResolverTest {
 	@Test
 	void resolvesNativeTranslationThroughHiddenBindingById() {
 		when(templateFieldRepository.findByTemplateId(10L)).thenReturn(defaultEnglishFields());
-		when(valueRepository.findItemValues(eq(7L), anyCollection())).thenAnswer(inv -> {
+		when(valueRepository.findItemValues(eq(List.of(7L)), anyCollection())).thenAnswer(inv -> {
 			assertThat((java.util.Collection<Long>) inv.getArgument(1))
 					.containsExactlyInAnyOrder(WORD, MAIN_TRANSLATION);
 			return List.of(
@@ -87,7 +87,7 @@ class QuizContentResolverTest {
 	@Test
 	void fillBlankCollectsExamplesFromEveryExampleBinding() {
 		when(templateFieldRepository.findByTemplateId(10L)).thenReturn(defaultEnglishFields());
-		when(valueRepository.findItemValues(eq(7L), anyCollection())).thenReturn(List.of(
+		when(valueRepository.findItemValues(eq(List.of(7L)), anyCollection())).thenReturn(List.of(
 				new TopicItemValueRow(100L, WORD, "abandon"),
 				new TopicItemValueRow(100L, EXAMPLE_CONTENT, "They abandon ship."),
 				new TopicItemValueRow(100L, EXAMPLE_CONTENT, "   "),
@@ -129,7 +129,7 @@ class QuizContentResolverTest {
 				field(WORD, "word", SemanticRole.TARGET_WORD, false),
 				field(WORD, "word", SemanticRole.TARGET_WORD, true),
 				field(MAIN_TRANSLATION, "translation", SemanticRole.NATIVE_TRANSLATION, true)));
-		when(valueRepository.findItemValues(eq(7L), anyCollection())).thenReturn(List.of());
+		when(valueRepository.findItemValues(eq(List.of(7L)), anyCollection())).thenReturn(List.of());
 
 		assertThat(resolver.resolve(topic, QuizMode.MCQ)).isEmpty();
 	}
@@ -137,12 +137,24 @@ class QuizContentResolverTest {
 	@Test
 	void itemWithTwoDistinctTargetValuesHasNoTargetWord() {
 		when(templateFieldRepository.findByTemplateId(10L)).thenReturn(defaultEnglishFields());
-		when(valueRepository.findItemValues(eq(7L), anyCollection())).thenReturn(List.of(
+		when(valueRepository.findItemValues(eq(List.of(7L)), anyCollection())).thenReturn(List.of(
 				new TopicItemValueRow(100L, WORD, "run"),
 				new TopicItemValueRow(100L, WORD, "sprint"),
 				new TopicItemValueRow(100L, MAIN_TRANSLATION, "chạy")));
 
 		assertThat(resolver.resolve(topic, QuizMode.MCQ).get(0).targetWord()).isNull();
+	}
+
+	@Test
+	void parentTopicDrawsItemsFromItsSubtopics() {
+		Topic child = Topic.builder().id(71L).parent(topic).build();
+		topic.getChildren().add(child);
+		when(templateFieldRepository.findByTemplateId(10L)).thenReturn(defaultEnglishFields());
+		when(valueRepository.findItemValues(eq(List.of(7L, 71L)), anyCollection())).thenReturn(List.of(
+				new TopicItemValueRow(200L, WORD, "he"),
+				new TopicItemValueRow(200L, MAIN_TRANSLATION, "anh ấy")));
+
+		assertThat(resolver.resolve(topic, QuizMode.MCQ)).containsExactly(new ItemContent(200L, "he", "anh ấy", List.of()));
 	}
 
 	@Test

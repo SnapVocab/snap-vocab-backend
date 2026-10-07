@@ -19,6 +19,7 @@ public class ProgressEventListener {
 		progressService.record(event.userId(), LearningEventType.QUIZ_COMPLETED,
 				"QUIZ_COMPLETED:" + event.quizId(),
 				Map.of("quizId", event.quizId(), "topicId", event.topicId(), "mode", event.mode().name(),
-						"totalUnits", event.totalUnits(), "correctCount", event.correctCount()));
+						"totalUnits", event.totalUnits(), "correctCount", event.correctCount()),
+				event.completedAt());
 	}
 }

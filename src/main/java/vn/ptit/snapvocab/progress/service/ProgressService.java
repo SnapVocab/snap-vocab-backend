@@ -16,6 +16,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.ptit.snapvocab.common.exception.BadRequestAlertException;
 import vn.ptit.snapvocab.common.exception.ResourceNotFoundException;
+import vn.ptit.snapvocab.mission.domain.enumeration.MissionTriggerEvent;
+import vn.ptit.snapvocab.mission.service.MissionFacts;
+import vn.ptit.snapvocab.mission.service.MissionTracker;
 import vn.ptit.snapvocab.progress.domain.LearningEvent;
 import vn.ptit.snapvocab.progress.domain.dto.HomeWidgetDTO;
 import vn.ptit.snapvocab.progress.domain.dto.ProgressHistoryDTO;
@@ -49,6 +52,7 @@ public class ProgressService {
 	private final FsrsRecordRepository fsrsRecordRepository;
 	private final TopicItemRepository topicItemRepository;
 	private final QuizRepository quizRepository;
+	private final MissionTracker missionTracker;
 
 	@Transactional(readOnly = true)
 	public ProgressSummaryDTO getSummary(Long userId) {
@@ -96,30 +100,40 @@ public class ProgressService {
 				currentStreak(user.getStreakDays(), lastStudiedDate(user), today()));
 	}
 
-	/**
-	 * Records one learning action in the caller's transaction and advances the streak.
-	 * Idempotent by {@code sourceKey}: a replay records nothing.
-	 */
+	/** {@link #record(Long, LearningEventType, String, Map, Instant)} at the current server time. */
 	@Transactional
 	public void record(Long userId, LearningEventType type, String sourceKey, Map<String, Object> metadata) {
+		record(userId, type, sourceKey, metadata, Economy.now());
+	}
+
+	/**
+	 * Records one learning action in the caller's transaction and advances the streak.
+	 * Idempotent by {@code sourceKey}: a replay records nothing. {@code actionInstant} is the producer's single
+	 * timestamp (daily_mission.md §3.2), so the learning date and the Daily Mission credit fall on the same day.
+	 * Does not assign missions: the producer already ran {@code ensureAssigned} before its own mutation.
+	 */
+	@Transactional
+	public void record(Long userId, LearningEventType type, String sourceKey, Map<String, Object> metadata,
+			Instant actionInstant) {
 		User user = Economy.lockUser(userRepository, userId);
 		if (learningEventRepository.existsBySourceKey(sourceKey)) {
 			return;
 		}
-		Instant now = Economy.now();
-		LocalDate today = LocalDate.ofInstant(now, ZONE);
-		learningEventRepository.save(LearningEvent.builder()
+		LocalDate today = LocalDate.ofInstant(actionInstant, ZONE);
+		LearningEvent event = learningEventRepository.save(LearningEvent.builder()
 				.user(user)
 				.eventType(type)
 				.sourceKey(sourceKey)
 				.learningDate(today)
 				.metadata(metadata)
-				.createdAt(now)
+				.createdAt(actionInstant)
 				.build());
 		int streak = nextStreak(user.getStreakDays(), lastStudiedDate(user), today);
 		user.setStreakDays(streak);
 		user.setLongestStreakDays(Math.max(user.getLongestStreakDays(), streak));
-		user.setLastStudiedAt(now);
+		user.setLastStudiedAt(actionInstant);
+		missionTracker.apply(userId, today, MissionTriggerEvent.LEARNING_ACTIVITY_RECORDED, "LEARNING:" + event.getId(),
+				MissionFacts.NONE, actionInstant);
 	}
 
 	/** Streak after studying on {@code today}: unchanged same day, +1 the day after, else restart at 1. */

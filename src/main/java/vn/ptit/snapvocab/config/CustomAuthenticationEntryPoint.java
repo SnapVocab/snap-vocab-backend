@@ -30,7 +30,8 @@ public class CustomAuthenticationEntryPoint implements AuthenticationEntryPoint 
 		securityAuditLogger.unauthorizedAccess(
 				request.getMethod(), request.getRequestURI(), request.getRemoteAddr());
 
-		response.reset();
+		// resetBuffer, not reset: reset() would also drop the CORS headers set earlier by CorsFilter.
+		response.resetBuffer();
 		response.setStatus(401);
 		response.setContentType("application/json;charset=UTF-8");
 

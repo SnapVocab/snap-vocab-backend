@@ -204,7 +204,8 @@ public class AdminShopService {
 			throw new ShopException(ShopErrorCode.FIELD_LOCKED, "Fields locked while " + item.getStatus() + ": " + locked,
 					Map.of("fields", locked, "status", item.getStatus()));
 		}
-		validate(next, item.getId(), false);
+		// A published/archived item stays publishable: its icon cannot be dropped or pointed at a missing upload.
+		validate(next, item.getId(), item.getStatus() != ShopItemStatus.DRAFT);
 		apply(next, item);
 		return toDto(save(item));
 	}
@@ -264,7 +265,7 @@ public class AdminShopService {
 
 	/**
 	 * Full rule set of shop.md §8.3. Every save enforces structure, limits and type config; {@code publishing}
-	 * additionally requires the icon and checks uploaded assets in storage. All violations are reported at once;
+	 * (publish, or any save of a non-DRAFT item) additionally requires the icon and checks uploaded assets in storage. All violations are reported at once;
 	 * the first one decides the top-level error code.
 	 */
 	private void validate(ShopItemForm f, Long id, boolean publishing) {
@@ -358,8 +359,8 @@ public class AdminShopService {
 	}
 
 	/**
-	 * Keys must come from the admin upload flow. Existence and size are checked at publish only, so a draft
-	 * can be saved while the upload is still in flight.
+	 * Keys must come from the admin upload flow. Existence and size are checked from publish on, so a draft
+	 * can be saved while the upload is still in flight. Pixel size/alpha are checked by the admin client only.
 	 */
 	private void checkAsset(List<Violation> v, String field, String key, long maxBytes, boolean required,
 			boolean publishing, ShopErrorCode code) {

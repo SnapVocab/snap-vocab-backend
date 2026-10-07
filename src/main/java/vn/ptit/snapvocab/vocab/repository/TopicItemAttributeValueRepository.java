@@ -21,10 +21,22 @@ public interface TopicItemAttributeValueRepository extends JpaRepository<TopicIt
 			FROM TopicItemAttributeValue v
 			JOIN v.groupInstance gi
 			JOIN gi.item ti
-			WHERE ti.topic.id = :topicId AND v.attribute.id IN :attributeIds
+			WHERE ti.topic.id IN :topicIds AND v.attribute.id IN :attributeIds
 			ORDER BY ti.id, gi.position, v.id
 			""")
-	List<TopicItemValueRow> findItemValues(@Param("topicId") Long topicId,
+	List<TopicItemValueRow> findItemValues(@Param("topicIds") Collection<Long> topicIds,
+			@Param("attributeIds") Collection<Long> attributeIds);
+
+	@Query("""
+			SELECT new vn.ptit.snapvocab.vocab.domain.dto.topic.TopicItemValueRow(
+			    ti.id, v.attribute.id, v.value)
+			FROM TopicItemAttributeValue v
+			JOIN v.groupInstance gi
+			JOIN gi.item ti
+			WHERE ti.id = :itemId AND v.attribute.id IN :attributeIds
+			ORDER BY gi.position, v.id
+			""")
+	List<TopicItemValueRow> findValuesOfItem(@Param("itemId") Long itemId,
 			@Param("attributeIds") Collection<Long> attributeIds);
 }
 

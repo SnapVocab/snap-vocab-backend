@@ -55,12 +55,13 @@ import vn.ptit.snapvocab.support.LocalMySqlJpaTest;
 import vn.ptit.snapvocab.xp.domain.ExperienceLog;
 import vn.ptit.snapvocab.xp.domain.XpSourceType;
 import vn.ptit.snapvocab.xp.service.XpService;
+import vn.ptit.snapvocab.mission.service.MissionTracker;
 
 /** Shop / Inventory / Booster / Wallet / XP against LOCAL MySQL (real locks, constraints and generated columns). */
 @LocalMySqlJpaTest
 @RecordApplicationEvents
 @Import({ ShopService.class, InventoryService.class, WalletService.class, ShopRewardService.class, ShopMapper.class,
-		XpService.class })
+		XpService.class, MissionTracker.class })
 class ShopIntegrationTest {
 
 	@MockitoBean

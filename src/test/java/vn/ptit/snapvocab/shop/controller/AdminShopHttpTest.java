@@ -350,6 +350,10 @@ class AdminShopHttpTest {
 		assertThat(error(call(admin, "PATCH", ITEMS + "/" + id, Map.of("version", v + 1, "price", 0), 400)))
 				.isEqualTo("INVALID_PRICE");
 		assertThat(error(call(admin, "PATCH", ITEMS + "/" + id, Map.of("price", 600), 400))).isEqualTo("VALIDATION_ERROR");
+		// a published item keeps a valid, uploaded icon
+		Map<String, Object> noIcon = new HashMap<>(Map.of("version", v + 1));
+		noIcon.put("iconKey", null);
+		assertThat(firstField(call(admin, "PATCH", ITEMS + "/" + id, noIcon, 400))).isEqualTo("iconKey");
 		assertThat(error(call(admin, "PATCH", ITEMS + "/" + id, Map.of("version", v + 1, "publishedAt", "2026-01-01T00:00:00Z"), 400)))
 				.isEqualTo("VALIDATION_ERROR");
 	}

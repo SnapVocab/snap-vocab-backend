@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.springframework.stereotype.Component;
 import vn.ptit.snapvocab.vocab.domain.Template;
@@ -53,15 +54,52 @@ public class QuizContentResolver {
 			throw new QuizException(QuizErrorCode.TOPIC_TEMPLATE_NOT_CONFIGURED,
 					"Topic " + topic.getId() + " has no active template");
 		}
+		Map<Long, SemanticRole> roleByAttribute = roleByAttribute(template, mode);
+		List<Long> topicIds = new ArrayList<>();
+		collectTopicIds(topic, topicIds);
+		return contents(valueRepository.findItemValues(topicIds, roleByAttribute.keySet()), roleByAttribute);
+	}
 
+	/** A parent topic (e.g. system "Pronoun") holds no words itself, so its quiz draws from its subtopics too. */
+	private static void collectTopicIds(Topic topic, List<Long> ids) {
+		ids.add(topic.getId());
+		topic.getChildren().forEach(child -> collectTopicIds(child, ids));
+	}
+
+	/**
+	 * Whether one item of {@code topic} can be an MCQ/MATCHING unit: the active template binds exactly one attribute to
+	 * TARGET_WORD and NATIVE_TRANSLATION, and the item has exactly one non-blank value for each. Same rule as
+	 * {@link #resolve}; Daily Mission uses it to decide which saved words count (daily_mission.md §5.5).
+	 */
+	public Optional<ItemContent> resolveQuizReady(Topic topic, Long topicItemId) {
+		Template template = topic.getActiveTemplate();
+		if (template == null) {
+			return Optional.empty();
+		}
+		Map<Long, SemanticRole> roleByAttribute;
+		try {
+			roleByAttribute = roleByAttribute(template, QuizMode.MCQ);
+		} catch (QuizException unboundOrAmbiguous) {
+			// Thrown by the static binding check only, never by a transactional call: the caller's transaction is intact.
+			return Optional.empty();
+		}
+		return contents(valueRepository.findValuesOfItem(topicItemId, roleByAttribute.keySet()), roleByAttribute)
+				.stream()
+				.filter(c -> c.targetWord() != null && c.nativeTranslation() != null)
+				.findFirst();
+	}
+
+	private Map<Long, SemanticRole> roleByAttribute(Template template, QuizMode mode) {
 		Map<SemanticRole, Set<Long>> attributesByRole = bindings(
 				templateFieldRepository.findByTemplateId(template.getId()), requiredRoles(mode));
-
 		Map<Long, SemanticRole> roleByAttribute = new HashMap<>();
 		attributesByRole.forEach((role, ids) -> ids.forEach(id -> roleByAttribute.put(id, role)));
+		return roleByAttribute;
+	}
 
+	private static List<ItemContent> contents(List<TopicItemValueRow> rows, Map<Long, SemanticRole> roleByAttribute) {
 		Map<Long, Map<SemanticRole, Set<String>>> valuesByItem = new LinkedHashMap<>();
-		for (TopicItemValueRow row : valueRepository.findItemValues(topic.getId(), roleByAttribute.keySet())) {
+		for (TopicItemValueRow row : rows) {
 			String value = row.value() == null ? "" : row.value().trim();
 			if (value.isEmpty()) {
 				continue;

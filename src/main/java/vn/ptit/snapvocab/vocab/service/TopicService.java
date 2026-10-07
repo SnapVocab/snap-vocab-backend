@@ -19,7 +19,13 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import vn.ptit.snapvocab.mission.domain.enumeration.MissionTriggerEvent;
+import vn.ptit.snapvocab.mission.service.MissionFacts;
+import vn.ptit.snapvocab.mission.service.MissionTracker;
+import vn.ptit.snapvocab.quiz.service.QuizContentResolver;
+import vn.ptit.snapvocab.shop.service.Economy;
 import vn.ptit.snapvocab.common.dto.Meta;
 import vn.ptit.snapvocab.common.dto.PaginationObject;
 import vn.ptit.snapvocab.common.exception.BadRequestAlertException;
@@ -80,6 +86,8 @@ public class TopicService {
 	private final TopicMapper topicMapper;
 	private final TopicSchemaMapper topicSchemaMapper;
 	private final SchemaMapper schemaMapper;
+	private final MissionTracker missionTracker;
+	private final QuizContentResolver quizContentResolver;
 	private final Logger LOG = LoggerFactory.getLogger(TopicService.class);
 
 	/**
@@ -417,6 +425,16 @@ public class TopicService {
 		}
 	}
 
+	/** The current user when {@code topic} is in their own USER collection, else null (admin or system edits). */
+	private static Long ownUserCollectionLearner(Topic topic) {
+		Collection collection = topic.getCollection();
+		if (collection == null || collection.getType() != CollectionType.USER || collection.getOwner() == null) {
+			return null;
+		}
+		Long ownerId = collection.getOwner().getId();
+		return SecurityUtils.getCurrentUserId().filter(ownerId::equals).orElse(null);
+	}
+
 	public void validateTopicWriteAccess(Topic topic) {
 		Collection collection = topic.getCollection();
 		if (collection == null) {
@@ -698,13 +716,22 @@ public class TopicService {
 		return null;
 	}
 
-	@Transactional
+	/**
+	 * READ_COMMITTED like the other Daily Mission producers: the topic is read before the users lock is taken, and
+	 * under REPEATABLE READ that early snapshot would hide a mission set committed while this call waited for the lock.
+	 */
+	@Transactional(isolation = Isolation.READ_COMMITTED)
 	@CacheEvict(cacheNames = "topic-items", allEntries = true)
 	public TopicItemData addTopicItem(Long topicId, CreateTopicItemDTO createTopicItemDTO) {
 		Topic topic = this.topicRepository.findById(topicId)
 				.orElseThrow(() -> new ResourceNotFoundException("Topic not found with id: " + topicId));
 
 		validateTopicWriteAccess(topic);
+		// Daily Mission counts only words a learner adds to their own USER collection (daily_mission.md §5.5).
+		Long learnerId = ownUserCollectionLearner(topic);
+		if (learnerId != null) {
+			Economy.lockUser(userRepository, learnerId);
+		}
 
 		// kiểm tra schema của topic
 		if (topic.getSchema() == null) {
@@ -798,7 +825,19 @@ public class TopicService {
 			}
 		}
 
+		Instant actionInstant = Economy.now();
+		LocalDate missionDate = MissionTracker.missionDate(actionInstant);
+		if (learnerId != null) {
+			missionTracker.ensureAssigned(learnerId, missionDate, actionInstant);
+		}
 		TopicItem savedItem = this.topicItemRepository.save(topicItem);
+		if (learnerId != null) {
+			byte[] wordHash = quizContentResolver.resolveQuizReady(topic, savedItem.getId())
+					.map(content -> MissionTracker.wordHash(content.targetWord()))
+					.orElse(null);
+			missionTracker.apply(learnerId, missionDate, MissionTriggerEvent.TOPIC_ITEM_CREATED,
+					"TOPIC_ITEM:" + savedItem.getId(), MissionFacts.topicItem(wordHash), actionInstant);
+		}
 		return TopicItemData.builder()
 				.topicItemId(savedItem.getId())
 				.createdAt(savedItem.getCreatedAt())

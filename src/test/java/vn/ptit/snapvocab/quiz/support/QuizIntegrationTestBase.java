@@ -47,10 +47,11 @@ import vn.ptit.snapvocab.quiz.repository.QuizMatchingAttemptRepository;
 import vn.ptit.snapvocab.quiz.repository.QuizQuestionRepository;
 import vn.ptit.snapvocab.quiz.repository.QuizRepository;
 import vn.ptit.snapvocab.xp.service.XpService;
+import vn.ptit.snapvocab.mission.service.MissionTracker;
 
 @LocalMySqlJpaTest
 @Import({ DataInitializer.class, SemanticBindingMigration.class, QuizService.class, QuizContentResolver.class,
-		QuizGenerator.class, XpService.class, QuizIntegrationTestBase.Beans.class })
+		QuizGenerator.class, XpService.class, MissionTracker.class, QuizIntegrationTestBase.Beans.class })
 public abstract class QuizIntegrationTestBase {
 
 	@TestConfiguration
@@ -95,7 +96,8 @@ public abstract class QuizIntegrationTestBase {
 	void cleanUp() {
 		SecurityContextHolder.clearContext();
 		JdbcTemplate jdbc = jdbc();
-		for (String table : List.of("quiz_matching_attempts", "quiz_question_options", "quiz_matching_tiles",
+		for (String table : List.of("user_word_credits", "user_daily_mission_claims", "user_daily_mission_progress_logs",
+				"user_daily_missions", "mission_templates", "quiz_matching_attempts", "quiz_question_options", "quiz_matching_tiles",
 				"quiz_questions", "quizzes", "topic_item_attribute_values", "topic_item_attribute_groups",
 				"topic_items", "topics", "collections")) {
 			jdbc.update("DELETE FROM " + table);

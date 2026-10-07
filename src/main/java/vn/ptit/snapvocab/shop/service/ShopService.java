@@ -1,6 +1,8 @@
 package vn.ptit.snapvocab.shop.service;
 
 import jakarta.persistence.EntityManager;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +35,9 @@ import vn.ptit.snapvocab.shop.repository.CoinTransactionRepository;
 import vn.ptit.snapvocab.shop.repository.ShopItemRepository;
 import vn.ptit.snapvocab.shop.repository.UserItemRepository;
 import vn.ptit.snapvocab.common.exception.ResourceNotFoundException;
+import vn.ptit.snapvocab.mission.domain.enumeration.MissionTriggerEvent;
+import vn.ptit.snapvocab.mission.service.MissionFacts;
+import vn.ptit.snapvocab.mission.service.MissionTracker;
 
 @Service
 public class ShopService {
@@ -48,11 +53,13 @@ public class ShopService {
 	private final ApplicationEventPublisher eventPublisher;
 	private final EntityManager entityManager;
 	private final TransactionTemplate transaction;
+	private final MissionTracker missionTracker;
 
 	public ShopService(UserRepository userRepository, ShopItemRepository shopItemRepository,
 			UserItemRepository userItemRepository, CoinTransactionRepository ledger, WalletService walletService,
 			ShopMapper mapper, ApplicationEventPublisher eventPublisher, EntityManager entityManager,
-			PlatformTransactionManager transactionManager) {
+			PlatformTransactionManager transactionManager, MissionTracker missionTracker) {
+		this.missionTracker = missionTracker;
 		this.userRepository = userRepository;
 		this.shopItemRepository = shopItemRepository;
 		this.userItemRepository = userItemRepository;
@@ -79,24 +86,10 @@ public class ShopService {
 
 	private ShopItemDTO toDto(ShopItem item, UserItem owned, long coin) {
 		int quantity = owned == null ? 0 : owned.getQuantity();
-		BlockReason block = blockReason(item, quantity, coin);
+		BlockReason block = ShopPurchasePolicy.blockReason(item, quantity, coin);
 		return new ShopItemDTO(item.getId(), item.getCode(), item.getType(), item.getName(), item.getDescription(),
 				mapper.iconUrl(item), item.getPrice(), item.getAvailableUntil(), mapper.config(item), quantity > 0,
 				quantity, owned != null && Boolean.TRUE.equals(owned.getEquipped()), block == null, block);
-	}
-
-	/** One rule for both the catalog flag and the purchase guard, so they can never disagree. */
-	private static BlockReason blockReason(ShopItem item, int ownedQuantity, long coin) {
-		if (!item.getType().isStackable() && ownedQuantity > 0) {
-			return BlockReason.ALREADY_OWNED;
-		}
-		if (item.getType().isStackable() && ownedQuantity >= item.maxQuantityOrDefault()) {
-			return BlockReason.MAX_QUANTITY_REACHED;
-		}
-		if (coin < item.getPrice()) {
-			return BlockReason.INSUFFICIENT_COINS;
-		}
-		return null;
 	}
 
 	/**
@@ -147,7 +140,7 @@ public class ShopService {
 			throw new ShopException(ShopErrorCode.PRICE_CHANGED, "Price changed", Map.of("currentPrice", item.getPrice()));
 		}
 		UserItem owned = userItemRepository.findByUserIdAndItemId(userId, itemId).orElse(null);
-		BlockReason block = blockReason(item, owned == null ? 0 : owned.getQuantity(), user.getCoin());
+		BlockReason block = ShopPurchasePolicy.blockReason(item, owned == null ? 0 : owned.getQuantity(), user.getCoin());
 		if (block != null) {
 			throw switch (block) {
 				case ALREADY_OWNED -> new ShopException(ShopErrorCode.ITEM_ALREADY_OWNED, "Item already owned");
@@ -157,6 +150,10 @@ public class ShopService {
 						Map.of("balance", user.getCoin(), "required", item.getPrice()));
 			};
 		}
+		// Daily Mission (daily_mission.md §3.2): one actionInstant after validation; assign on the pre-purchase state.
+		Instant actionInstant = Economy.now();
+		LocalDate missionDate = MissionTracker.missionDate(actionInstant);
+		missionTracker.ensureAssigned(userId, missionDate, actionInstant);
 
 		CoinTransaction receipt = walletService.apply(user, -item.getPrice(), CoinSourceType.SHOP_PURCHASE,
 				item.getId().toString(), item.getName(), eventKey);
@@ -166,6 +163,8 @@ public class ShopService {
 			owned.setQuantity(owned.getQuantity() + 1);
 		}
 		userItemRepository.saveAndFlush(owned);
+		missionTracker.apply(userId, missionDate, MissionTriggerEvent.SHOP_ITEM_PURCHASED,
+				"SHOP_PURCHASE:" + receipt.getId(), MissionFacts.NONE, actionInstant);
 		LOG.info("User {} bought item {} for {} coin (tx {})", userId, itemId, item.getPrice(), receipt.getId());
 		return new Purchase(new PurchaseResultDTO(receipt.getId(), itemId, owned.getQuantity(), true, user.getCoin(),
 				false), item.getType());

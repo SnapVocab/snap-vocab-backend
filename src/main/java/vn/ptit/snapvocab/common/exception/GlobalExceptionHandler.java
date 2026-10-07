@@ -15,6 +15,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import vn.ptit.snapvocab.common.dto.RestResponse;
+import vn.ptit.snapvocab.mission.exception.MissionException;
 import vn.ptit.snapvocab.quiz.exception.QuizException;
 import vn.ptit.snapvocab.shop.exception.ShopException;
 
@@ -179,6 +180,23 @@ public class GlobalExceptionHandler {
 		return ResponseEntity.status(ex.getCode().getStatus()).body(response);
 	}
 
+	@ExceptionHandler(MissionException.class)
+	public ResponseEntity<RestResponse<Object>> handleMission(MissionException ex) {
+
+		if (ex.getStatus().is5xxServerError()) {
+			log.error("Mission request failed with {}: {}", ex.getCode(), ex.getMessage());
+		} else {
+			log.info("Mission request rejected with {}: {}", ex.getCode(), ex.getMessage());
+		}
+		RestResponse<Object> response = RestResponse.builder()
+				.statusCode(ex.getStatus().value())
+				.error(ex.getCode().name())
+				.data(ex.getDetails())
+				.build();
+
+		return ResponseEntity.status(ex.getStatus()).body(response);
+	}
+
 	/** Constraint races that survive service-level handling; never leak SQL to the client. */
 	@ExceptionHandler(DataIntegrityViolationException.class)
 	public ResponseEntity<RestResponse<Object>> handleDataIntegrity(DataIntegrityViolationException ex) {
@@ -192,12 +210,14 @@ public class GlobalExceptionHandler {
 		return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
 	}
 
+	/** Unexpected failure: a fixed code for the client, the details only in the server log. */
 	@ExceptionHandler(RuntimeException.class)
 	public ResponseEntity<RestResponse<Object>> handleRuntime(RuntimeException ex) {
 
+		log.error("Unexpected error", ex);
 		RestResponse<Object> response = RestResponse.builder()
 				.statusCode(500)
-				.error(ex.getMessage())
+				.error("INTERNAL_ERROR")
 				.build();
 
 		return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
