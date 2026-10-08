@@ -45,7 +45,8 @@ keep learners motivated.
 
 - **Daily missions** — exactly 5 per day, each claimed separately for its own reward ([daily_mission.md](../docs/decisions/daily_mission.md)); no chest/weekly/monthly rewards
 - **Leaderboard** — personal ranking by Weekly XP (no rewards)
-- **Badges** — achievement badges (not yet specified)
+- **Badges** — 12 fixed achievement badges (streak, quizzes, perfect quizzes, distinct words added), granted once on sync, no XP/Coin reward ([badges.md](../docs/decisions/badges.md))
+  - Admin P1: `GET /api/admin/badges` and `GET /api/admin/badges/{id}` require `ROLE_ADMIN`; include inactive rows and earner counts, never grant or mark seen. `version` is `null` until P2. No Admin write endpoints yet; staging acceptance remains required (PD-BDG-13a).
 - **Item shop** — Buy and use items with coins ([shop.md](../docs/decisions/shop.md))
 
 Community features (posts, comments, study groups) are out of scope.

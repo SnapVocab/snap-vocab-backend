@@ -21,6 +21,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import vn.ptit.snapvocab.badge.service.BadgeService;
 import vn.ptit.snapvocab.mission.domain.enumeration.MissionTriggerEvent;
 import vn.ptit.snapvocab.mission.service.MissionFacts;
 import vn.ptit.snapvocab.mission.service.MissionTracker;
@@ -87,6 +88,7 @@ public class TopicService {
 	private final TopicSchemaMapper topicSchemaMapper;
 	private final SchemaMapper schemaMapper;
 	private final MissionTracker missionTracker;
+	private final BadgeService badgeService;
 	private final QuizContentResolver quizContentResolver;
 	private final Logger LOG = LoggerFactory.getLogger(TopicService.class);
 
@@ -837,6 +839,9 @@ public class TopicService {
 					.orElse(null);
 			missionTracker.apply(learnerId, missionDate, MissionTriggerEvent.TOPIC_ITEM_CREATED,
 					"TOPIC_ITEM:" + savedItem.getId(), MissionFacts.topicItem(wordHash), actionInstant);
+			if (wordHash != null) {
+				badgeService.recordWordCredit(learnerId, wordHash, actionInstant);
+			}
 		}
 		return TopicItemData.builder()
 				.topicItemId(savedItem.getId())

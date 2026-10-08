@@ -32,6 +32,17 @@ public interface QuizRepository extends JpaRepository<Quiz, Long> {
 			+ "AND q.status = vn.ptit.snapvocab.quiz.domain.enumeration.QuizStatus.COMPLETED")
 	CompletedTotals completedTotals(@Param("userId") Long userId);
 
+	/** Badge metric {@code QUIZ_COMPLETED} (badges.md §3). */
+	@Query("SELECT COUNT(q) FROM Quiz q WHERE q.user.id = :userId "
+			+ "AND q.status = vn.ptit.snapvocab.quiz.domain.enumeration.QuizStatus.COMPLETED")
+	long countCompleted(@Param("userId") Long userId);
+
+	/** Badge metric {@code PERFECT_QUIZ}: every unit correct (badges.md §3). */
+	@Query("SELECT COUNT(q) FROM Quiz q WHERE q.user.id = :userId "
+			+ "AND q.status = vn.ptit.snapvocab.quiz.domain.enumeration.QuizStatus.COMPLETED "
+			+ "AND q.correctCount = q.totalUnits")
+	long countPerfect(@Param("userId") Long userId);
+
 	interface CompletedTotals {
 		long getQuizCount();
 

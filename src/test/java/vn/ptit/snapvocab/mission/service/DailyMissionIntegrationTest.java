@@ -54,6 +54,7 @@ import org.springframework.test.util.AopTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import vn.ptit.snapvocab.badge.service.BadgeService;
 import vn.ptit.snapvocab.config.DataInitializer;
 import vn.ptit.snapvocab.mission.domain.MissionTemplate;
 import vn.ptit.snapvocab.mission.domain.dto.DailyMissionsDTO;
@@ -118,7 +119,7 @@ import vn.ptit.snapvocab.xp.service.XpService;
 @Import({ DataInitializer.class, SemanticBindingMigration.class, QuizService.class, QuizContentResolver.class,
 		QuizGenerator.class, XpService.class, TopicService.class, ShopService.class, InventoryService.class,
 		WalletService.class, ShopRewardService.class, ShopMapper.class, MissionTracker.class, DailyMissionService.class,
-		ProgressService.class, ProgressEventListener.class, DailyMissionIntegrationTest.Beans.class })
+		ProgressService.class, ProgressEventListener.class, BadgeService.class, DailyMissionIntegrationTest.Beans.class })
 class DailyMissionIntegrationTest {
 
 	private static final String CORE_QUIZ_PERFECT = "PERFECT_MINI_QUIZ";
@@ -191,7 +192,7 @@ class DailyMissionIntegrationTest {
 	void cleanUp() {
 		SecurityContextHolder.clearContext();
 		JdbcTemplate jdbc = jdbc();
-		for (String table : List.of("user_word_credits", "user_daily_mission_claims", "user_daily_mission_progress_logs",
+		for (String table : List.of("user_badges", "user_badge_word_credits", "user_word_credits", "user_daily_mission_claims", "user_daily_mission_progress_logs",
 				"user_daily_missions", "mission_templates", "learning_events", "quiz_matching_attempts",
 				"quiz_question_options", "quiz_matching_tiles", "quiz_questions", "quizzes",
 				"topic_item_attribute_values", "topic_item_attribute_groups", "topic_items", "topics", "collections",
