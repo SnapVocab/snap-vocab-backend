@@ -28,9 +28,10 @@ import vn.ptit.snapvocab.vocab.repository.SchemaRepository;
 import vn.ptit.snapvocab.vocab.repository.TemplateRepository;
 
 /**
- * One-time, idempotent configuration migration that adds the Quiz semantic-only
+ * One-time, idempotent configuration migration that backfills the Quiz semantic-only
  * (hidden) bindings
- * to the DEFAULT_ENGLISH templates (decisions D10/D13):
+ * on DEFAULT_ENGLISH templates that lack them (decisions D10/D13). The current seed
+ * binds these roles on visible fields, so on a fresh database it adds nothing:
  * <ul>
  * <li>{@code main.translation} → {@code NATIVE_TRANSLATION}</li>
  * <li>{@code examples.content} → {@code EXAMPLE_SENTENCE}</li>
