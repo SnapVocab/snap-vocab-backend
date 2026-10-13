@@ -87,5 +87,49 @@ public interface TopicItemRepository extends JpaRepository<TopicItem, Long> {
 	List<TopicItemAttributeRow> findAttributeRows(
 			@Param("topicItemIds") List<Long> topicItemIds
 	);
+
+
+	/**
+	 * Fetches the top IDs of TopicItems for a given topic, ordered by ID in descending order. Use
+	 * this when the cursor is null (for the first fetch).
+	 *
+	 * @param topicId The ID of the topic.
+	 * @param limit   The maximum number of IDs to return.
+	 * @return A list of TopicItem IDs.
+	 */
+	@Query("""
+			SELECT ti.id
+			FROM TopicItem ti
+			WHERE ti.topic.id = :topicId
+			ORDER BY ti.id DESC
+			LIMIT :limit
+			""")
+	List<Long> findTopIdsByTopicId(
+			@Param("topicId") Long topicId,
+			@Param("limit") Long limit
+	);
+
+	/**
+	 * Fetches list of TopicItem ids based on cursor pagination.
+	 *
+	 * @param topicId The ID of the topic.
+	 * @param cursor  The cursor to get next items
+	 * @param limit   The maximum number of IDs to return.
+	 * @return A list of TopicItem IDs.
+	 */
+	@Query("""
+			SELECT ti.id
+			FROM TopicItem ti
+			WHERE ti.topic.id = :topicId AND ti.id < :cursor
+			ORDER BY ti.id DESC
+			LIMIT :limit
+			""")
+	List<Long> findIdsByTopicIdAndCursor(
+			@Param("topicId") Long topicId,
+			@Param("cursor") Long cursor,
+			@Param("limit") Long limit
+	);
+
+
 }
 
