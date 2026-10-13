@@ -118,5 +118,18 @@ public class User extends BaseTimeEntity {
 	@OneToMany(mappedBy = "owner", cascade = CascadeType.ALL, orphanRemoval = true)
 	@Builder.Default
 	private List<Collection> collections = new ArrayList<>();
+
+	// Legacy rows can hold NULL although database.md says NOT NULL DEFAULT 0; every caller unboxes these.
+	public Long getExp() {
+		return exp == null ? 0L : exp;
+	}
+
+	public Long getCoin() {
+		return coin == null ? 0L : coin;
+	}
+
+	public Integer getStreakDays() {
+		return streakDays == null ? 0 : streakDays;
+	}
 }
 
