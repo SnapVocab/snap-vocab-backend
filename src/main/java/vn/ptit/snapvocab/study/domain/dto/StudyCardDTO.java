@@ -6,6 +6,7 @@ import vn.ptit.snapvocab.vocab.domain.enumeration.CardState;
 
 public record StudyCardDTO(
 		TopicItemData item,
+		Long topicId,
 		CardState state,
 		LocalDateTime due
 ) {

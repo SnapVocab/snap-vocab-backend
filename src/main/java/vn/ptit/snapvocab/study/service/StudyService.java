@@ -123,10 +123,10 @@ public class StudyService {
 		List<StudyCardDTO> cards = new ArrayList<>();
 		for (FsrsRecord record : selectedDueRecords) {
 			cards.add(new StudyCardDTO(dataById.get(record.getTopicItem().getId()),
-					record.getState(), record.getDue()));
+				record.getTopicItem().getTopic().getId(), record.getState(), record.getDue()));
 		}
 		for (TopicItem item : newItems) {
-			cards.add(new StudyCardDTO(dataById.get(item.getId()), CardState.NEW, null));
+			cards.add(new StudyCardDTO(dataById.get(item.getId()), item.getTopic().getId(), CardState.NEW, null));
 		}
 		return new StudyQueueDTO(sessionLimit, dailyGoal, studiedToday, remainingToday, cards);
 	}
