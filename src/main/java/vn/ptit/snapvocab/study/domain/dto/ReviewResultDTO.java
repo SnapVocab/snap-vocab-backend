@@ -10,6 +10,9 @@ public record ReviewResultDTO(
 		Float stability,
 		Float difficulty,
 		Integer reps,
-		Integer lapses
+		Integer lapses,
+		int studiedToday,
+		int dailyGoal,
+		int remainingToday
 ) {
 }

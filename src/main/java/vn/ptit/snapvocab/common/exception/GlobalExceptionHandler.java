@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import vn.ptit.snapvocab.common.dto.RestResponse;
 import vn.ptit.snapvocab.quiz.exception.QuizException;
 import vn.ptit.snapvocab.scan.exception.ScanException;
+import vn.ptit.snapvocab.study.exception.StudyQuotaExceededException;
 
 @Slf4j
 @RestControllerAdvice
@@ -95,6 +96,16 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(ResourceAlreadyExistException.class)
 	public ResponseEntity<RestResponse<Object>> handleConflict(ResourceAlreadyExistException ex) {
 
+		RestResponse<Object> response = RestResponse.builder()
+				.statusCode(409)
+				.error(ex.getMessage())
+				.build();
+
+		return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+	}
+
+	@ExceptionHandler(StudyQuotaExceededException.class)
+	public ResponseEntity<RestResponse<Object>> handleStudyQuotaExceeded(StudyQuotaExceededException ex) {
 		RestResponse<Object> response = RestResponse.builder()
 				.statusCode(409)
 				.error(ex.getMessage())

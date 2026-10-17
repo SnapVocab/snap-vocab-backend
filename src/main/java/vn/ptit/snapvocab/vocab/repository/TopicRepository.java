@@ -27,6 +27,9 @@ public interface TopicRepository extends JpaRepository<Topic, Long> {
 			""", nativeQuery = true)
 	List<Long> findDescendantIdsIncludingSelf(@Param("rootTopicId") Long rootTopicId);
 
+	@Query("SELECT t.id FROM Topic t WHERE t.collection.id = :collectionId")
+	List<Long> findIdsByCollectionId(@Param("collectionId") Long collectionId);
+
 	@Query("SELECT t FROM Topic t "
 			+ "LEFT JOIN FETCH t.parent "
 			+ "LEFT JOIN FETCH t.activeTemplate "
