@@ -1,7 +1,6 @@
 package vn.ptit.snapvocab.common.exception;
 
-import vn.ptit.snapvocab.scan.exception.ScanException;
-
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.HashMap;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
@@ -14,6 +13,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import vn.ptit.snapvocab.common.dto.RestResponse;
 import vn.ptit.snapvocab.quiz.exception.QuizException;
+import vn.ptit.snapvocab.scan.exception.ScanException;
 
 @Slf4j
 @RestControllerAdvice
@@ -153,7 +153,9 @@ public class GlobalExceptionHandler {
 	}
 
 	@ExceptionHandler(RuntimeException.class)
-	public ResponseEntity<RestResponse<Object>> handleRuntime(RuntimeException ex) {
+	public ResponseEntity<RestResponse<Object>> handleRuntime(RuntimeException ex, HttpServletRequest request) {
+
+		log.error("Unhandled exception for {} {}", request.getMethod(), request.getRequestURI(), ex);
 
 		RestResponse<Object> response = RestResponse.builder()
 				.statusCode(500)
