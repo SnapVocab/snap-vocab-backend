@@ -2,6 +2,7 @@ package vn.ptit.snapvocab.config;
 
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import java.util.HashMap;
 import java.util.Map;
 import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
@@ -50,9 +51,12 @@ public class RedissonConfig {
 	public CacheManager cacheManager(
 			RedissonClient redissonClient
 	) {
+		Map<String, CacheConfig> cacheConfigs = new HashMap<>();
+		cacheConfigs.put("user-study-session-limit", new CacheConfig(30 * 60 * 1000L, 0));
+
 		RedissonSpringCacheManager cacheManager = new RedissonSpringCacheManager(
 				redissonClient,
-				Map.of("user-study-session-limit", new CacheConfig(30 * 60 * 1000L, 0)));
+				cacheConfigs);
 		cacheManager.setTransactionAware(true);
 		return cacheManager;
 	}
