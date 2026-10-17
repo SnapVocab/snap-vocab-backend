@@ -13,6 +13,13 @@ import vn.ptit.snapvocab.vocab.domain.dto.topic.TopicItemAttributeRow;
 @Repository
 public interface TopicItemRepository extends JpaRepository<TopicItem, Long> {
 
+	@Query("""
+			SELECT ti
+			FROM TopicItem ti
+			WHERE ti.id IN :ids
+			""")
+	List<TopicItem> findItemsByIds(@Param("ids") List<Long> ids);
+
 	/**
 	 * Finds paginated TopicItem IDs for a specific topic.
 	 * <p>
