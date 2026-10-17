@@ -6,14 +6,14 @@ import vn.ptit.snapvocab.user.domain.enumeration.ThemePreference;
 /**
  * Settings shown on MH-PROFILE-03.
  *
- * @param srsReminderAt local time of the daily review reminder ("HH:mm"), null when off
+ * @param srsReminderAt local time of the daily review reminder ("HH:mm"), null
+ *                      when off
  */
 public record UserSettingsDTO(
 		String uiLanguage,
 		ThemePreference theme,
 		Integer dailyGoal,
+		Integer studySessionCardLimit,
 		LocalTime srsReminderAt,
-		boolean pushEnabled
-) {
+		boolean pushEnabled) {
 }
-

@@ -22,6 +22,10 @@ public record UpdateUserSettingsRequest(
 		@Max(value = 500, message = "dailyGoal must be at most 500")
 		Integer dailyGoal,
 
+		@Min(value = 1, message = "studySessionCardLimit must be at least 1")
+		@Max(value = 500, message = "studySessionCardLimit must be at most 500")
+		Integer studySessionCardLimit,
+
 		@JsonFormat(pattern = "HH:mm")
 		LocalTime srsReminderAt,
 

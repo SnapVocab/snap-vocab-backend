@@ -87,12 +87,13 @@ class UserControllerTest {
 	void getSettingsUsesTheUserId() throws Exception {
 		when(userService.getCurrentUserId()).thenReturn(Optional.of(USER_ID));
 		when(userSettingsService.get(USER_ID)).thenReturn(
-				new UserSettingsDTO("vi", ThemePreference.SYSTEM, 20, LocalTime.of(20, 0), true));
+				new UserSettingsDTO("vi", ThemePreference.SYSTEM, 20, 20, LocalTime.of(20, 0), true));
 
 		mockMvc.perform(get("/api/users/me/settings"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.uiLanguage").value("vi"))
 				.andExpect(jsonPath("$.dailyGoal").value(20))
+				.andExpect(jsonPath("$.studySessionCardLimit").value(20))
 				.andExpect(jsonPath("$.pushEnabled").value(true));
 	}
 
@@ -100,7 +101,7 @@ class UserControllerTest {
 	void putSettingsPassesThePartialUpdateThrough() throws Exception {
 		when(userService.getCurrentUserId()).thenReturn(Optional.of(USER_ID));
 		when(userSettingsService.update(eq(USER_ID), any())).thenReturn(
-				new UserSettingsDTO("en", ThemePreference.DARK, 30, null, false));
+				new UserSettingsDTO("en", ThemePreference.DARK, 30, 20, null, false));
 
 		mockMvc.perform(put("/api/users/me/settings").contentType(MediaType.APPLICATION_JSON)
 						.content("{\"uiLanguage\":\"en\",\"theme\":\"DARK\",\"dailyGoal\":30,\"srsReminderCleared\":true}"))

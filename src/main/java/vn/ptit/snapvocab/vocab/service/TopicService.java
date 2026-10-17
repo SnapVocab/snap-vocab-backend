@@ -195,6 +195,11 @@ public class TopicService {
 		return items;
 	}
 
+	/** Builds item DTOs for another application module while preserving requested order. */
+	public List<TopicItemData> getTopicItemsByIds(List<Long> topicItemIds) {
+		return buildTopicItemDataList(topicItemIds);
+	}
+
 	/**
 	 * Builds structured schema metadata from attribute rows. Returns a {@link TopicSchemaDTO}
 	 * containing a list of groups, where each group has a list of attributes. Preserves group and
