@@ -52,7 +52,7 @@ class UserSettingsServiceTest {
 		UserSettingsDTO settings = service.get(USER_ID);
 
 		assertThat(settings).isEqualTo(
-				new UserSettingsDTO("vi", ThemePreference.SYSTEM, 20, null, true));
+				new UserSettingsDTO("vi", ThemePreference.SYSTEM, 20, 20, null, true));
 		verify(userSettingsRepository).save(any());
 	}
 
@@ -62,7 +62,7 @@ class UserSettingsServiceTest {
 		settings.setDailyGoal(50);
 
 		UserSettingsDTO updated = service.update(USER_ID,
-				new UpdateUserSettingsRequest("en", null, null, null, null, null));
+				new UpdateUserSettingsRequest("en", null, null, null, null, null, null));
 
 		assertThat(updated.uiLanguage()).isEqualTo("en");
 		assertThat(updated.dailyGoal()).isEqualTo(50);
@@ -74,11 +74,12 @@ class UserSettingsServiceTest {
 		stored();
 
 		UserSettingsDTO updated = service.update(USER_ID, new UpdateUserSettingsRequest(
-				null, ThemePreference.DARK, 30, LocalTime.of(20, 30), null, false));
+				null, ThemePreference.DARK, 30, null, LocalTime.of(20, 30), null, false));
 
 		assertThat(updated.srsReminderAt()).isEqualTo(LocalTime.of(20, 30));
 		assertThat(updated.theme()).isEqualTo(ThemePreference.DARK);
 		assertThat(updated.dailyGoal()).isEqualTo(30);
+		assertThat(updated.studySessionCardLimit()).isEqualTo(20);
 		assertThat(updated.pushEnabled()).isFalse();
 	}
 
@@ -89,10 +90,10 @@ class UserSettingsServiceTest {
 
 		// A null time means "unchanged", so switching the reminder off needs the flag.
 		assertThat(service.update(USER_ID,
-				new UpdateUserSettingsRequest(null, null, null, null, null, null)).srsReminderAt())
+				new UpdateUserSettingsRequest(null, null, null, null, null, null, null)).srsReminderAt())
 				.isEqualTo(LocalTime.of(7, 0));
 		assertThat(service.update(USER_ID,
-				new UpdateUserSettingsRequest(null, null, null, null, true, null)).srsReminderAt())
+				new UpdateUserSettingsRequest(null, null, null, null, null, true, null)).srsReminderAt())
 				.isNull();
 	}
 }

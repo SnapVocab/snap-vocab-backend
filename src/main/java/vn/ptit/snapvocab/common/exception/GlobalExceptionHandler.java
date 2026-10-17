@@ -1,7 +1,6 @@
 package vn.ptit.snapvocab.common.exception;
 
-import vn.ptit.snapvocab.scan.exception.ScanException;
-
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.HashMap;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
@@ -17,7 +16,9 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import vn.ptit.snapvocab.common.dto.RestResponse;
 import vn.ptit.snapvocab.mission.exception.MissionException;
 import vn.ptit.snapvocab.quiz.exception.QuizException;
+import vn.ptit.snapvocab.scan.exception.ScanException;
 import vn.ptit.snapvocab.shop.exception.ShopException;
+import vn.ptit.snapvocab.study.exception.StudyQuotaExceededException;
 
 @Slf4j
 @RestControllerAdvice
@@ -110,6 +111,16 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(ResourceAlreadyExistException.class)
 	public ResponseEntity<RestResponse<Object>> handleConflict(ResourceAlreadyExistException ex) {
 
+		RestResponse<Object> response = RestResponse.builder()
+				.statusCode(409)
+				.error(ex.getMessage())
+				.build();
+
+		return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+	}
+
+	@ExceptionHandler(StudyQuotaExceededException.class)
+	public ResponseEntity<RestResponse<Object>> handleStudyQuotaExceeded(StudyQuotaExceededException ex) {
 		RestResponse<Object> response = RestResponse.builder()
 				.statusCode(409)
 				.error(ex.getMessage())
@@ -212,9 +223,9 @@ public class GlobalExceptionHandler {
 
 	/** Unexpected failure: a fixed code for the client, the details only in the server log. */
 	@ExceptionHandler(RuntimeException.class)
-	public ResponseEntity<RestResponse<Object>> handleRuntime(RuntimeException ex) {
+	public ResponseEntity<RestResponse<Object>> handleRuntime(RuntimeException ex, HttpServletRequest request) {
 
-		log.error("Unexpected error", ex);
+		log.error("Unhandled exception for {} {}", request.getMethod(), request.getRequestURI(), ex);
 		RestResponse<Object> response = RestResponse.builder()
 				.statusCode(500)
 				.error("INTERNAL_ERROR")

@@ -12,6 +12,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.time.LocalDateTime;
@@ -31,6 +32,8 @@ import vn.ptit.snapvocab.vocab.domain.enumeration.CardState;
 @Entity
 @Table(name = "fsrs_records", uniqueConstraints = {
 		@UniqueConstraint(name = "uq_fsrs_user_topic_item", columnNames = { "user_id", "topic_item_id" })
+}, indexes = {
+		@Index(name = "idx_fsrs_user_due_state", columnList = "user_id, due, state")
 })
 public class FsrsRecord extends BaseTimeEntity {
 
@@ -60,6 +63,14 @@ public class FsrsRecord extends BaseTimeEntity {
 
 	@Column(nullable = false)
 	private Float difficulty;
+
+	/** Short-term learning step required to restore the java-fsrs Card. */
+	@Column
+	private Integer step;
+
+	/** Last review instant; java-fsrs schedules in UTC. */
+	@Column(name = "last_review")
+	private LocalDateTime lastReview;
 
 	@Builder.Default
 	@Column(nullable = false)

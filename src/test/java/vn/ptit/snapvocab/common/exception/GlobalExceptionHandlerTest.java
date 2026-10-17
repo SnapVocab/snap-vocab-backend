@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.mock.web.MockHttpServletRequest;
 import vn.ptit.snapvocab.mission.domain.enumeration.MissionErrorCode;
 import vn.ptit.snapvocab.mission.exception.MissionException;
 
@@ -14,7 +15,8 @@ class GlobalExceptionHandlerTest {
 
 	@Test
 	void unexpectedErrorsNeverLeakTheirMessage() {
-		var response = handler.handleRuntime(new IllegalStateException("SELECT * FROM users -- secret"));
+		var response = handler.handleRuntime(new IllegalStateException("SELECT * FROM users -- secret"),
+				new MockHttpServletRequest("GET", "/api/x"));
 
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
 		assertThat(response.getBody().getError()).isEqualTo("INTERNAL_ERROR");

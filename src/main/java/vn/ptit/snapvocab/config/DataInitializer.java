@@ -60,7 +60,7 @@ public class DataInitializer implements CommandLineRunner {
 		createAuthorityIfNotFound(AuthoritiesConstants.ANONYMOUS);
 
 		createAdminUserIfNotFound();
-		createDefaultEnglishSchemaIfNotFound();
+		createOrUpdateDefaultEnglishSchema();
 		semanticBindingMigration.migrate();
 	}
 
@@ -92,9 +92,11 @@ public class DataInitializer implements CommandLineRunner {
 		}
 	}
 
-	private void createDefaultEnglishSchemaIfNotFound() {
-		if (schemaRepository.findByCode("DEFAULT_ENGLISH").isEmpty()) {
-			Schema schema = Schema.builder()
+	private void createOrUpdateDefaultEnglishSchema() {
+		Schema schema = schemaRepository.findByCode("DEFAULT_ENGLISH").orElse(null);
+		boolean isNew = false;
+		if (schema == null) {
+			schema = Schema.builder()
 					.code("DEFAULT_ENGLISH")
 					.isSystem(true)
 					.name("Tiếng Anh Tiêu Chuẩn")
@@ -103,148 +105,30 @@ public class DataInitializer implements CommandLineRunner {
 					.attributeGroups(new LinkedHashSet<>())
 					.templates(new ArrayList<>())
 					.build();
+			isNew = true;
+		}
 
-			SchemaAttributeGroup mainGroup = SchemaAttributeGroup.builder()
-					.schema(schema)
-					.name("main")
-					.label("Thông tin chính")
-					.position((short) 0)
-					.multiple(false)
-					.attributes(new ArrayList<>())
-					.build();
+		SchemaAttributeGroup mainGroup = findOrCreateGroup(schema, "main", "Thông tin chính", (short) 0, false);
+		SchemaAttribute wordAttr = findOrCreateAttribute(mainGroup, "word", "Từ vựng", DataType.TEXT, true, (short) 0);
+		SchemaAttribute phoneticAttr = findOrCreateAttribute(mainGroup, "phonetic", "Phiên âm", DataType.TEXT, false, (short) 1);
+		SchemaAttribute translationAttr = findOrCreateAttribute(mainGroup, "translation", "Bản dịch tiếng Việt", DataType.TEXT, false, (short) 2);
+		SchemaAttribute levelAttr = findOrCreateAttribute(mainGroup, "level", "Cấp độ", DataType.TEXT, false, (short) 3);
+		SchemaAttribute defTranslationAttr = findOrCreateAttribute(mainGroup, "definition_translation", "Dịch định nghĩa", DataType.TEXT, false, (short) 4);
+		SchemaAttribute definitionAttr = findOrCreateAttribute(mainGroup, "definition", "Định nghĩa tiếng Anh", DataType.TEXT, false, (short) 5);
 
-			SchemaAttribute wordAttr = SchemaAttribute.builder()
-					.group(mainGroup)
-					.name("word")
-					.label("Từ vựng")
-					.dataType(DataType.TEXT)
-					.required(true)
-					.position((short) 0)
-					.build();
+		SchemaAttributeGroup meaningGroup = findOrCreateGroup(schema, "meaning", "Ý nghĩa & Ví dụ", (short) 1, false);
+		SchemaAttribute meaningAttr = findOrCreateAttribute(meaningGroup, "meaning", "Giải nghĩa", DataType.TEXT, false, (short) 0);
+		SchemaAttribute exampleAttr = findOrCreateAttribute(meaningGroup, "example", "Ví dụ", DataType.TEXT, false, (short) 1);
+		SchemaAttribute imageAttr = findOrCreateAttribute(meaningGroup, "image", "Hình ảnh minh họa", DataType.IMAGE, false, (short) 2);
 
-			SchemaAttribute phoneticAttr = SchemaAttribute.builder()
-					.group(mainGroup)
-					.name("phonetic")
-					.label("Phiên âm")
-					.dataType(DataType.TEXT)
-					.required(false)
-					.position((short) 1)
-					.build();
+		SchemaAttributeGroup examplesGroup = findOrCreateGroup(schema, "examples", "Ví dụ câu", (short) 2, true);
+		SchemaAttribute contentAttr = findOrCreateAttribute(examplesGroup, "content", "Nội dung ví dụ", DataType.TEXT, true, (short) 0);
+		SchemaAttribute exTranslationAttr = findOrCreateAttribute(examplesGroup, "translation", "Dịch câu ví dụ", DataType.TEXT, false, (short) 1);
 
-			SchemaAttribute translationAttr = SchemaAttribute.builder()
-					.group(mainGroup)
-					.name("translation")
-					.label("Bản dịch tiếng Việt")
-					.dataType(DataType.TEXT)
-					.required(false)
-					.position((short) 2)
-					.build();
-
-			SchemaAttribute levelAttr = SchemaAttribute.builder()
-					.group(mainGroup)
-					.name("level")
-					.label("Cấp độ")
-					.dataType(DataType.TEXT)
-					.required(false)
-					.position((short) 3)
-					.build();
-
-			SchemaAttribute defTranslationAttr = SchemaAttribute.builder()
-					.group(mainGroup)
-					.name("definition_translation")
-					.label("Dịch định nghĩa")
-					.dataType(DataType.TEXT)
-					.required(false)
-					.position((short) 4)
-					.build();
-
-			SchemaAttribute definitionAttr = SchemaAttribute.builder()
-					.group(mainGroup)
-					.name("definition")
-					.label("Định nghĩa tiếng Anh")
-					.dataType(DataType.TEXT)
-					.required(false)
-					.position((short) 5)
-					.build();
-
-			mainGroup.getAttributes().addAll(
-					List.of(wordAttr, phoneticAttr, translationAttr, levelAttr,
-							defTranslationAttr, definitionAttr));
-
-			SchemaAttributeGroup meaningGroup = SchemaAttributeGroup.builder()
-					.schema(schema)
-					.name("meaning")
-					.label("Ý nghĩa & Ví dụ")
-					.position((short) 1)
-					.multiple(false)
-					.attributes(new ArrayList<>())
-					.build();
-
-			SchemaAttribute meaningAttr = SchemaAttribute.builder()
-					.group(meaningGroup)
-					.name("meaning")
-					.label("Giải nghĩa")
-					.dataType(DataType.TEXT)
-					.required(false)
-					.position((short) 0)
-					.build();
-
-			SchemaAttribute exampleAttr = SchemaAttribute.builder()
-					.group(meaningGroup)
-					.name("example")
-					.label("Ví dụ")
-					.dataType(DataType.TEXT)
-					.required(false)
-					.position((short) 1)
-					.build();
-
-			SchemaAttribute imageAttr = SchemaAttribute.builder()
-					.group(meaningGroup)
-					.name("image")
-					.label("Hình ảnh minh họa")
-					.dataType(DataType.IMAGE)
-					.required(false)
-					.position((short) 2)
-					.build();
-
-			meaningGroup.getAttributes().addAll(List.of(meaningAttr, exampleAttr, imageAttr));
-
-			SchemaAttributeGroup examplesGroup = SchemaAttributeGroup.builder()
-					.schema(schema)
-					.name("examples")
-					.label("Ví dụ câu")
-					.position((short) 2)
-					.multiple(true)
-					.attributes(new ArrayList<>())
-					.build();
-
-			SchemaAttribute contentAttr = SchemaAttribute.builder()
-					.group(examplesGroup)
-					.name("content")
-					.label("Nội dung ví dụ")
-					.dataType(DataType.TEXT)
-					.required(true)
-					.position((short) 0)
-					.build();
-
-			SchemaAttribute exTranslationAttr = SchemaAttribute.builder()
-					.group(examplesGroup)
-					.name("translation")
-					.label("Dịch câu ví dụ")
-					.dataType(DataType.TEXT)
-					.required(false)
-					.position((short) 1)
-					.build();
-
-			examplesGroup.getAttributes().addAll(List.of(contentAttr, exTranslationAttr));
-
-			schema.getAttributeGroups().add(mainGroup);
-			schema.getAttributeGroups().add(meaningGroup);
-			schema.getAttributeGroups().add(examplesGroup);
-
-			// =========================================================================
-			// Template 1: STANDARD (Thẻ Chuẩn: Chữ -> Nghĩa)
-			// =========================================================================
+		// =========================================================================
+		// Template 1: STANDARD (Thẻ Chuẩn: Chữ -> Nghĩa)
+		// =========================================================================
+		if (!hasTemplate(schema, "STANDARD")) {
 			Template standardTemplate = Template.builder()
 					.schema(schema)
 					.code("STANDARD")
@@ -294,9 +178,13 @@ public class DataInitializer implements CommandLineRunner {
 					createFieldElement(11, CardSide.BACK, exTranslationAttr, null /* not the word meaning: quiz.md D10-D11 */, "Dịch câu ví dụ", true, false,
 							14, Alignment.LEFT, "#64748B"));
 
-			// =========================================================================
-			// Template 2: LISTENING (Luyện Nghe: Âm thanh -> Chữ)
-			// =========================================================================
+			schema.getTemplates().add(standardTemplate);
+		}
+
+		// =========================================================================
+		// Template 2: LISTENING (Luyện Nghe: Âm thanh -> Chữ)
+		// =========================================================================
+		if (!hasTemplate(schema, "LISTENING")) {
 			Template listeningTemplate = Template.builder()
 					.schema(schema)
 					.code("LISTENING")
@@ -329,20 +217,27 @@ public class DataInitializer implements CommandLineRunner {
 			listeningTemplate.addElement(
 					createFieldElement(6, CardSide.BACK, definitionAttr, SemanticRole.DEFINITION, "Định nghĩa tiếng Anh", true, false, 15,
 							Alignment.LEFT, "#334155"));
+			listeningTemplate.addElement(
+					createFieldElement(7, CardSide.BACK, defTranslationAttr, null, "Dịch định nghĩa", true, false, 14,
+							Alignment.LEFT, "#64748B"));
 
 			listeningTemplate.addElement(
-					TemplateElement.builder().position(7).side(CardSide.BACK)
+					TemplateElement.builder().position(8).side(CardSide.BACK)
 							.type(TemplateElementType.SECTION_BREAK).sectionLabel("Ví dụ & Ngữ cảnh").repeatable(true).build());
 			listeningTemplate.addElement(
-					createFieldElement(8, CardSide.BACK, contentAttr, SemanticRole.EXAMPLE_SENTENCE, "Câu ví dụ", false, false,
+					createFieldElement(9, CardSide.BACK, contentAttr, SemanticRole.EXAMPLE_SENTENCE, "Câu ví dụ", false, false,
 							15, Alignment.LEFT, "#1E293B"));
 			listeningTemplate.addElement(
-					createFieldElement(9, CardSide.BACK, exTranslationAttr, null /* not the word meaning: quiz.md D10-D11 */, "Dịch câu ví dụ", true, false,
+					createFieldElement(10, CardSide.BACK, exTranslationAttr, null /* not the word meaning: quiz.md D10-D11 */, "Dịch câu ví dụ", true, false,
 							14, Alignment.LEFT, "#64748B"));
 
-			// =========================================================================
-			// Template 3: REVERSE (Đảo Mặt Thẻ: Nghĩa -> Đoán từ)
-			// =========================================================================
+			schema.getTemplates().add(listeningTemplate);
+		}
+
+		// =========================================================================
+		// Template 3: REVERSE (Đảo Mặt Thẻ: Nghĩa -> Đoán từ)
+		// =========================================================================
+		if (!hasTemplate(schema, "REVERSE")) {
 			Template reverseTemplate = Template.builder()
 					.schema(schema)
 					.code("REVERSE")
@@ -362,35 +257,83 @@ public class DataInitializer implements CommandLineRunner {
 					createFieldElement(2, CardSide.FRONT, definitionAttr, SemanticRole.DEFINITION, "Định nghĩa tiếng Anh", true, false, 16,
 							Alignment.CENTER, "#334155"));
 			reverseTemplate.addElement(
-					createFieldElement(3, CardSide.FRONT, imageAttr, SemanticRole.IMAGE, "Hình ảnh", true, false, null,
+					createFieldElement(3, CardSide.FRONT, defTranslationAttr, null, "Dịch định nghĩa", true, false, 14,
+							Alignment.CENTER, "#64748B"));
+			reverseTemplate.addElement(
+					createFieldElement(4, CardSide.FRONT, imageAttr, SemanticRole.IMAGE, "Hình ảnh", true, false, null,
 							Alignment.CENTER, null));
 
 			// BACK
 			reverseTemplate.addElement(
-					TemplateElement.builder().position(4).side(CardSide.BACK)
+					TemplateElement.builder().position(5).side(CardSide.BACK)
 							.type(TemplateElementType.SECTION_BREAK).sectionLabel("Từ vựng").repeatable(false).build());
 			reverseTemplate.addElement(
-					createFieldElement(5, CardSide.BACK, wordAttr, SemanticRole.TARGET_WORD, "Từ vựng", false, true, 24,
+					createFieldElement(6, CardSide.BACK, wordAttr, SemanticRole.TARGET_WORD, "Từ vựng", false, true, 24,
 							Alignment.CENTER, "#0F172A"));
 			reverseTemplate.addElement(
-					createFieldElement(6, CardSide.BACK, phoneticAttr, null, "Phiên âm", true, true, 16, Alignment.CENTER,
+					createFieldElement(7, CardSide.BACK, phoneticAttr, null, "Phiên âm", true, true, 16, Alignment.CENTER,
 							"#0284C7"));
 
 			reverseTemplate.addElement(
-					TemplateElement.builder().position(7).side(CardSide.BACK)
+					TemplateElement.builder().position(8).side(CardSide.BACK)
 							.type(TemplateElementType.SECTION_BREAK).sectionLabel("Ví dụ & Ngữ cảnh").repeatable(true).build());
 			reverseTemplate.addElement(
-					createFieldElement(8, CardSide.BACK, contentAttr, SemanticRole.EXAMPLE_SENTENCE, "Câu ví dụ", false, false,
+					createFieldElement(9, CardSide.BACK, contentAttr, SemanticRole.EXAMPLE_SENTENCE, "Câu ví dụ", false, false,
 							15, Alignment.LEFT, "#1E293B"));
 			reverseTemplate.addElement(
-					createFieldElement(9, CardSide.BACK, exTranslationAttr, null /* not the word meaning: quiz.md D10-D11 */, "Dịch câu ví dụ", true, false,
+					createFieldElement(10, CardSide.BACK, exTranslationAttr, null /* not the word meaning: quiz.md D10-D11 */, "Dịch câu ví dụ", true, false,
 							14, Alignment.LEFT, "#64748B"));
 
-			schema.getTemplates().addAll(List.of(standardTemplate, listeningTemplate, reverseTemplate));
-
-			schemaRepository.save(schema);
-			LOG.info("Created DEFAULT_ENGLISH system schema and 3 default templates.");
+			schema.getTemplates().add(reverseTemplate);
 		}
+
+		schemaRepository.save(schema);
+		LOG.info("{} DEFAULT_ENGLISH system schema.", isNew ? "Created" : "Synchronized");
+	}
+
+	private boolean hasTemplate(Schema schema, String code) {
+		for (Template t : schema.getTemplates()) {
+			if (code.equalsIgnoreCase(t.getCode())) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private SchemaAttributeGroup findOrCreateGroup(Schema schema, String name, String label, short position, boolean multiple) {
+		for (SchemaAttributeGroup group : schema.getAttributeGroups()) {
+			if (name.equalsIgnoreCase(group.getName())) {
+				return group;
+			}
+		}
+		SchemaAttributeGroup newGroup = SchemaAttributeGroup.builder()
+				.schema(schema)
+				.name(name)
+				.label(label)
+				.position(position)
+				.multiple(multiple)
+				.attributes(new ArrayList<>())
+				.build();
+		schema.getAttributeGroups().add(newGroup);
+		return newGroup;
+	}
+
+	private SchemaAttribute findOrCreateAttribute(SchemaAttributeGroup group, String name, String label, DataType dataType, boolean required, short position) {
+		for (SchemaAttribute attr : group.getAttributes()) {
+			if (name.equalsIgnoreCase(attr.getName())) {
+				return attr;
+			}
+		}
+		SchemaAttribute newAttr = SchemaAttribute.builder()
+				.group(group)
+				.name(name)
+				.label(label)
+				.dataType(dataType)
+				.required(required)
+				.position(position)
+				.build();
+		group.getAttributes().add(newAttr);
+		return newAttr;
 	}
 
 	private TemplateElement createFieldElement(int position, CardSide side,

@@ -47,8 +47,8 @@ class MissionMigrationScriptTest {
 
 	private static final List<String> TABLES = List.of("mission_templates", "user_daily_missions",
 			"user_daily_mission_progress_logs", "user_daily_mission_claims", "user_word_credits");
-	private static final Path SCRIPT = Path.of("migration_daily_mission_v1.sql");
-	private static final Path CATALOG_TEMPLATE = Path.of("migration_daily_mission_catalog_template.sql");
+	private static final Path SCRIPT = Path.of("migration/migration_daily_mission_v1.sql");
+	private static final Path CATALOG_TEMPLATE = Path.of("migration/migration_daily_mission_catalog_template.sql");
 
 	@Autowired
 	DataSource dataSource;

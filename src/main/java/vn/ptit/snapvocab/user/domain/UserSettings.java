@@ -10,6 +10,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.MapsId;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.ColumnDefault;
 import java.time.LocalTime;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -60,6 +61,12 @@ public class UserSettings extends BaseTimeEntity {
 	@Builder.Default
 	@Column(name = "daily_goal", nullable = false)
 	private Integer dailyGoal = 20;
+
+	/** Maximum cards returned in one study queue. */
+	@Builder.Default
+	@ColumnDefault("20")
+	@Column(name = "study_session_card_limit", nullable = false)
+	private Integer studySessionCardLimit = 20;
 
 	/** Local time for the daily review reminder; null means no reminder. */
 	@Column(name = "srs_reminder_at")

@@ -122,7 +122,7 @@ class SemanticBindingMigrationIntegrationTest extends QuizIntegrationTestBase {
 
 	@Test
 	void visibleFieldCountMatchesTheOriginalSeed() {
-		// Seed: STANDARD shows 9 fields, LISTENING 7, REVERSE 7 — unchanged by the migration.
+		// Seed: STANDARD shows 9 fields, LISTENING 8, REVERSE 8 (incl. "Dịch định nghĩa") — unchanged by the migration.
 		Map<String, Long> visibleFields = tx().execute(s -> {
 			Map<String, Long> counts = new java.util.TreeMap<>();
 			for (Template t : templateRepository.findBySchemaId(defaultSchema().getId())) {
@@ -131,7 +131,7 @@ class SemanticBindingMigrationIntegrationTest extends QuizIntegrationTestBase {
 			}
 			return counts;
 		});
-		assertThat(visibleFields).containsExactlyInAnyOrderEntriesOf(Map.of("STANDARD", 9L, "LISTENING", 7L, "REVERSE", 7L));
+		assertThat(visibleFields).containsExactlyInAnyOrderEntriesOf(Map.of("STANDARD", 9L, "LISTENING", 8L, "REVERSE", 8L));
 	}
 
 	@Test

@@ -166,33 +166,38 @@
       <artifactId>mysql-connector-j</artifactId>
       <scope>runtime</scope>
     </dependency>
+    <dependency>
+      <groupId>io.github.open-spaced-repetition</groupId>
+      <artifactId>fsrs</artifactId>
+      <version>0.5.1</version>
+    </dependency>
   </dependencies>
-  <description/>
+  <description />
   <developers>
-    <developer/>
+    <developer />
   </developers>
   <groupId>vn.ptit</groupId>
   <licenses>
-    <license/>
+    <license />
   </licenses>
   <modelVersion>4.0.0</modelVersion>
-  <name/>
+  <name />
   <parent>
     <artifactId>spring-boot-starter-parent</artifactId>
     <groupId>org.springframework.boot</groupId>
-    <relativePath/>
+    <relativePath />
     <version>3.5.15</version> <!-- lookup parent from repository -->
   </parent>
   <properties>
     <java.version>17</java.version>
   </properties>
   <scm>
-    <connection/>
-    <developerConnection/>
-    <tag/>
-    <url/>
+    <connection />
+    <developerConnection />
+    <tag />
+    <url />
   </scm>
-  <url/>
+  <url />
 
   <version>0.0.1-SNAPSHOT</version>
 

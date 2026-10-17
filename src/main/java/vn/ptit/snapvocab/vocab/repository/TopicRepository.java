@@ -13,6 +13,23 @@ import vn.ptit.snapvocab.vocab.domain.dto.topic.TopicDTO;
 @Repository
 public interface TopicRepository extends JpaRepository<Topic, Long> {
 
+	/** Returns the selected topic and all descendants (MariaDB recursive CTE). */
+	@Query(value = """
+			WITH RECURSIVE topic_tree AS (
+				SELECT id, collection_id FROM topics WHERE id = :rootTopicId
+				UNION ALL
+				SELECT child.id, child.collection_id
+				FROM topics child
+				JOIN topic_tree parent ON child.parent_id = parent.id
+				WHERE child.collection_id = parent.collection_id
+			)
+			SELECT id FROM topic_tree
+			""", nativeQuery = true)
+	List<Long> findDescendantIdsIncludingSelf(@Param("rootTopicId") Long rootTopicId);
+
+	@Query("SELECT t.id FROM Topic t WHERE t.collection.id = :collectionId")
+	List<Long> findIdsByCollectionId(@Param("collectionId") Long collectionId);
+
 	@Query("SELECT t FROM Topic t "
 			+ "LEFT JOIN FETCH t.parent "
 			+ "LEFT JOIN FETCH t.activeTemplate "

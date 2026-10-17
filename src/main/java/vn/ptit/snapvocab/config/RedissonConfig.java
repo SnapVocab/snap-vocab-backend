@@ -2,10 +2,13 @@ package vn.ptit.snapvocab.config;
 
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import java.util.HashMap;
+import java.util.Map;
 import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
 import org.redisson.codec.JsonJacksonCodec;
 import org.redisson.config.Config;
+import org.redisson.spring.cache.CacheConfig;
 import org.redisson.spring.cache.RedissonSpringCacheManager;
 import org.springframework.boot.autoconfigure.data.redis.RedisProperties;
 import org.springframework.cache.CacheManager;
@@ -48,9 +51,14 @@ public class RedissonConfig {
 	public CacheManager cacheManager(
 			RedissonClient redissonClient
 	) {
-		return new RedissonSpringCacheManager(
-				redissonClient
-		);
+		Map<String, CacheConfig> cacheConfigs = new HashMap<>();
+		cacheConfigs.put("user-study-session-limit", new CacheConfig(30 * 60 * 1000L, 0));
+
+		RedissonSpringCacheManager cacheManager = new RedissonSpringCacheManager(
+				redissonClient,
+				cacheConfigs);
+		cacheManager.setTransactionAware(true);
+		return cacheManager;
 	}
 }
 
