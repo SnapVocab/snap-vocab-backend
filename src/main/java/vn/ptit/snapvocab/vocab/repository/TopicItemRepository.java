@@ -79,9 +79,8 @@ public interface TopicItemRepository extends JpaRepository<TopicItem, Long> {
 			FROM TopicItem ti
 			JOIN ti.groupInstances tiag
 			JOIN tiag.groupDefinition sag
-			JOIN sag.attributes sa
 			JOIN tiag.values tiav
-			    ON tiav.attribute = sa
+			JOIN tiav.attribute sa
 			WHERE ti.id IN :topicItemIds
 			ORDER BY
 			    sag.position,
