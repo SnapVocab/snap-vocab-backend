@@ -147,11 +147,17 @@ class ShopHttpEndToEndTest {
 		assertThat(inventory.path("data").path("serverNow").asText()).isNotBlank();
 		assertThat(inventory.path("data").path("items")).hasSize(2);
 
+		JsonNode me = call(HttpMethod.GET, "/api/users/me", null, null, HttpStatus.OK);
+		assertThat(me.path("data").path("equipped").path("themeKey").asText()).isEqualTo("MIDNIGHT_NEON");
+		assertThat(me.path("data").path("activeBooster").path("itemId").asLong()).isEqualTo(booster.getId());
+
 		JsonNode wallet = call(HttpMethod.GET, "/api/me/wallet?size=10", null, null, HttpStatus.OK);
 		assertThat(wallet.path("data").path("balance").asLong()).isEqualTo(600);
 		assertThat(wallet.path("data").path("transactions")).hasSize(2);
 
 		call(HttpMethod.DELETE, "/api/me/equipment/THEME", null, null, HttpStatus.OK);
+		JsonNode unequipped = call(HttpMethod.GET, "/api/users/me", null, null, HttpStatus.OK);
+		assertThat(unequipped.path("data").path("equipped").path("themeKey").isNull()).isTrue();
 	}
 
 	private JsonNode call(HttpMethod method, String url, Object body, String key, HttpStatus expected) throws Exception {

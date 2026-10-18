@@ -46,11 +46,15 @@ import vn.ptit.snapvocab.vocab.repository.CollectionRepository;
 import vn.ptit.snapvocab.vocab.repository.TopicItemRepository;
 import vn.ptit.snapvocab.vocab.repository.TopicRepository;
 import vn.ptit.snapvocab.vocab.service.TopicService;
+import vn.ptit.snapvocab.xp.domain.XpSourceType;
+import vn.ptit.snapvocab.xp.service.XpService;
 
 @Service
 @RequiredArgsConstructor
 public class StudyService {
 
+	/** specs.md M4 done criteria: review = 2 XP; an active XP Booster doubles it (shop.md S6). */
+	static final int XP_PER_REVIEW = 2;
 	private static final ZoneOffset FSRS_ZONE = ZoneOffset.UTC;
 	// The app currently targets Vietnam. Keep study-day calculation independent from the server zone.
 	private static final ZoneId STUDY_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
@@ -66,6 +70,7 @@ public class StudyService {
 	private final UserRepository userRepository;
 	private final UserSettingsService userSettingsService;
 	private final TopicService topicService;
+	private final XpService xpService;
 	private final Scheduler scheduler = Scheduler.builder().build();
 
 	@Transactional
@@ -209,6 +214,9 @@ public class StudyService {
 			dailyCard.setStudyDate(today);
 			dailyCard.setTopicItem(item);
 			dailyCardRepository.save(dailyCard);
+			// XP only for a card's first review of the study day; re-rating it that day earns none (PO 2026-10-18).
+			xpService.award(userId, XpSourceType.FLASHCARD_REVIEW, XP_PER_REVIEW,
+					"FLASHCARD_REVIEW:" + userId + ":" + item.getId() + ":" + today);
 		}
 		int studiedToday = (int) dailyCardRepository
 				.countByUserIdAndCollectionIdAndStudyDate(userId, collection.getId(), today);

@@ -84,8 +84,9 @@ class AdminShopHttpTest {
 
 	@AfterEach
 	void cleanUp() {
-		for (String table : List.of("experience_logs", "booster_activations", "coin_transactions", "user_items",
-				"shop_items")) {
+		// The learner purchase feeds the daily-mission tracker, which creates mission rows (FK → users).
+		for (String table : List.of("user_daily_mission_progress_logs", "user_daily_missions", "experience_logs",
+				"booster_activations", "coin_transactions", "user_items", "shop_items")) {
 			jdbc.update("DELETE FROM " + table);
 		}
 		jdbc.update("DELETE FROM users WHERE email LIKE 'shop-admin-it-%'");

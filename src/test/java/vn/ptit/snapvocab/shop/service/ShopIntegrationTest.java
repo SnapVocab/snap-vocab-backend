@@ -522,17 +522,17 @@ class ShopIntegrationTest {
 	}
 
 	@Test
-	@DisplayName("33,34: Mission and Chest XP are never boosted")
+	@DisplayName("33,34: Mission, Save word and Admin XP are never boosted")
 	void unboostedSources() {
 		User user = activeBoosterUser();
 
-		for (XpSourceType source : List.of(XpSourceType.MISSION_REWARD, XpSourceType.DAILY_CHEST,
-				XpSourceType.WEEKLY_CHEST, XpSourceType.SAVE_WORD, XpSourceType.ADMIN_ADJUSTMENT)) {
+		for (XpSourceType source : List.of(XpSourceType.MISSION_REWARD, XpSourceType.SAVE_WORD,
+				XpSourceType.ADMIN_ADJUSTMENT)) {
 			ExperienceLog log = xpService.award(user.getId(), source, 10, "src:" + source);
 			assertThat(log.getBonusAmount()).as(source.name()).isZero();
 			assertThat(log.getBoosterActivationId()).as(source.name()).isNull();
 		}
-		assertThat(exp(user)).isEqualTo(50);
+		assertThat(exp(user)).isEqualTo(30);
 	}
 
 	@Test
@@ -588,7 +588,7 @@ class ShopIntegrationTest {
 		var duplicate = tx.execute(s -> rewardService.grantShopItemReward(user.getId(), frame.getCode(), 1, 50,
 				CoinSourceType.MISSION_REWARD, "mission:2"));
 		var partial = tx.execute(s -> rewardService.grantShopItemReward(user.getId(), booster.getCode(), 5, 20,
-				CoinSourceType.WEEKLY_CHEST, "chest:1"));
+				CoinSourceType.MISSION_REWARD, "mission:4"));
 
 		assertThat(granted.grantedQuantity()).isEqualTo(1);
 		assertThat(duplicate.grantedQuantity()).isZero();

@@ -24,10 +24,13 @@ import vn.ptit.snapvocab.shop.domain.BoosterActivation;
 import vn.ptit.snapvocab.shop.domain.UserItem;
 import vn.ptit.snapvocab.shop.domain.dto.ActivationResultDTO;
 import vn.ptit.snapvocab.shop.domain.dto.EquipmentDTO;
+import vn.ptit.snapvocab.shop.domain.dto.EquippedDTO;
 import vn.ptit.snapvocab.shop.domain.dto.InventoryDTO;
+import vn.ptit.snapvocab.shop.domain.dto.ItemConfig;
 import vn.ptit.snapvocab.shop.domain.dto.ShopEvents;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopErrorCode;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopItemType;
+import vn.ptit.snapvocab.shop.domain.enumeration.ThemeKey;
 import vn.ptit.snapvocab.shop.exception.ShopException;
 import vn.ptit.snapvocab.shop.repository.BoosterActivationRepository;
 import vn.ptit.snapvocab.shop.repository.UserItemRepository;
@@ -73,6 +76,31 @@ public class InventoryService {
 				.map(mapper::toInventoryItem)
 				.toList();
 		return new InventoryDTO(now, active == null ? null : ShopMapper.toActiveBooster(active), items);
+	}
+
+	/** Equipped theme and frame for GET /api/users/me, so the app can apply them at start (shop.md §10.1). */
+	@Transactional(readOnly = true)
+	public EquippedDTO getEquipped(Long userId) {
+		ThemeKey themeKey = null;
+		String frameUrl = null;
+		for (UserItem owned : userItemRepository.findAllByUserId(userId)) {
+			if (!Boolean.TRUE.equals(owned.getEquipped())) {
+				continue;
+			}
+			ItemConfig config = mapper.config(owned.getItem());
+			if (owned.getItemType() == ShopItemType.THEME) {
+				themeKey = config.themeKey();
+			} else if (owned.getItemType() == ShopItemType.AVATAR_FRAME) {
+				frameUrl = config.frameUrl();
+			}
+		}
+		return new EquippedDTO(themeKey, frameUrl);
+	}
+
+	@Transactional(readOnly = true)
+	public InventoryDTO.ActiveBooster getActiveBooster(Long userId) {
+		BoosterActivation active = findActive(userId, Economy.now());
+		return active == null ? null : ShopMapper.toActiveBooster(active);
 	}
 
 	/** Naturally idempotent: equipping the equipped item is a no-op (shop.md §7.4). */
