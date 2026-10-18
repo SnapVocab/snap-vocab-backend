@@ -1,0 +1,57 @@
+server:
+  port: ${STAGING_SERVER_PORT:8080}
+
+spring:
+  datasource:
+    url: ${STAGING_DB_URL}
+    username: ${STAGING_DB_USERNAME}
+    password: ${STAGING_DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+  data:
+    redis:
+      host: ${STAGING_REDIS_HOST}
+      port: ${STAGING_REDIS_PORT:6379}
+      username: ${STAGING_REDIS_USERNAME:default}
+      password: ${STAGING_REDIS_PASSWORD:}
+      database: ${STAGING_REDIS_DATABASE:0}
+  mail:
+    host: ${STAGING_MAIL_HOST}
+    port: ${STAGING_MAIL_PORT:587}
+    username: ${STAGING_MAIL_USERNAME}
+    password: ${STAGING_MAIL_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+  servlet:
+    multipart:
+      max-file-size: 15MB
+      max-request-size: 15MB
+
+jwt:
+  secret: ${STAGING_JWT_SECRET}
+  access-expiration: 900000
+  refresh-expiration: 604800000
+
+minio:
+  endpoint: ${STAGING_MINIO_ENDPOINT}
+  access-key: ${STAGING_MINIO_ACCESS_KEY}
+  secret-key: ${STAGING_MINIO_SECRET_KEY}
+  bucket: ${STAGING_MINIO_BUCKET}
+
+ai-service:
+  base-url: ${STAGING_AI_SERVICE_URL}
+  connect-timeout-ms: 5000
+  read-timeout-ms: ${STAGING_AI_SERVICE_READ_TIMEOUT_MS:60000}
+  service-token: ${STAGING_AI_SERVICE_TOKEN:}
+  max-upload-mb: 10
+
+logging:
+  level:
+    org.hibernate.SQL: WARN
+    org.hibernate.orm.jdbc.bind: OFF

@@ -4,16 +4,20 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.util.HashMap;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import vn.ptit.snapvocab.common.dto.RestResponse;
+import vn.ptit.snapvocab.mission.exception.MissionException;
 import vn.ptit.snapvocab.quiz.exception.QuizException;
 import vn.ptit.snapvocab.scan.exception.ScanException;
+import vn.ptit.snapvocab.shop.exception.ShopException;
 import vn.ptit.snapvocab.study.exception.StudyQuotaExceededException;
 
 @Slf4j
@@ -44,6 +48,17 @@ public class GlobalExceptionHandler {
 		RestResponse<Object> response = RestResponse.builder()
 				.statusCode(400)
 				.error("Missing request parameter: " + ex.getParameterName())
+				.build();
+
+		return ResponseEntity.badRequest().body(response);
+	}
+
+	@ExceptionHandler(HttpMessageNotReadableException.class)
+	public ResponseEntity<RestResponse<Object>> handleUnreadableBody(HttpMessageNotReadableException ex) {
+
+		RestResponse<Object> response = RestResponse.builder()
+				.statusCode(400)
+				.error("Malformed request body")
 				.build();
 
 		return ResponseEntity.badRequest().body(response);
@@ -163,14 +178,57 @@ public class GlobalExceptionHandler {
 		return ResponseEntity.status(ex.getCode().getStatus()).body(response);
 	}
 
+	@ExceptionHandler(ShopException.class)
+	public ResponseEntity<RestResponse<Object>> handleShop(ShopException ex) {
+
+		log.info("Shop request rejected with {}: {}", ex.getCode(), ex.getMessage());
+		RestResponse<Object> response = RestResponse.builder()
+				.statusCode(ex.getCode().getStatus().value())
+				.error(ex.getCode().name())
+				.data(ex.getDetails())
+				.build();
+
+		return ResponseEntity.status(ex.getCode().getStatus()).body(response);
+	}
+
+	@ExceptionHandler(MissionException.class)
+	public ResponseEntity<RestResponse<Object>> handleMission(MissionException ex) {
+
+		if (ex.getStatus().is5xxServerError()) {
+			log.error("Mission request failed with {}: {}", ex.getCode(), ex.getMessage());
+		} else {
+			log.info("Mission request rejected with {}: {}", ex.getCode(), ex.getMessage());
+		}
+		RestResponse<Object> response = RestResponse.builder()
+				.statusCode(ex.getStatus().value())
+				.error(ex.getCode().name())
+				.data(ex.getDetails())
+				.build();
+
+		return ResponseEntity.status(ex.getStatus()).body(response);
+	}
+
+	/** Constraint races that survive service-level handling; never leak SQL to the client. */
+	@ExceptionHandler(DataIntegrityViolationException.class)
+	public ResponseEntity<RestResponse<Object>> handleDataIntegrity(DataIntegrityViolationException ex) {
+
+		log.warn("Data integrity violation: {}", ex.getMostSpecificCause().getMessage());
+		RestResponse<Object> response = RestResponse.builder()
+				.statusCode(409)
+				.error("CONCURRENT_MODIFICATION")
+				.build();
+
+		return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+	}
+
+	/** Unexpected failure: a fixed code for the client, the details only in the server log. */
 	@ExceptionHandler(RuntimeException.class)
 	public ResponseEntity<RestResponse<Object>> handleRuntime(RuntimeException ex, HttpServletRequest request) {
 
 		log.error("Unhandled exception for {} {}", request.getMethod(), request.getRequestURI(), ex);
-
 		RestResponse<Object> response = RestResponse.builder()
 				.statusCode(500)
-				.error(ex.getMessage())
+				.error("INTERNAL_ERROR")
 				.build();
 
 		return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);

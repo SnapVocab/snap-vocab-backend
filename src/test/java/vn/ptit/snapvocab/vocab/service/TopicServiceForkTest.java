@@ -1,6 +1,7 @@
 package vn.ptit.snapvocab.vocab.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -10,12 +11,17 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import vn.ptit.snapvocab.vocab.domain.Collection;
 import vn.ptit.snapvocab.vocab.domain.Schema;
 import vn.ptit.snapvocab.vocab.domain.SchemaAttribute;
@@ -71,6 +77,8 @@ class TopicServiceForkTest {
 
 	@BeforeEach
 	void setUp() {
+		SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+				"admin@test.local", "unused", List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
 		Collection collection = Collection.builder().id(1L).type(CollectionType.SYSTEM).build();
 		sharedSchema = Schema.builder().id(100L).name("Shared English").build();
 		topic = Topic.builder().id(10L).name("Business Topic").collection(collection).schema(sharedSchema).build();
@@ -79,6 +87,21 @@ class TopicServiceForkTest {
 		attr = SchemaAttribute.builder().id(5000L).name("word").group(group).build();
 		group.setAttributes(new ArrayList<>(List.of(attr)));
 		sharedSchema.getAttributeGroups().add(group);
+	}
+
+	@Test
+	void forkSystemTopicRejectsANonAdminBeforeCloningAnything() {
+		SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+				"learner@test.local", "unused", List.of(new SimpleGrantedAuthority("ROLE_USER"))));
+		when(topicRepository.findById(10L)).thenReturn(Optional.of(topic));
+		assertThatThrownBy(() -> topicService.forkTopicSchema(10L)).isInstanceOf(AccessDeniedException.class);
+		verify(schemaRepository, never()).save(any());
+		verify(topicRepository, never()).save(any());
+	}
+
+	@AfterEach
+	void clearAuthentication() {
+		SecurityContextHolder.clearContext();
 	}
 
 	@Test

@@ -40,6 +40,9 @@ public interface TopicItemRepository extends JpaRepository<TopicItem, Long> {
 			Pageable pageable
 	);
 
+	@Query("SELECT COUNT(ti) FROM TopicItem ti WHERE ti.topic.collection.owner.id = :userId")
+	long countOwnedBy(@Param("userId") Long userId);
+
 	@Query("""
 			SELECT DISTINCT ti
 			FROM TopicItem ti

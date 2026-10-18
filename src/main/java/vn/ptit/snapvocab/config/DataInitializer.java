@@ -175,7 +175,7 @@ public class DataInitializer implements CommandLineRunner {
 					createFieldElement(10, CardSide.BACK, contentAttr, SemanticRole.EXAMPLE_SENTENCE, "Câu ví dụ", false, false,
 							15, Alignment.LEFT, "#1E293B"));
 			standardTemplate.addElement(
-					createFieldElement(11, CardSide.BACK, exTranslationAttr, SemanticRole.NATIVE_TRANSLATION, "Dịch câu ví dụ", true, false,
+					createFieldElement(11, CardSide.BACK, exTranslationAttr, null /* not the word meaning: quiz.md D10-D11 */, "Dịch câu ví dụ", true, false,
 							14, Alignment.LEFT, "#64748B"));
 
 			schema.getTemplates().add(standardTemplate);
@@ -228,7 +228,7 @@ public class DataInitializer implements CommandLineRunner {
 					createFieldElement(9, CardSide.BACK, contentAttr, SemanticRole.EXAMPLE_SENTENCE, "Câu ví dụ", false, false,
 							15, Alignment.LEFT, "#1E293B"));
 			listeningTemplate.addElement(
-					createFieldElement(10, CardSide.BACK, exTranslationAttr, SemanticRole.NATIVE_TRANSLATION, "Dịch câu ví dụ", true, false,
+					createFieldElement(10, CardSide.BACK, exTranslationAttr, null /* not the word meaning: quiz.md D10-D11 */, "Dịch câu ví dụ", true, false,
 							14, Alignment.LEFT, "#64748B"));
 
 			schema.getTemplates().add(listeningTemplate);
@@ -281,7 +281,7 @@ public class DataInitializer implements CommandLineRunner {
 					createFieldElement(9, CardSide.BACK, contentAttr, SemanticRole.EXAMPLE_SENTENCE, "Câu ví dụ", false, false,
 							15, Alignment.LEFT, "#1E293B"));
 			reverseTemplate.addElement(
-					createFieldElement(10, CardSide.BACK, exTranslationAttr, SemanticRole.NATIVE_TRANSLATION, "Dịch câu ví dụ", true, false,
+					createFieldElement(10, CardSide.BACK, exTranslationAttr, null /* not the word meaning: quiz.md D10-D11 */, "Dịch câu ví dụ", true, false,
 							14, Alignment.LEFT, "#64748B"));
 
 			schema.getTemplates().add(reverseTemplate);

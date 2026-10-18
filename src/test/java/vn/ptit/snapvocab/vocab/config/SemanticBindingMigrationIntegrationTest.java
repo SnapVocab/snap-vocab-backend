@@ -52,12 +52,17 @@ class SemanticBindingMigrationIntegrationTest extends QuizIntegrationTestBase {
 
 	/** Role → "group.attribute" of the hidden fields, per template code. */
 	private Map<String, List<String>> hiddenBindings(Long schemaId) {
+		return bindings(schemaId, TemplateField::isHidden);
+	}
+
+	/** Role → "group.attribute" of the fields matching {@code filter}, per template code. */
+	private Map<String, List<String>> bindings(Long schemaId, java.util.function.Predicate<TemplateField> filter) {
 		return tx().execute(s -> {
 			Map<String, List<String>> result = new java.util.TreeMap<>();
 			for (Template t : templateRepository.findBySchemaId(schemaId)) {
 				result.put(t.getCode(), t.getElements().stream()
 						.map(TemplateElement::getField)
-						.filter(f -> f != null && f.isHidden())
+						.filter(f -> f != null && filter.test(f))
 						.map(f -> f.getSemanticRole() + "=" + f.getSchemaAttribute().getGroup().getName() + "."
 								+ f.getSchemaAttribute().getName())
 						.sorted()
@@ -87,14 +92,16 @@ class SemanticBindingMigrationIntegrationTest extends QuizIntegrationTestBase {
 	}
 
 	@Test
-	void startupAddsTheTwoHiddenBindingsToEveryDefaultTemplate() {
+	void defaultTemplatesBindQuizRolesOnVisibleFieldsSoStartupAddsNoHiddenBinding() {
+		// Seed binds the Quiz roles on visible fields; the migration only backfills older data.
 		List<String> expected = List.of("EXAMPLE_SENTENCE=examples.content", "NATIVE_TRANSLATION=main.translation");
-		assertThat(hiddenBindings(defaultSchema().getId()))
+		assertThat(bindings(defaultSchema().getId(), f -> f.getSemanticRole() == SemanticRole.NATIVE_TRANSLATION
+				|| f.getSemanticRole() == SemanticRole.EXAMPLE_SENTENCE))
 				.containsOnlyKeys("STANDARD", "LISTENING", "REVERSE")
 				.allSatisfy((code, bindings) -> assertThat(bindings).isEqualTo(expected));
 
 		Integer hiddenRows = jdbc().queryForObject("SELECT COUNT(*) FROM template_fields WHERE hidden = 1", Integer.class);
-		assertThat(hiddenRows).isEqualTo(6);
+		assertThat(hiddenRows).isZero();
 	}
 
 	@Test
@@ -115,7 +122,7 @@ class SemanticBindingMigrationIntegrationTest extends QuizIntegrationTestBase {
 
 	@Test
 	void visibleFieldCountMatchesTheOriginalSeed() {
-		// Seed: STANDARD shows 6 fields, LISTENING 5, REVERSE 5 — unchanged by the migration.
+		// Seed: STANDARD shows 9 fields, LISTENING 8, REVERSE 8 (incl. "Dịch định nghĩa") — unchanged by the migration.
 		Map<String, Long> visibleFields = tx().execute(s -> {
 			Map<String, Long> counts = new java.util.TreeMap<>();
 			for (Template t : templateRepository.findBySchemaId(defaultSchema().getId())) {
@@ -124,20 +131,24 @@ class SemanticBindingMigrationIntegrationTest extends QuizIntegrationTestBase {
 			}
 			return counts;
 		});
-		assertThat(visibleFields).containsExactlyInAnyOrderEntriesOf(Map.of("STANDARD", 6L, "LISTENING", 5L, "REVERSE", 5L));
+		assertThat(visibleFields).containsExactlyInAnyOrderEntriesOf(Map.of("STANDARD", 9L, "LISTENING", 8L, "REVERSE", 8L));
 	}
 
 	@Test
-	void clientTemplateDtoNeverContainsHiddenBindings() {
+	void clientTemplateDtoShowsVisibleRolesButNeverHiddenFields() {
 		TemplateMapper mapper = Mappers.getMapper(TemplateMapper.class);
 		tx().executeWithoutResult(s -> {
 			for (Template t : templateRepository.findBySchemaId(defaultSchema().getId())) {
-				assertThat(mapper.toDto(t).getElements())
+				var elements = mapper.toDto(t).getElements();
+				// Clients resolve card data by role, so the single visible NATIVE_TRANSLATION is sent.
+				assertThat(elements)
+						.filteredOn(e -> e.getType() == TemplateElementType.FIELD
+								&& e.getField().getSemanticRole() == SemanticRole.NATIVE_TRANSLATION)
+						.hasSize(1);
+				assertThat(elements)
 						.allSatisfy(e -> {
 							if (e.getType() == TemplateElementType.FIELD) {
 								assertThat(e.getField()).isNotNull();
-								assertThat(e.getField().getSemanticRole())
-										.isNotIn(SemanticRole.NATIVE_TRANSLATION);
 							}
 						})
 						.hasSize((int) t.getElements().stream()

@@ -18,7 +18,12 @@ public record QuizResultDTO(
 		Instant completedAt,
 		Instant cancelledAt,
 		Long durationSeconds,
+		Xp xp,
 		List<Item> items) {
+
+	/** XP actually written for this quiz ({@code null} until COMPLETED with ≥1 correct); bonus &gt; 0 when a booster applied. */
+	public record Xp(int baseAmount, int bonusAmount, int amount) {
+	}
 
 	public record Summary(int totalUnits, int correctCount, int incorrectCount, double accuracy) {
 	}

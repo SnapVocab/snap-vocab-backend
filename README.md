@@ -9,11 +9,11 @@ Telecommunications Institute of Technology).
 ## Overview
 
 SnapVocab helps learners build English vocabulary by taking photos of real-world objects. The system
-uses YOLO object detection to identify objects in images, then returns English words with Vietnamese
+uses Florence-2 zero-shot object detection (CLIP optional) to identify objects in images, then returns English words with Vietnamese
 definitions, pronunciations, and audio.
 
 Beyond image recognition, the app supports flashcard study with Spaced Repetition System (SRS),
-quizzes, progress tracking, and gamification features (leaderboards, quests, badges, item shop) to
+quizzes, progress tracking, and gamification features (5 daily missions with per-mission rewards, badges, personal leaderboard, item shop) to
 keep learners motivated.
 
 ## System Architecture
@@ -36,17 +36,20 @@ keep learners motivated.
 
 ### Core
 
-- **Image recognition** — Capture/upload photos, detect objects via YOLO, return English vocabulary
+- **Image recognition** — Capture/upload photos, detect objects via Florence-2 (CLIP optional), return English vocabulary
 - **Dictionary lookup** — English word → Vietnamese definitions, IPA pronunciations, audio
 - **Flashcard learning** — Study with quizzes, SRS-based review scheduling
 - **Personal word list** — Save and manage vocabulary
 
-### Community & Gamification
+### Gamification
 
-- **Learning groups** — Join or create study groups, group challenges
-- **Leaderboards** — Individual, group, and tournament rankings
-- **Quests & badges** — Earn XP, coins, badges by completing learning tasks
-- **Item shop** — Buy and use items with coins
+- **Daily missions** — exactly 5 per day, each claimed separately for its own reward ([daily_mission.md](../docs/decisions/daily_mission.md)); no chest/weekly/monthly rewards
+- **Leaderboard** — personal ranking by Weekly XP (no rewards)
+- **Badges** — 12 fixed achievement badges (streak, quizzes, perfect quizzes, distinct words added), granted once on sync, no XP/Coin reward ([badges.md](../docs/decisions/badges.md))
+  - Admin P1: `GET /api/admin/badges` and `GET /api/admin/badges/{id}` require `ROLE_ADMIN`; include inactive rows and earner counts, never grant or mark seen. `version` is `null` until P2. No Admin write endpoints yet; staging acceptance remains required (PD-BDG-13a).
+- **Item shop** — Buy and use items with coins ([shop.md](../docs/decisions/shop.md))
+
+Community features (posts, comments, study groups) are out of scope.
 
 ### Account
 
@@ -69,20 +72,9 @@ Main user of the app. Full access to learning features:
 - Personal word list management
 - Flashcard study and SRS review
 - Progress tracking
-- Gamification (quests, badges, leaderboards)
-- Community interaction (posts, comments)
-- Study groups and group challenges
+- Gamification (daily missions, badges, personal leaderboard)
 - Item shop purchases
 
-### Group Owner
-
-Creates and manages study groups:
-
-- Create and update groups
-- Manage members
-- Create group challenges
-- View member leaderboards
-- Manage group posts
 
 ## Tech Stack
 

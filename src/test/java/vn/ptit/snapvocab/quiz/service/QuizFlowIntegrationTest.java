@@ -421,6 +421,10 @@ class QuizFlowIntegrationTest extends QuizIntegrationTestBase {
 		assertThat(first.status()).isEqualTo(QuizStatus.COMPLETED);
 		assertThat(first.summary().correctCount()).isEqualTo(5);
 		assertThat(again).isEqualTo(first);
+		assertThat(first.xp()).isEqualTo(new QuizResultDTO.Xp(5 * QuizService.XP_PER_CORRECT, 0,
+				5 * QuizService.XP_PER_CORRECT));
+		assertThat(userRepository.findById(user.getId()).orElseThrow().getExp())
+				.isEqualTo(user.getExp() + 5 * QuizService.XP_PER_CORRECT);
 		assertThat(events.stream(QuizCompletedEvent.class)).hasSize(1);
 		assertThat(quizService.getResult(quizId)).isEqualTo(first);
 		assertThat(codeOf(() -> quizService.cancel(quizId))).isEqualTo(QuizErrorCode.QUIZ_NOT_IN_PROGRESS);

@@ -2,6 +2,7 @@ package vn.ptit.snapvocab.quiz.service;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
@@ -52,6 +53,13 @@ import vn.ptit.snapvocab.vocab.service.TopicService;
 import vn.ptit.snapvocab.security.SecurityUtils;
 import vn.ptit.snapvocab.quiz.exception.QuizException;
 import vn.ptit.snapvocab.common.exception.ResourceNotFoundException;
+import vn.ptit.snapvocab.xp.domain.XpSourceType;
+import vn.ptit.snapvocab.xp.repository.ExperienceLogRepository;
+import vn.ptit.snapvocab.xp.service.XpService;
+import vn.ptit.snapvocab.mission.domain.enumeration.MissionTriggerEvent;
+import vn.ptit.snapvocab.mission.service.MissionFacts;
+import vn.ptit.snapvocab.mission.service.MissionTracker;
+import vn.ptit.snapvocab.shop.service.Economy;
 
 @Service
 public class QuizService {
@@ -60,6 +68,8 @@ public class QuizService {
 	private static final int MAX_KEY_LENGTH = 128;
 	private static final int MAX_PAGE_SIZE = 100;
 	private static final Duration SESSION_TTL = Duration.ofHours(24);
+	// ponytail: flat XP per correct unit; move to admin-configurable gamification rules when FR-09 defines amounts
+	static final int XP_PER_CORRECT = 10;
 
 	private final QuizRepository quizRepository;
 	private final QuizQuestionRepository questionRepository;
@@ -70,14 +80,21 @@ public class QuizService {
 	private final QuizContentResolver contentResolver;
 	private final QuizGenerator generator;
 	private final ApplicationEventPublisher eventPublisher;
+	private final XpService xpService;
+	private final ExperienceLogRepository experienceLogRepository;
+	private final MissionTracker missionTracker;
 	private final TransactionTemplate transactionTemplate;
 	private final TransactionTemplate expiryTransaction;
 
 	public QuizService(QuizRepository quizRepository, QuizQuestionRepository questionRepository,
 			QuizMatchingAttemptRepository attemptRepository, TopicRepository topicRepository,
 			TopicService topicService, UserRepository userRepository, QuizContentResolver contentResolver,
-			QuizGenerator generator, ApplicationEventPublisher eventPublisher,
+			QuizGenerator generator, ApplicationEventPublisher eventPublisher, XpService xpService,
+			ExperienceLogRepository experienceLogRepository, MissionTracker missionTracker,
 			PlatformTransactionManager transactionManager) {
+		this.missionTracker = missionTracker;
+		this.xpService = xpService;
+		this.experienceLogRepository = experienceLogRepository;
 		this.quizRepository = quizRepository;
 		this.questionRepository = questionRepository;
 		this.attemptRepository = attemptRepository;
@@ -329,22 +346,34 @@ public class QuizService {
 			return toResult(quiz);
 		}
 		requireActive(quiz);
+		// Lock order quiz row → users (daily_mission.md §3.2), taken before validation; no path locks users then quiz.
+		Economy.lockUser(userRepository, userId);
 
 		long unresolved = quiz.getQuestions().stream().filter(q -> !q.isResolved()).count();
 		if (unresolved > 0) {
 			throw new QuizException(QuizErrorCode.QUIZ_HAS_UNRESOLVED_UNITS,
 					unresolved + " unit(s) not resolved yet", Map.of("unresolvedCount", unresolved));
 		}
+		Instant actionInstant = Economy.now();
+		LocalDate missionDate = MissionTracker.missionDate(actionInstant);
+		missionTracker.ensureAssigned(userId, missionDate, actionInstant);
+
 		int correct = (int) quiz.getQuestions().stream().filter(q -> q.getOutcome() == QuizOutcome.CORRECT).count();
 		quiz.setTotalUnits(quiz.getQuestions().size());
 		quiz.setCorrectCount(correct);
 		quiz.setIncorrectCount(quiz.getQuestions().size() - correct);
 		quiz.setStatus(QuizStatus.COMPLETED);
-		quiz.setCompletedAt(now());
+		quiz.setCompletedAt(actionInstant);
 		quizRepository.saveAndFlush(quiz);
+		if (correct > 0) {
+			// Booster is evaluated here, at write time (shop.md §5.4); eventKey makes a replay add nothing.
+			xpService.award(userId, XpSourceType.QUIZ, correct * XP_PER_CORRECT, xpEventKey(quiz.getId()));
+		}
 
 		eventPublisher.publishEvent(new QuizCompletedEvent(quiz.getId(), userId, quiz.getTopicId(), quiz.getMode(),
-				quiz.getTotalUnits(), correct));
+				quiz.getTotalUnits(), correct, actionInstant));
+		missionTracker.apply(userId, missionDate, MissionTriggerEvent.QUIZ_COMPLETED, "QUIZ_COMPLETED:" + quiz.getId(),
+				MissionFacts.quiz(quiz.getTotalUnits(), correct, quiz.getRequestedCount()), actionInstant);
 		return toResult(quiz);
 	}
 
@@ -462,7 +491,15 @@ public class QuizService {
 						a.getRoundMatchedCount() == a.getRoundTotalPairs()));
 	}
 
-	private static QuizResultDTO toResult(Quiz quiz) {
+	static String xpEventKey(Long quizId) {
+		return "QUIZ:" + quizId;
+	}
+
+	private QuizResultDTO toResult(Quiz quiz) {
+		QuizResultDTO.Xp xp = quiz.getStatus() != QuizStatus.COMPLETED ? null
+				: experienceLogRepository.findByEventKey(xpEventKey(quiz.getId()))
+						.map(l -> new QuizResultDTO.Xp(l.getBaseAmount(), l.getBonusAmount(), l.getAmount()))
+						.orElse(null);
 		QuizResultDTO.Summary summary = quiz.getStatus() != QuizStatus.COMPLETED ? null
 				: new QuizResultDTO.Summary(quiz.getTotalUnits(), quiz.getCorrectCount(), quiz.getIncorrectCount(),
 						accuracy(quiz.getCorrectCount(), quiz.getTotalUnits()));
@@ -473,7 +510,7 @@ public class QuizService {
 				.toList();
 		return new QuizResultDTO(quiz.getId(), quiz.getStatus(), quiz.getMode(), quiz.getDirection(),
 				quiz.getTopicId(), quiz.getTopicName(), summary, quiz.getCompletedAt(), quiz.getCancelledAt(),
-				durationSeconds(quiz), items);
+				durationSeconds(quiz), xp, items);
 	}
 
 	private static Long durationSeconds(Quiz quiz) {

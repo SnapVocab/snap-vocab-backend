@@ -98,6 +98,11 @@ public class User extends BaseTimeEntity {
 	@Builder.Default
 	private Integer streakDays = 0;
 
+	@Min(value = 0, message = "Longest streak days must be greater than or equal to 0")
+	@Column(name = "longest_streak_days", nullable = false, columnDefinition = "INT NOT NULL DEFAULT 0")
+	@Builder.Default
+	private Integer longestStreakDays = 0;
+
 	@Column(name = "last_studied_at")
 	private Instant lastStudiedAt;
 
@@ -113,5 +118,18 @@ public class User extends BaseTimeEntity {
 	@OneToMany(mappedBy = "owner", cascade = CascadeType.ALL, orphanRemoval = true)
 	@Builder.Default
 	private List<Collection> collections = new ArrayList<>();
+
+	// Legacy rows can hold NULL although database.md says NOT NULL DEFAULT 0; every caller unboxes these.
+	public Long getExp() {
+		return exp == null ? 0L : exp;
+	}
+
+	public Long getCoin() {
+		return coin == null ? 0L : coin;
+	}
+
+	public Integer getStreakDays() {
+		return streakDays == null ? 0 : streakDays;
+	}
 }
 

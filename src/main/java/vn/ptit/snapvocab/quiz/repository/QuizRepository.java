@@ -27,6 +27,30 @@ public interface QuizRepository extends JpaRepository<Quiz, Long> {
 	@Query(value = "SELECT q FROM Quiz q WHERE q.user.id = :userId ORDER BY q.createdAt DESC, q.id DESC", countQuery = "SELECT COUNT(q) FROM Quiz q WHERE q.user.id = :userId")
 	Page<Quiz> findHistory(@Param("userId") Long userId, Pageable pageable);
 
+	@Query("SELECT COUNT(q) AS quizCount, COALESCE(SUM(q.correctCount), 0) AS correctCount, "
+			+ "COALESCE(SUM(q.totalUnits), 0) AS totalUnits FROM Quiz q WHERE q.user.id = :userId "
+			+ "AND q.status = vn.ptit.snapvocab.quiz.domain.enumeration.QuizStatus.COMPLETED")
+	CompletedTotals completedTotals(@Param("userId") Long userId);
+
+	/** Badge metric {@code QUIZ_COMPLETED} (badges.md §3). */
+	@Query("SELECT COUNT(q) FROM Quiz q WHERE q.user.id = :userId "
+			+ "AND q.status = vn.ptit.snapvocab.quiz.domain.enumeration.QuizStatus.COMPLETED")
+	long countCompleted(@Param("userId") Long userId);
+
+	/** Badge metric {@code PERFECT_QUIZ}: every unit correct (badges.md §3). */
+	@Query("SELECT COUNT(q) FROM Quiz q WHERE q.user.id = :userId "
+			+ "AND q.status = vn.ptit.snapvocab.quiz.domain.enumeration.QuizStatus.COMPLETED "
+			+ "AND q.correctCount = q.totalUnits")
+	long countPerfect(@Param("userId") Long userId);
+
+	interface CompletedTotals {
+		long getQuizCount();
+
+		long getCorrectCount();
+
+		long getTotalUnits();
+	}
+
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
 	@Query("UPDATE Quiz q SET q.status = vn.ptit.snapvocab.quiz.domain.enumeration.QuizStatus.EXPIRED "
 			+ "WHERE q.user.id = :userId "

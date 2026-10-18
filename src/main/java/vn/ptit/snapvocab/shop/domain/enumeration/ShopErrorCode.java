@@ -1,0 +1,40 @@
+package vn.ptit.snapvocab.shop.domain.enumeration;
+
+import org.springframework.http.HttpStatus;
+
+public enum ShopErrorCode {
+	IDEMPOTENCY_KEY_REQUIRED(HttpStatus.BAD_REQUEST),
+	IDEMPOTENCY_KEY_REUSED(HttpStatus.CONFLICT),
+	SHOP_ITEM_NOT_FOUND(HttpStatus.NOT_FOUND),
+	ITEM_NOT_AVAILABLE(HttpStatus.CONFLICT),
+	PRICE_CHANGED(HttpStatus.CONFLICT),
+	ITEM_ALREADY_OWNED(HttpStatus.CONFLICT),
+	MAX_QUANTITY_REACHED(HttpStatus.CONFLICT),
+	INSUFFICIENT_COINS(HttpStatus.CONFLICT),
+	ITEM_NOT_OWNED(HttpStatus.NOT_FOUND),
+	INVALID_EQUIPMENT_SLOT(HttpStatus.BAD_REQUEST),
+	ITEM_NOT_EQUIPPABLE(HttpStatus.BAD_REQUEST),
+	ITEM_NOT_ACTIVATABLE(HttpStatus.BAD_REQUEST),
+	ITEM_QUANTITY_EMPTY(HttpStatus.CONFLICT),
+	BOOSTER_ALREADY_ACTIVE(HttpStatus.CONFLICT),
+	VALIDATION_ERROR(HttpStatus.BAD_REQUEST),
+	SHOP_ITEM_CODE_EXISTS(HttpStatus.CONFLICT),
+	INVALID_SHOP_ITEM_CONFIG(HttpStatus.BAD_REQUEST),
+	INVALID_THEME_KEY(HttpStatus.BAD_REQUEST),
+	INVALID_PRICE(HttpStatus.BAD_REQUEST),
+	INVALID_AVAILABILITY_WINDOW(HttpStatus.BAD_REQUEST),
+	FIELD_LOCKED(HttpStatus.CONFLICT),
+	VERSION_CONFLICT(HttpStatus.CONFLICT),
+	INVALID_STATUS_TRANSITION(HttpStatus.CONFLICT),
+	ITEM_CANNOT_BE_DELETED(HttpStatus.CONFLICT);
+
+	private final HttpStatus status;
+
+	ShopErrorCode(HttpStatus status) {
+		this.status = status;
+	}
+
+	public HttpStatus getStatus() {
+		return status;
+	}
+}

@@ -19,7 +19,10 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
+import vn.ptit.snapvocab.security.AuthoritiesConstants;
 import vn.ptit.snapvocab.security.SecurityUtils;
 
 @Configuration
@@ -63,6 +66,7 @@ public class SecurityConfiguration {
 										"/api/collections/public",
 										"/api/collections/{collectionId:[0-9]+}",
 										"/api/collections/{collectionId:[0-9]+}/topics").permitAll()
+								.requestMatchers("/api/admin/**").hasAuthority(AuthoritiesConstants.ADMIN)
 								.anyRequest().authenticated()
 				)
 				.oauth2ResourceServer((oauth2) -> oauth2.jwt(Customizer.withDefaults())
@@ -86,6 +90,17 @@ public class SecurityConfiguration {
 				throw e;
 			}
 		};
+	}
+
+	/** Authorities come from the space-separated {@code auth} claim written by AuthenticationService, unprefixed. */
+	@Bean
+	public JwtAuthenticationConverter jwtAuthenticationConverter() {
+		JwtGrantedAuthoritiesConverter authorities = new JwtGrantedAuthoritiesConverter();
+		authorities.setAuthoritiesClaimName(SecurityUtils.AUTHORITIES_CLAIM);
+		authorities.setAuthorityPrefix("");
+		JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
+		converter.setJwtGrantedAuthoritiesConverter(authorities);
+		return converter;
 	}
 
 	@Bean
