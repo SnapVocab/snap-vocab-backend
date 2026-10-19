@@ -3,6 +3,7 @@ package vn.ptit.snapvocab.study.repository;
 import java.time.LocalDate;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -10,6 +11,10 @@ import vn.ptit.snapvocab.study.domain.StudyDailyCard;
 
 @Repository
 public interface StudyDailyCardRepository extends JpaRepository<StudyDailyCard, Long> {
+	@Modifying(flushAutomatically = true)
+	@Query("DELETE FROM StudyDailyCard dailyCard WHERE dailyCard.topicItem.id = :topicItemId")
+	int deleteAllByTopicItemId(@Param("topicItemId") Long topicItemId);
+
 	long countByUserIdAndCollectionIdAndStudyDate(Long userId, Long collectionId, LocalDate studyDate);
 
 	@Query("""
