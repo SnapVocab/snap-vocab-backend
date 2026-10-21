@@ -35,6 +35,8 @@ import vn.ptit.snapvocab.quiz.service.QuizContentResolver;
 import vn.ptit.snapvocab.security.AuthoritiesConstants;
 import vn.ptit.snapvocab.shop.service.Economy;
 import vn.ptit.snapvocab.security.SecurityUtils;
+import vn.ptit.snapvocab.study.repository.StudyDailyCardRepository;
+import vn.ptit.snapvocab.study.repository.StudyQueueRepository;
 import vn.ptit.snapvocab.user.domain.User;
 import vn.ptit.snapvocab.user.repository.UserRepository;
 import vn.ptit.snapvocab.vocab.domain.Collection;
@@ -78,6 +80,8 @@ import vn.ptit.snapvocab.vocab.repository.TopicRepository;
 public class TopicService {
 
 	private final TopicItemRepository topicItemRepository;
+	private final StudyQueueRepository studyQueueRepository;
+	private final StudyDailyCardRepository studyDailyCardRepository;
 	private final TopicRepository topicRepository;
 	private final CollectionRepository collectionRepository;
 	private final SchemaRepository schemaRepository;
@@ -130,6 +134,18 @@ public class TopicService {
 				.data(buildTopicItemDataList(topicItemIds.getContent()))
 				.meta(meta)
 				.build();
+	}
+
+	public TopicItemData getTopicItem(Long topicId, Long itemId) {
+		validateTopicAccess(topicId);
+
+		TopicItem item = topicItemRepository.findByIdAndTopicId(itemId, topicId)
+				.orElseThrow(() -> new ResourceNotFoundException(
+						"Topic item not found with id: " + itemId + " in topic: " + topicId));
+
+		TopicItemData itemData = buildTopicItemDataList(List.of(itemId)).get(0);
+		itemData.setCreatedAt(item.getCreatedAt());
+		return itemData;
 	}
 
 	private List<TopicItemData> buildTopicItemDataList(List<Long> topicItemIds) {
@@ -853,6 +869,150 @@ public class TopicService {
 				.createdAt(savedItem.getCreatedAt())
 				.groups(responseGroups)
 				.build();
+	}
+
+	@Transactional
+	@CacheEvict(cacheNames = "topic-items", allEntries = true)
+	public TopicItemData updateTopicItem(Long topicId, Long itemId,
+			CreateTopicItemDTO updateTopicItemDTO) {
+		Topic topic = topicRepository.findById(topicId)
+				.orElseThrow(() -> new ResourceNotFoundException("Topic not found with id: " + topicId));
+		validateTopicWriteAccess(topic);
+
+		TopicItem topicItem = topicItemRepository.findByIdAndTopicId(itemId, topicId)
+				.orElseThrow(() -> new ResourceNotFoundException(
+						"Topic item not found with id: " + itemId + " in topic: " + topicId));
+
+		if (topic.getSchema() == null) {
+			throw new BadRequestAlertException("Topic has no assigned schema");
+		}
+
+		List<SchemaAttributeGroup> schemaGroups = schemaAttributeGroupRepository.findBySchemaIdWithAttributes(
+				topic.getSchema().getId());
+		Map<String, Object> inputGroups = updateTopicItemDTO.getGroups() != null
+				? updateTopicItemDTO.getGroups()
+				: Collections.emptyMap();
+
+		// Replace all EAV values while retaining the TopicItem row and its ID (and FSRS link).
+		topicItem.getGroupInstances().clear();
+		// Delete old group rows before inserting replacements with the same unique positions.
+		topicItemRepository.flush();
+		Map<String, Object> responseGroups = replaceItemGroups(topicItem, schemaGroups, inputGroups);
+
+		TopicItem savedItem = topicItemRepository.save(topicItem);
+		return TopicItemData.builder()
+				.topicItemId(savedItem.getId())
+				.createdAt(savedItem.getCreatedAt())
+				.groups(responseGroups)
+				.build();
+	}
+
+	@Transactional
+	@CacheEvict(cacheNames = "topic-items", allEntries = true)
+	public void deleteTopicItem(Long topicId, Long itemId) {
+		Topic topic = topicRepository.findById(topicId)
+				.orElseThrow(() -> new ResourceNotFoundException("Topic not found with id: " + topicId));
+		validateTopicWriteAccess(topic);
+
+		TopicItem topicItem = topicItemRepository.findByIdAndTopicId(itemId, topicId)
+				.orElseThrow(() -> new ResourceNotFoundException(
+						"Topic item not found with id: " + itemId + " in topic: " + topicId));
+
+		studyQueueRepository.deleteAllByTopicItemId(itemId);
+		studyDailyCardRepository.deleteAllByTopicItemId(itemId);
+		topicItemRepository.delete(topicItem);
+	}
+
+	private Map<String, Object> replaceItemGroups(TopicItem topicItem,
+			List<SchemaAttributeGroup> schemaGroups, Map<String, Object> inputGroups) {
+		Map<String, Object> responseGroups = new LinkedHashMap<>();
+		for (SchemaAttributeGroup groupDef : schemaGroups) {
+			String groupName = groupDef.getName();
+			Object rawGroupData = inputGroups.get(groupName);
+			if (groupDef.isMultiple()) {
+				replaceMultipleGroup(topicItem, groupDef, rawGroupData, responseGroups);
+			} else {
+				replaceSingleGroup(topicItem, groupDef, rawGroupData, responseGroups);
+			}
+		}
+		return responseGroups;
+	}
+
+	private void replaceSingleGroup(TopicItem topicItem, SchemaAttributeGroup groupDef,
+			Object rawGroupData, Map<String, Object> responseGroups) {
+		Map<String, Object> attrData = readSingleGroupInput(groupDef.getName(), rawGroupData);
+		TopicItemAttributeGroup groupInstance = newTopicItemAttributeGroup(topicItem, groupDef,
+				(short) 1);
+		Map<String, Object> savedAttrs = buildAndValidateValues(groupInstance,
+				groupDef.getAttributes(), attrData);
+		if (!groupInstance.getValues().isEmpty()) {
+			topicItem.getGroupInstances().add(groupInstance);
+		}
+		if (!savedAttrs.isEmpty()) {
+			responseGroups.put(groupDef.getName(), savedAttrs);
+		}
+	}
+
+	private void replaceMultipleGroup(TopicItem topicItem, SchemaAttributeGroup groupDef,
+			Object rawGroupData, Map<String, Object> responseGroups) {
+		if (rawGroupData == null) {
+			return;
+		}
+		if (!(rawGroupData instanceof List<?> instances)) {
+			throw new BadRequestAlertException(
+					"Group '" + groupDef.getName() + "' must be a JSON array");
+		}
+
+		List<Map<String, Object>> instanceResponses = new ArrayList<>();
+		short position = 1;
+		for (Object instanceData : instances) {
+			Map<String, Object> attrData = readGroupInstanceInput(groupDef.getName(), instanceData);
+			TopicItemAttributeGroup groupInstance = newTopicItemAttributeGroup(topicItem, groupDef,
+					position++);
+			Map<String, Object> savedAttrs = buildAndValidateValues(groupInstance,
+					groupDef.getAttributes(), attrData);
+			if (!groupInstance.getValues().isEmpty()) {
+				topicItem.getGroupInstances().add(groupInstance);
+			}
+			if (!savedAttrs.isEmpty()) {
+				instanceResponses.add(savedAttrs);
+			}
+		}
+		if (!instanceResponses.isEmpty()) {
+			responseGroups.put(groupDef.getName(), instanceResponses);
+		}
+	}
+
+	private TopicItemAttributeGroup newTopicItemAttributeGroup(TopicItem topicItem,
+			SchemaAttributeGroup groupDef, short position) {
+		return TopicItemAttributeGroup.builder()
+				.item(topicItem)
+				.groupDefinition(groupDef)
+				.position(position)
+				.values(new ArrayList<>())
+				.build();
+	}
+
+	private Map<String, Object> readGroupInstanceInput(String groupName, Object instanceData) {
+		if (!(instanceData instanceof Map<?, ?> map)) {
+			throw new BadRequestAlertException(
+					"Item in group '" + groupName + "' must be a JSON object");
+		}
+		@SuppressWarnings("unchecked")
+		Map<String, Object> attrData = (Map<String, Object>) map;
+		return attrData;
+	}
+
+	private Map<String, Object> readSingleGroupInput(String groupName, Object rawGroupData) {
+		if (rawGroupData == null) {
+			return Collections.emptyMap();
+		}
+		if (!(rawGroupData instanceof Map<?, ?> map)) {
+			throw new BadRequestAlertException("Group '" + groupName + "' must be a JSON object");
+		}
+		@SuppressWarnings("unchecked")
+		Map<String, Object> attrData = (Map<String, Object>) map;
+		return attrData;
 	}
 
 	private Map<String, Object> buildAndValidateValues(TopicItemAttributeGroup groupInstance,
