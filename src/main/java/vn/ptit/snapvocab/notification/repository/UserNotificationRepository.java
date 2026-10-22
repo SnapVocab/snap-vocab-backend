@@ -1,6 +1,7 @@
 package vn.ptit.snapvocab.notification.repository;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Limit;
@@ -11,6 +12,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vn.ptit.snapvocab.notification.domain.UserNotification;
+import vn.ptit.snapvocab.notification.domain.enumeration.NotificationType;
 
 /** Every learner-facing query filters by the token's user id, never by id alone (notification.md §4.2). */
 @Repository
@@ -41,9 +43,22 @@ public interface UserNotificationRepository extends JpaRepository<UserNotificati
 			+ "SELECT id, :notificationId, FALSE FROM users WHERE activated = TRUE", nativeQuery = true)
 	int fanOut(@Param("notificationId") Long notificationId);
 
+	/**
+	 * UI-NOTIF-05: a new reminder supersedes the learner's older unread ones of the same type, so a week away leaves
+	 * one current reminder instead of seven stale ones.
+	 */
+	@Modifying
+	@Query("UPDATE UserNotification un SET un.isRead = true, un.readAt = :now WHERE un.user.id = :userId "
+			+ "AND un.isRead = false AND un.notification.id IN "
+			+ "(SELECT n.id FROM Notification n WHERE n.type = :type)")
+	int markUnreadOfTypeRead(@Param("userId") Long userId, @Param("type") NotificationType type,
+			@Param("now") Instant now);
+
 	/** J3: call until it returns less than {@code batch}. */
 	@Modifying
 	@Query(value = "DELETE FROM user_notifications WHERE notification_id IN "
-			+ "(SELECT id FROM notifications WHERE created_at < :cutoff) LIMIT :batch", nativeQuery = true)
-	int deleteOfNotificationsCreatedBefore(@Param("cutoff") Instant cutoff, @Param("batch") int batch);
+			+ "(SELECT id FROM notifications WHERE type IN (:types) AND created_at < :cutoff) LIMIT :batch",
+			nativeQuery = true)
+	int deleteOfNotificationsCreatedBefore(@Param("types") Collection<String> types, @Param("cutoff") Instant cutoff,
+			@Param("batch") int batch);
 }

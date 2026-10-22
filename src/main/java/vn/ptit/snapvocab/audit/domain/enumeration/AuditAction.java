@@ -14,6 +14,10 @@ public enum AuditAction {
 	MISSION_TEMPLATE_UPDATED(AuditArea.MISSIONS, AuditTargetType.MISSION_TEMPLATE, false),
 	MISSION_TEMPLATE_ENABLED(AuditArea.MISSIONS, AuditTargetType.MISSION_TEMPLATE, true),
 	MISSION_TEMPLATE_DISABLED(AuditArea.MISSIONS, AuditTargetType.MISSION_TEMPLATE, true),
+	// Badges P2 (badges.md §8.4, OQ-BDGA-02): content edits and on/off; no create or delete before P3.
+	BADGE_UPDATED(AuditArea.BADGES, AuditTargetType.BADGE, false),
+	BADGE_ENABLED(AuditArea.BADGES, AuditTargetType.BADGE, true),
+	BADGE_DISABLED(AuditArea.BADGES, AuditTargetType.BADGE, true),
 	COLLECTION_CREATED(AuditArea.TOPICS, AuditTargetType.COLLECTION, true),
 	COLLECTION_UPDATED(AuditArea.TOPICS, AuditTargetType.COLLECTION, false),
 	COLLECTION_DELETED(AuditArea.TOPICS, AuditTargetType.COLLECTION, true),

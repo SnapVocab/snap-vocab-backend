@@ -29,7 +29,8 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update
+      # REL-DM-01: schema changes go through migration/*.sql; startup fails on drift instead of patching it.
+      ddl-auto: validate
     show-sql: false
     properties:
       hibernate:

@@ -15,6 +15,8 @@
 --   - mission_admin_audits (trống, không code nào dùng) giữ nguyên; xóa bằng script riêng sau khi xác nhận rỗng trên prod.
 --   - Thêm giá trị enum sau này: DROP CONSTRAINT rồi ADD lại CHECK cùng tên (cú pháp chạy được trên cả MariaDB và MySQL 8).
 --   - Chạy TRƯỚC khi deploy backend có module audit (cùng đợt với Admin FE-AUD-01: archive bắt buộc lý do).
+--   - 2026-10-22: thêm BADGES / BADGE / BADGE_UPDATED|ENABLED|DISABLED (Badges P2) ngay trong v1, vì v1 chưa chạy ở
+--     môi trường nào. Nếu đã chạy bản cũ ở đâu đó: DROP 3 CHECK chk_aal_area/target_type/action rồi chạy lại script.
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS `admin_audit_logs` (
@@ -58,15 +60,15 @@ DELIMITER ;
 
 CALL aal_v1_ddl(NOT EXISTS (SELECT 1 FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = DATABASE()
         AND TABLE_NAME = 'admin_audit_logs' AND CONSTRAINT_NAME = 'chk_aal_area'),
-    'ALTER TABLE `admin_audit_logs` ADD CONSTRAINT `chk_aal_area` CHECK (`area` IN (''SHOP'', ''MISSIONS'', ''DICTIONARY'', ''TOPICS'', ''AI_SCAN'', ''LEARNERS'', ''NOTIFICATIONS''))');
+    'ALTER TABLE `admin_audit_logs` ADD CONSTRAINT `chk_aal_area` CHECK (`area` IN (''SHOP'', ''MISSIONS'', ''BADGES'', ''DICTIONARY'', ''TOPICS'', ''AI_SCAN'', ''LEARNERS'', ''NOTIFICATIONS''))');
 
 CALL aal_v1_ddl(NOT EXISTS (SELECT 1 FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = DATABASE()
         AND TABLE_NAME = 'admin_audit_logs' AND CONSTRAINT_NAME = 'chk_aal_target_type'),
-    'ALTER TABLE `admin_audit_logs` ADD CONSTRAINT `chk_aal_target_type` CHECK (`target_type` IN (''SHOP_ITEM'', ''MISSION_TEMPLATE'', ''COLLECTION'', ''TOPIC'', ''NOTIFICATION'', ''WORD'', ''SCAN_LABEL'', ''LEARNER''))');
+    'ALTER TABLE `admin_audit_logs` ADD CONSTRAINT `chk_aal_target_type` CHECK (`target_type` IN (''SHOP_ITEM'', ''MISSION_TEMPLATE'', ''BADGE'', ''COLLECTION'', ''TOPIC'', ''NOTIFICATION'', ''WORD'', ''SCAN_LABEL'', ''LEARNER''))');
 
 CALL aal_v1_ddl(NOT EXISTS (SELECT 1 FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = DATABASE()
         AND TABLE_NAME = 'admin_audit_logs' AND CONSTRAINT_NAME = 'chk_aal_action'),
-    'ALTER TABLE `admin_audit_logs` ADD CONSTRAINT `chk_aal_action` CHECK (`action` IN (''SHOP_ITEM_CREATED'', ''SHOP_ITEM_UPDATED'', ''SHOP_ITEM_PUBLISHED'', ''SHOP_ITEM_ARCHIVED'', ''SHOP_ITEM_DELETED'', ''MISSION_TEMPLATE_CREATED'', ''MISSION_TEMPLATE_UPDATED'', ''MISSION_TEMPLATE_ENABLED'', ''MISSION_TEMPLATE_DISABLED'', ''COLLECTION_CREATED'', ''COLLECTION_UPDATED'', ''COLLECTION_DELETED'', ''TOPIC_CREATED'', ''TOPIC_ITEM_ADDED'', ''TOPIC_TEMPLATE_CHANGED'', ''TOPIC_SCHEMA_CHANGED'', ''SYSTEM_NOTIFICATION_SENT'', ''WORD_UPDATED'', ''SCAN_LABEL_MAPPED'', ''LEARNER_BANNED'', ''LEARNER_UNBANNED'', ''LEARNER_PASSWORD_RESET_SENT''))');
+    'ALTER TABLE `admin_audit_logs` ADD CONSTRAINT `chk_aal_action` CHECK (`action` IN (''SHOP_ITEM_CREATED'', ''SHOP_ITEM_UPDATED'', ''SHOP_ITEM_PUBLISHED'', ''SHOP_ITEM_ARCHIVED'', ''SHOP_ITEM_DELETED'', ''MISSION_TEMPLATE_CREATED'', ''MISSION_TEMPLATE_UPDATED'', ''MISSION_TEMPLATE_ENABLED'', ''MISSION_TEMPLATE_DISABLED'', ''BADGE_UPDATED'', ''BADGE_ENABLED'', ''BADGE_DISABLED'', ''COLLECTION_CREATED'', ''COLLECTION_UPDATED'', ''COLLECTION_DELETED'', ''TOPIC_CREATED'', ''TOPIC_ITEM_ADDED'', ''TOPIC_TEMPLATE_CHANGED'', ''TOPIC_SCHEMA_CHANGED'', ''SYSTEM_NOTIFICATION_SENT'', ''WORD_UPDATED'', ''SCAN_LABEL_MAPPED'', ''LEARNER_BANNED'', ''LEARNER_UNBANNED'', ''LEARNER_PASSWORD_RESET_SENT''))');
 
 CALL aal_v1_ddl(NOT EXISTS (SELECT 1 FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = DATABASE()
         AND TABLE_NAME = 'admin_audit_logs' AND CONSTRAINT_NAME = 'chk_aal_changes_json'),

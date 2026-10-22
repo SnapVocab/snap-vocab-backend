@@ -75,7 +75,11 @@ class MissionMigrationScriptTest {
 
 	@AfterEach
 	void dropScratchDatabase() throws SQLException {
-		scratchDb.getConnection().close();
+		// close() is suppressed: return the pooled connection ourselves, back on the test schema (Hikari keeps
+		// the catalog, and the scratch one is dropped below).
+		scratchDb.getConnection().setCatalog(entitySchema);
+		scratchDb.destroy();
+
 		new JdbcTemplate(dataSource).execute("DROP DATABASE IF EXISTS `" + scratch + "`");
 	}
 
@@ -90,6 +94,17 @@ class MissionMigrationScriptTest {
 			assertThat(constraints(info, scratch, table)).as(table + " UNIQUE/CHECK")
 					.isEqualTo(constraints(info, entitySchema, table));
 		}
+	}
+
+	/** A mission table from another schema version (the team's remote DB had UUID ids) stops the script untouched. */
+	@Test
+	void scriptRefusesAnIncompatibleExistingMissionTable() throws Exception {
+		scratch().execute("CREATE TABLE mission_templates (id BINARY(16) NOT NULL PRIMARY KEY, code VARCHAR(64)) ENGINE=InnoDB");
+
+		assertThatThrownBy(() -> run(read(SCRIPT))).isInstanceOf(SQLException.class)
+				.hasMessageContaining("DM_SCHEMA_CONFLICT").hasMessageContaining("mission_templates");
+		assertThat(new JdbcTemplate(dataSource).queryForObject("SELECT COUNT(*) FROM information_schema.TABLES "
+				+ "WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'user_daily_missions'", Integer.class, scratch)).isZero();
 	}
 
 	@Test
@@ -240,6 +255,8 @@ class MissionMigrationScriptTest {
 		Path client = mysqlClient();
 		assumeTrue(client != null, "mysql client required for full-schema migration rehearsal");
 		assertThat(mysql(client, read(SCRIPT))).startsWith("exit=0");
+		// Databases created before JsonMapConverter still have a json column; it must keep validating.
+		scratch().execute("ALTER TABLE learning_events MODIFY metadata JSON");
 		hibernateValidate(false);
 		scratch().execute("ALTER TABLE shop_items MODIFY purchasable INT NOT NULL");
 		assertThatThrownBy(() -> hibernateValidate(false)).hasStackTraceContaining("purchasable");

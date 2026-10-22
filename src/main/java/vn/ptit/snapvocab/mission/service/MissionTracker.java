@@ -21,12 +21,14 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,6 +52,7 @@ import vn.ptit.snapvocab.shop.domain.enumeration.ShopItemType;
 import vn.ptit.snapvocab.shop.repository.BoosterActivationRepository;
 import vn.ptit.snapvocab.shop.repository.ShopItemRepository;
 import vn.ptit.snapvocab.shop.repository.UserItemRepository;
+import vn.ptit.snapvocab.user.service.MailService;
 import vn.ptit.snapvocab.shop.service.ShopPurchasePolicy;
 import vn.ptit.snapvocab.study.service.StudyService;
 import vn.ptit.snapvocab.user.domain.User;
@@ -95,12 +98,18 @@ public class MissionTracker {
 	private final StreakFreezeService streakFreezeService;
 	private final ObjectProvider<StudyService> studyService;
 	private final Counter poolInsufficient;
+	private final ObjectProvider<MailService> mailService;
+	private final String alertEmail;
+	/** Last alert mail, epoch ms; one mail per {@link #ALERT_INTERVAL_MS} however many requests fail. */
+	private final AtomicLong lastAlertAt = new AtomicLong(Long.MIN_VALUE / 2);
+	static final long ALERT_INTERVAL_MS = 60 * 60 * 1000L;
 
 	public MissionTracker(MissionTemplateRepository templateRepository, UserDailyMissionRepository missionRepository,
 			UserDailyMissionProgressLogRepository progressLogRepository, UserWordCreditRepository wordCreditRepository,
 			UserRepository userRepository, UserItemRepository userItemRepository, ShopItemRepository shopItemRepository,
 			BoosterActivationRepository activationRepository, StreakFreezeService streakFreezeService,
-			ObjectProvider<StudyService> studyService, ObjectProvider<MeterRegistry> meterRegistry) {
+			ObjectProvider<StudyService> studyService, ObjectProvider<MeterRegistry> meterRegistry,
+			ObjectProvider<MailService> mailService, @Value("${mission.alert-email:}") String alertEmail) {
 		this.templateRepository = templateRepository;
 		this.missionRepository = missionRepository;
 		this.progressLogRepository = progressLogRepository;
@@ -116,6 +125,28 @@ public class MissionTracker {
 		this.poolInsufficient = Counter.builder(POOL_INSUFFICIENT_METRIC)
 				.description("ensureAssigned results that could not fill 5 slots (catalog misconfigured)")
 				.register(meterRegistry.getIfAvailable(() -> Metrics.globalRegistry));
+		this.mailService = mailService;
+		this.alertEmail = alertEmail;
+	}
+
+	/**
+	 * Alert rule of daily_mission.md §12 ("any increase"): mails MISSION_ALERT_EMAIL, at most once an hour.
+	 * ponytail: in-process throttle and mail instead of Prometheus + Alertmanager; move the rule there once the
+	 * team runs a monitoring stack (the counter is already in the MeterRegistry).
+	 */
+	void alertOps(Long userId, LocalDate date, long nowMs) {
+		long last = lastAlertAt.get();
+		if (alertEmail.isBlank() || nowMs - last < ALERT_INTERVAL_MS || !lastAlertAt.compareAndSet(last, nowMs))
+			return;
+		MailService mail = mailService.getIfAvailable();
+		if (mail == null)
+			return;
+		mail.sendOpsAlert(alertEmail, "[SnapVocab] MISSION_POOL_INSUFFICIENT",
+				"Daily Mission could not assign 5 missions (user " + userId + ", " + date + "). "
+						+ "Learners get 503 on the missions screen until the catalog is fixed.\n"
+						+ "Total since start: " + (long) poolInsufficient.count() + ".\n"
+						+ "Check Admin > Nhiệm vụ: every slot needs an active, eligible template (daily_mission.md §4.2).\n"
+						+ "Next mail at most 1 hour after this one.");
 	}
 
 	public static LocalDate missionDate(Instant instant) {
@@ -142,6 +173,7 @@ public class MissionTracker {
 		if (chosen == null) {
 			poolInsufficient.increment();
 			LOG.error("MISSION_POOL_INSUFFICIENT user={} date={}: active catalog cannot fill 5 slots", userId, date);
+			alertOps(userId, date, System.currentTimeMillis());
 			return Assignment.POOL_INSUFFICIENT;
 		}
 		User user = userRepository.getReferenceById(userId);

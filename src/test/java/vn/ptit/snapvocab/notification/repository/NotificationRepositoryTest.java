@@ -170,11 +170,12 @@ class NotificationRepositoryTest {
 		deliver(lan, fresh);
 		jdbc.update("UPDATE notifications SET created_at = NOW(6) - INTERVAL 91 DAY WHERE id IN (?, ?)", old, oldToo);
 		Instant cutoff = Instant.now().minus(90, ChronoUnit.DAYS);
+		List<String> system = List.of("SYSTEM");
 
-		assertThat(tx(() -> inbox.deleteOfNotificationsCreatedBefore(cutoff, 1))).isEqualTo(1);
-		assertThat(tx(() -> inbox.deleteOfNotificationsCreatedBefore(cutoff, 1))).isEqualTo(1);
-		assertThat(tx(() -> inbox.deleteOfNotificationsCreatedBefore(cutoff, 1))).isZero();
-		assertThat(tx(() -> notifications.deleteCreatedBefore(cutoff, 5000))).isEqualTo(2);
+		assertThat(tx(() -> inbox.deleteOfNotificationsCreatedBefore(system, cutoff, 1))).isEqualTo(1);
+		assertThat(tx(() -> inbox.deleteOfNotificationsCreatedBefore(system, cutoff, 1))).isEqualTo(1);
+		assertThat(tx(() -> inbox.deleteOfNotificationsCreatedBefore(system, cutoff, 1))).isZero();
+		assertThat(tx(() -> notifications.deleteCreatedBefore(system, cutoff, 5000))).isEqualTo(2);
 
 		assertThat(notifications.findAllById(List.of(old, oldToo, fresh))).extracting(Notification::getId)
 				.containsExactly(fresh);

@@ -3,6 +3,7 @@ package vn.ptit.snapvocab.notification.repository;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.Collection;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -34,6 +35,31 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
 	List<SrsReminderCandidate> findSrsReminderCandidates(@Param("windowStart") LocalTime windowStart,
 			@Param("windowEnd") LocalTime windowEnd, @Param("todayVn") LocalDate todayVn);
 
+	/**
+	 * J4: activated users whose stored streak reaches {@code minStreak} and who have no {@code STREAK_WARNING} for
+	 * {@code todayVn} yet. The stored streak may be stale (a broken chain settles lazily), so the job re-checks the
+	 * streak and today's study in Java. No settings row = defaults (Vietnamese, push on).
+	 */
+	@Query(value = """
+			SELECT u.id AS userId, s.ui_language AS uiLanguage, s.push_enabled AS pushEnabled
+			FROM users u
+			LEFT JOIN user_settings s ON s.user_id = u.id
+			WHERE u.activated = TRUE
+			  AND u.streak_days >= :minStreak
+			  AND NOT EXISTS (SELECT 1 FROM notifications n
+			                  WHERE n.dedupe_key = CONCAT('STREAK_WARNING:', u.id, ':', :todayVn))
+			""", nativeQuery = true)
+	List<StreakWarningCandidate> findStreakWarningCandidates(@Param("minStreak") int minStreak,
+			@Param("todayVn") LocalDate todayVn);
+
+	interface StreakWarningCandidate {
+		Long getUserId();
+
+		String getUiLanguage();
+
+		Boolean getPushEnabled();
+	}
+
 	interface SrsReminderCandidate {
 		Long getUserId();
 
@@ -46,6 +72,8 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
 
 	/** J3: run after {@link UserNotificationRepository#deleteOfNotificationsCreatedBefore} has emptied them (FK). */
 	@Modifying
-	@Query(value = "DELETE FROM notifications WHERE created_at < :cutoff LIMIT :batch", nativeQuery = true)
-	int deleteCreatedBefore(@Param("cutoff") Instant cutoff, @Param("batch") int batch);
+	@Query(value = "DELETE FROM notifications WHERE type IN (:types) AND created_at < :cutoff LIMIT :batch",
+			nativeQuery = true)
+	int deleteCreatedBefore(@Param("types") Collection<String> types, @Param("cutoff") Instant cutoff,
+			@Param("batch") int batch);
 }

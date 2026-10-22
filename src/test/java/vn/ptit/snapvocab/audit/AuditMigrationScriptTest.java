@@ -65,7 +65,10 @@ class AuditMigrationScriptTest {
 
 	@AfterEach
 	void dropScratchDatabase() throws SQLException {
-		scratchDb.getConnection().close();
+		// close() is suppressed: return the pooled connection ourselves, back on the test schema (Hikari keeps
+		// the catalog, and the scratch one is dropped below).
+		scratchDb.getConnection().setCatalog(scratch.substring(0, scratch.length() - "_aal_migration".length()));
+		scratchDb.destroy();
 		new JdbcTemplate(dataSource).execute("DROP DATABASE IF EXISTS `" + scratch + "`");
 	}
 

@@ -33,7 +33,7 @@ END //
 DELIMITER ;
 
 -- BƯỚC 1: notifications
-UPDATE `notifications` SET `type` = 'SYSTEM' WHERE `type` IS NULL OR `type` NOT IN ('SRS_REMINDER', 'SYSTEM');
+UPDATE `notifications` SET `type` = 'SYSTEM' WHERE `type` IS NULL OR `type` NOT IN ('SRS_REMINDER', 'SYSTEM', 'STREAK_WARNING');
 
 ALTER TABLE `notifications`
     MODIFY COLUMN `content` LONGTEXT NOT NULL,
@@ -57,7 +57,7 @@ CALL notif_v1_ddl(NOT EXISTS (SELECT 1 FROM information_schema.STATISTICS WHERE 
 
 CALL notif_v1_ddl(NOT EXISTS (SELECT 1 FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = DATABASE()
         AND TABLE_NAME = 'notifications' AND CONSTRAINT_TYPE = 'CHECK'),
-    'ALTER TABLE `notifications` ADD CHECK (`type` IN (''SRS_REMINDER'', ''SYSTEM''))');
+    'ALTER TABLE `notifications` ADD CHECK (`type` IN (''SRS_REMINDER'', ''SYSTEM'', ''STREAK_WARNING''))');
 
 -- BƯỚC 2: user_notifications (cột giữ nguyên)
 CALL notif_v1_ddl(NOT EXISTS (SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE()

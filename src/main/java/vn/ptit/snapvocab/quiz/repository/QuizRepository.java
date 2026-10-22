@@ -12,6 +12,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vn.ptit.snapvocab.quiz.domain.Quiz;
+import vn.ptit.snapvocab.quiz.domain.enumeration.QuizMode;
+import vn.ptit.snapvocab.quiz.domain.enumeration.QuizStatus;
 
 @Repository
 public interface QuizRepository extends JpaRepository<Quiz, Long> {
@@ -24,8 +26,14 @@ public interface QuizRepository extends JpaRepository<Quiz, Long> {
 
 	Optional<Quiz> findByUserIdAndCreateIdempotencyKey(Long userId, String createIdempotencyKey);
 
-	@Query(value = "SELECT q FROM Quiz q WHERE q.user.id = :userId ORDER BY q.createdAt DESC, q.id DESC", countQuery = "SELECT COUNT(q) FROM Quiz q WHERE q.user.id = :userId")
-	Page<Quiz> findHistory(@Param("userId") Long userId, Pageable pageable);
+	/** {@code mode}/{@code status} null = no filter. */
+	@Query(value = "SELECT q FROM Quiz q WHERE q.user.id = :userId" + HISTORY_FILTER
+			+ " ORDER BY q.createdAt DESC, q.id DESC", countQuery = "SELECT COUNT(q) FROM Quiz q WHERE q.user.id = :userId"
+					+ HISTORY_FILTER)
+	Page<Quiz> findHistory(@Param("userId") Long userId, @Param("mode") QuizMode mode,
+			@Param("status") QuizStatus status, Pageable pageable);
+
+	String HISTORY_FILTER = " AND (:mode IS NULL OR q.mode = :mode) AND (:status IS NULL OR q.status = :status)";
 
 	@Query("SELECT COUNT(q) AS quizCount, COALESCE(SUM(q.correctCount), 0) AS correctCount, "
 			+ "COALESCE(SUM(q.totalUnits), 0) AS totalUnits FROM Quiz q WHERE q.user.id = :userId "

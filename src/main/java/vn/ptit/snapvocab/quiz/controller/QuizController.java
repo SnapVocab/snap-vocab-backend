@@ -25,6 +25,8 @@ import vn.ptit.snapvocab.quiz.domain.dto.QuizPlayDTO;
 import vn.ptit.snapvocab.quiz.domain.dto.QuizResultDTO;
 import vn.ptit.snapvocab.quiz.domain.dto.CreateQuizRequest;
 import vn.ptit.snapvocab.quiz.domain.dto.MatchingAttemptRequest;
+import vn.ptit.snapvocab.quiz.domain.enumeration.QuizMode;
+import vn.ptit.snapvocab.quiz.domain.enumeration.QuizStatus;
 import vn.ptit.snapvocab.quiz.service.QuizService;
 
 @RestController
@@ -85,10 +87,11 @@ public class QuizController {
 	}
 
 	@GetMapping("/me/quizzes")
-	@Operation(summary = "Quiz history, newest first")
+	@Operation(summary = "Quiz history, newest first; optional mode/status filters")
 	public ResponseEntity<PaginationObject<List<QuizHistoryItemDTO>>> history(
-			@RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
-		return ResponseEntity.ok(quizService.getHistory(page, size));
+			@RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size,
+			@RequestParam(required = false) QuizMode mode, @RequestParam(required = false) QuizStatus status) {
+		return ResponseEntity.ok(quizService.getHistory(page, size, mode, status));
 	}
 }
 

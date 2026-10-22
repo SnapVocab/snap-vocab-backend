@@ -13,3 +13,17 @@ scan:
   queue-capacity: 3
   stale-margin-seconds: 30
   min-reliability: LOW
+
+# Notifications (docs/decisions/notification.md §4.4). J1 stays off until the app ships push (DEP-NOTIF-02);
+# turn it on per environment. EXPO_ACCESS_TOKEN only when "Enhanced push security" is on in EAS.
+# Daily Mission ops alert (daily_mission.md §12): mail on MISSION_POOL_INSUFFICIENT, at most hourly. Blank = log only.
+mission:
+  alert-email: ${MISSION_ALERT_EMAIL:}
+
+notification:
+  srs-reminder:
+    enabled: ${NOTIFICATION_SRS_REMINDER_ENABLED:false}
+  push:
+    url: https://exp.host/--/api/v2/push/send
+    access-token: ${EXPO_ACCESS_TOKEN:}
+    backoff-ms: 2000,8000,30000

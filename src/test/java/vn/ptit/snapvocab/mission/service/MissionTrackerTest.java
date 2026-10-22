@@ -1,6 +1,16 @@
 package vn.ptit.snapvocab.mission.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -8,14 +18,42 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 import vn.ptit.snapvocab.mission.domain.MissionTemplate;
 import vn.ptit.snapvocab.mission.domain.UserDailyMission;
 import vn.ptit.snapvocab.mission.domain.enumeration.DailyMissionStatus;
 import vn.ptit.snapvocab.mission.domain.enumeration.MissionCategory;
 import vn.ptit.snapvocab.mission.domain.enumeration.MissionEligibilityRule;
 import vn.ptit.snapvocab.mission.domain.enumeration.MissionTriggerEvent;
+import vn.ptit.snapvocab.user.service.MailService;
 
 class MissionTrackerTest {
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void poolAlertMailsAtMostOncePerHourAndOnlyWhenConfigured() {
+		MailService mail = mock(MailService.class);
+		ObjectProvider<MailService> mailProvider = mock(ObjectProvider.class);
+		when(mailProvider.getIfAvailable()).thenReturn(mail);
+		ObjectProvider<MeterRegistry> registry = mock(ObjectProvider.class);
+		when(registry.getIfAvailable(org.mockito.ArgumentMatchers.any())).thenReturn(new SimpleMeterRegistry());
+		LocalDate day = LocalDate.of(2026, 10, 22);
+
+		MissionTracker tracker = new MissionTracker(null, null, null, null, null, null, null, null, null, null,
+				registry, mailProvider, "ops@example.com");
+		long t0 = 1_000_000_000L;
+		tracker.alertOps(1L, day, t0);
+		tracker.alertOps(2L, day, t0 + MissionTracker.ALERT_INTERVAL_MS - 1);
+		verify(mail, times(1)).sendOpsAlert(eq("ops@example.com"), anyString(), anyString());
+		tracker.alertOps(3L, day, t0 + MissionTracker.ALERT_INTERVAL_MS);
+		verify(mail, times(2)).sendOpsAlert(eq("ops@example.com"), anyString(), anyString());
+
+		MailService silent = mock(MailService.class);
+		when(mailProvider.getIfAvailable()).thenReturn(silent);
+		new MissionTracker(null, null, null, null, null, null, null, null, null, null, registry, mailProvider, "")
+				.alertOps(1L, day, t0);
+		verify(silent, never()).sendOpsAlert(anyString(), anyString(), anyString());
+	}
 
 	@Test
 	void wordHashNormalizesCaseWhitespaceAndUnicodeComposition() {

@@ -63,6 +63,11 @@ public class Notification extends BaseCreatedAtEntity {
 		return "SRS_REMINDER:" + userId + ":" + dayVn;
 	}
 
+	/** Same format as the NOT EXISTS in {@code NotificationRepository#findStreakWarningCandidates}. */
+	public static String streakWarningDedupeKey(Long userId, LocalDate dayVn) {
+		return "STREAK_WARNING:" + userId + ":" + dayVn;
+	}
+
 	public static String systemDedupeKey(String key) {
 		return "SYSTEM:" + key;
 	}

@@ -111,7 +111,10 @@ class StreakFreezeMigrationScriptTest {
 
 	@AfterEach
 	void dropScratchDatabase() throws SQLException {
-		scratchDb.getConnection().close();
+		// close() is suppressed: return the pooled connection ourselves, back on the test schema (Hikari keeps
+		// the catalog, and the scratch one is dropped below).
+		scratchDb.getConnection().setCatalog(scratch.substring(0, scratch.length() - "_sf_migration".length()));
+		scratchDb.destroy();
 		new JdbcTemplate(dataSource).execute("DROP DATABASE IF EXISTS `" + scratch + "`");
 	}
 
@@ -136,6 +139,12 @@ class StreakFreezeMigrationScriptTest {
 		// Seeded copy is rewritten; an Admin edit is left alone (PD-SF-06).
 		assertThat(db().queryForList("SELECT description FROM badges ORDER BY sort_order", String.class))
 				.containsExactly("Làm quiz hoặc ôn thẻ 7 ngày trong một chuỗi không đứt", "Admin đã sửa");
+
+		// Badges Admin P2 ships next: its version column, then the entity schema validates (badges.md §7.1).
+		String badgesV2 = Files.readString(Path.of("migration/migration_badges_v2.sql"), StandardCharsets.UTF_8);
+		assertThat(mysql(client, badgesV2)).as("badges v2").startsWith("exit=0");
+		assertThat(mysql(client, badgesV2)).as("badges v2 re-run").startsWith("exit=0");
+		assertThat(db().queryForList("SELECT version FROM badges", Long.class)).containsExactly(0L, 0L);
 
 		hibernateValidate();
 	}
