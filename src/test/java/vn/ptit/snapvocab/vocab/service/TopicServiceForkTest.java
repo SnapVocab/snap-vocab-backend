@@ -15,9 +15,12 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import vn.ptit.snapvocab.audit.service.AdminAuditService;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -66,6 +69,12 @@ class TopicServiceForkTest {
 
 	@Mock
 	private TopicSchemaMapper topicSchemaMapper;
+
+	@Mock
+	private AdminAuditService audit;
+
+	@Spy
+	private ObjectMapper objectMapper = new ObjectMapper();
 
 	@InjectMocks
 	private TopicService topicService;

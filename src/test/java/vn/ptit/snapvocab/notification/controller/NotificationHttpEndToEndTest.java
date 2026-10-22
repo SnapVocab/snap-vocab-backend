@@ -78,6 +78,7 @@ class NotificationHttpEndToEndTest {
 		String ours = "SELECT id FROM notifications WHERE dedupe_key LIKE 'IT:%' OR dedupe_key LIKE 'SYSTEM:it-%'";
 		jdbc.update("DELETE FROM user_notifications WHERE notification_id IN (" + ours + ")");
 		jdbc.update("DELETE FROM notifications WHERE dedupe_key LIKE 'IT:%' OR dedupe_key LIKE 'SYSTEM:it-%'");
+		jdbc.update("DELETE FROM admin_audit_logs WHERE area = 'NOTIFICATIONS'");
 		jdbc.update("DELETE FROM users WHERE email LIKE 'notif-http-%'");
 	}
 
@@ -189,9 +190,16 @@ class NotificationHttpEndToEndTest {
 		assertThat(inbox.get(0).path("title").asText()).isEqualTo("Bảo trì hệ thống 20/10");
 		assertThat(inbox.get(0).path("type").asText()).isEqualTo("SYSTEM");
 
+		// N-01 (admin_audit_log_backend.md §9.2): one audit row with the recipient count, keyed by the admin's dedupeKey.
+		String audits = "SELECT COUNT(*) FROM admin_audit_logs WHERE action = 'SYSTEM_NOTIFICATION_SENT' AND target_code = ?";
+		assertThat(jdbc.queryForObject(audits, Integer.class, key)).isOne();
+		assertThat(jdbc.queryForObject("SELECT changes FROM admin_audit_logs WHERE target_code = ?", String.class, key))
+				.contains("\"recipientCount\",\"before\":null,\"after\":" + activated).doesNotContain("\"route\"");
+
 		ResponseEntity<String> duplicate = call(adminToken, HttpMethod.POST, "/api/admin/notifications", body);
 		assertThat(duplicate.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
 		assertThat(error(duplicate)).isEqualTo("DUPLICATE_NOTIFICATION");
+		assertThat(jdbc.queryForObject(audits, Integer.class, key)).isOne();
 
 		ResponseEntity<String> badRoute = call(adminToken, HttpMethod.POST, "/api/admin/notifications",
 				Map.of("title", "t", "content", "c", "route", "/admin", "dedupeKey", key + "-r"));

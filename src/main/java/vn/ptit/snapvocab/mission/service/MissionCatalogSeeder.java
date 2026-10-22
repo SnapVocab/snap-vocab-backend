@@ -1,11 +1,19 @@
 package vn.ptit.snapvocab.mission.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import vn.ptit.snapvocab.audit.domain.dto.AuditTarget;
+import vn.ptit.snapvocab.audit.domain.enumeration.AuditAction;
+import vn.ptit.snapvocab.audit.domain.enumeration.AuditTargetType;
+import vn.ptit.snapvocab.audit.service.AdminAuditService;
+import vn.ptit.snapvocab.audit.service.AuditDiff;
 import vn.ptit.snapvocab.mission.domain.MissionTemplate;
 import vn.ptit.snapvocab.mission.domain.enumeration.MissionCategory;
 import vn.ptit.snapvocab.mission.domain.enumeration.MissionEligibilityRule;
@@ -27,9 +35,16 @@ public class MissionCatalogSeeder implements ApplicationRunner {
 	private static final Logger LOG = LoggerFactory.getLogger(MissionCatalogSeeder.class);
 
 	private final MissionTemplateRepository templateRepository;
+	private final AdminAuditService audit;
+	private final ObjectMapper objectMapper;
+	private final TransactionTemplate transaction;
 
-	public MissionCatalogSeeder(MissionTemplateRepository templateRepository) {
+	public MissionCatalogSeeder(MissionTemplateRepository templateRepository, AdminAuditService audit,
+			ObjectMapper objectMapper, PlatformTransactionManager transactionManager) {
 		this.templateRepository = templateRepository;
+		this.audit = audit;
+		this.objectMapper = objectMapper;
+		this.transaction = new TransactionTemplate(transactionManager);
 	}
 
 	@Override
@@ -37,10 +52,17 @@ public class MissionCatalogSeeder implements ApplicationRunner {
 		seed(mvpCatalog());
 	}
 
+	/** Each new template and its "Hệ thống" audit row (actor null) commit together (admin_audit_log_backend.md §4.4.6). */
 	void seed(List<MissionTemplate> catalog) {
 		for (MissionTemplate template : catalog) {
 			if (templateRepository.findByCode(template.getCode()).isEmpty()) {
-				templateRepository.save(template);
+				transaction.executeWithoutResult(status -> {
+					MissionTemplate saved = templateRepository.save(template);
+					audit.record(AuditAction.MISSION_TEMPLATE_CREATED,
+							AuditTarget.of(AuditTargetType.MISSION_TEMPLATE, saved.getId(), saved.getName(), saved.getCode()),
+							AuditDiff.of(objectMapper, null, AdminMissionTemplateService.formOf(saved),
+									AdminMissionTemplateService.AUDIT_FIELDS), null, null, saved.getVersion());
+				});
 			}
 		}
 		List<MissionTemplate> active = templateRepository.findByActiveTrueOrderById();

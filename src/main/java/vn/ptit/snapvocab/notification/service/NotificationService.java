@@ -1,5 +1,6 @@
 package vn.ptit.snapvocab.notification.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.Metrics;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -11,6 +12,11 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vn.ptit.snapvocab.audit.domain.dto.AuditTarget;
+import vn.ptit.snapvocab.audit.domain.enumeration.AuditAction;
+import vn.ptit.snapvocab.audit.domain.enumeration.AuditTargetType;
+import vn.ptit.snapvocab.audit.service.AdminAuditService;
+import vn.ptit.snapvocab.audit.service.AuditDiff;
 import vn.ptit.snapvocab.notification.domain.Notification;
 import vn.ptit.snapvocab.notification.domain.UserNotification;
 import vn.ptit.snapvocab.notification.domain.dto.NotificationPageDTO;
@@ -37,8 +43,16 @@ public class NotificationService {
 	private static final int DEFAULT_PAGE_SIZE = 20;
 	private static final int MAX_PAGE_SIZE = 50;
 
+	private static final List<String> NOTIFICATION_AUDIT_FIELDS = List.of("title", "content", "route", "recipientCount");
+
 	private final NotificationRepository notificationRepository;
 	private final UserNotificationRepository userNotificationRepository;
+	private final AdminAuditService audit;
+	private final ObjectMapper objectMapper;
+
+	/** What the admin sent, for the audit row (admin_audit_log_backend.md §4.4.3). */
+	private record NotificationAudit(String title, String content, String route, Integer recipientCount) {
+	}
 
 	/** {@code size} is clamped to [1, 50], never rejected. */
 	@Transactional(readOnly = true)
@@ -94,6 +108,10 @@ public class NotificationService {
 					"dedupeKey already used: " + request.dedupeKey());
 		}
 		int recipients = userNotificationRepository.fanOut(saved.getId());
+		audit.record(AuditAction.SYSTEM_NOTIFICATION_SENT,
+				AuditTarget.of(AuditTargetType.NOTIFICATION, saved.getId(), saved.getTitle(), request.dedupeKey()),
+				AuditDiff.of(objectMapper, null, new NotificationAudit(saved.getTitle(), saved.getContent(),
+						saved.getRoute(), recipients), NOTIFICATION_AUDIT_FIELDS), null, null, null);
 		Metrics.counter("notification.created", "type", NotificationType.SYSTEM.name()).increment();
 		log.info("SYSTEM notification {} ({}) delivered to {} users", saved.getId(), saved.getDedupeKey(), recipients);
 		return new SystemNotificationResultDTO(saved.getId(), recipients);

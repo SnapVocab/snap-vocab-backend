@@ -14,6 +14,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import vn.ptit.snapvocab.audit.exception.AuditException;
 import vn.ptit.snapvocab.common.dto.RestResponse;
 import vn.ptit.snapvocab.mission.exception.MissionException;
 import vn.ptit.snapvocab.notification.exception.NotificationException;
@@ -184,6 +185,19 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<RestResponse<Object>> handleShop(ShopException ex) {
 
 		log.info("Shop request rejected with {}: {}", ex.getCode(), ex.getMessage());
+		RestResponse<Object> response = RestResponse.builder()
+				.statusCode(ex.getCode().getStatus().value())
+				.error(ex.getCode().name())
+				.data(ex.getDetails())
+				.build();
+
+		return ResponseEntity.status(ex.getCode().getStatus()).body(response);
+	}
+
+	@ExceptionHandler(AuditException.class)
+	public ResponseEntity<RestResponse<Object>> handleAudit(AuditException ex) {
+
+		log.info("Admin request rejected with {}: {}", ex.getCode(), ex.getMessage());
 		RestResponse<Object> response = RestResponse.builder()
 				.statusCode(ex.getCode().getStatus().value())
 				.error(ex.getCode().name())

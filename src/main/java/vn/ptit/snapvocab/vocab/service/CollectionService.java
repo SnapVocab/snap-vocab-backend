@@ -1,6 +1,9 @@
 package vn.ptit.snapvocab.vocab.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -11,7 +14,16 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vn.ptit.snapvocab.audit.domain.dto.AuditChange;
+import vn.ptit.snapvocab.audit.domain.dto.AuditTarget;
+import vn.ptit.snapvocab.audit.domain.enumeration.AuditAction;
+import vn.ptit.snapvocab.audit.domain.enumeration.AuditTargetType;
+import vn.ptit.snapvocab.audit.service.AdminAuditService;
+import vn.ptit.snapvocab.audit.service.AuditDiff;
 import vn.ptit.snapvocab.vocab.domain.Collection;
+import vn.ptit.snapvocab.vocab.domain.Topic;
+import vn.ptit.snapvocab.vocab.repository.TopicItemRepository;
+import vn.ptit.snapvocab.vocab.repository.TopicRepository;
 import vn.ptit.snapvocab.user.domain.User;
 import vn.ptit.snapvocab.vocab.domain.dto.collection.CollectionDTO;
 import vn.ptit.snapvocab.vocab.domain.dto.collection.CreateCollectionDTO;
@@ -33,10 +45,35 @@ public class CollectionService {
 
 	private static final Logger LOG = LoggerFactory.getLogger(CollectionService.class);
 
+	/** Audit "changes" (admin_audit_log_backend.md §4.4.4). */
+	private static final List<String> AUDIT_FIELDS = List.of("name", "translation");
+	private static final List<String> DELETE_FIELDS = List.of("name", "topicCount", "itemCount");
+
 	private final CollectionMapper collectionMapper;
 	private final CollectionRepository collectionRepository;
 	private final UserRepository userRepository;
 	private final CacheManager cacheManager;
+	private final TopicRepository topicRepository;
+	private final TopicItemRepository topicItemRepository;
+	private final AdminAuditService audit;
+	private final ObjectMapper objectMapper;
+
+	/**
+	 * Writes the admin audit log for: system content, or an admin editing a learner's collection. A learner on their
+	 * own collection is not audited (admin_audit_log_backend.md §4.4.4).
+	 */
+	static boolean auditable(Collection c) {
+		if (c.getType() == CollectionType.SYSTEM) {
+			return true;
+		}
+		Long me = SecurityUtils.getCurrentUserId().orElse(null);
+		return SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.ADMIN)
+				&& c.getOwner() != null && !c.getOwner().getId().equals(me);
+	}
+
+	private static AuditTarget target(Collection c) {
+		return AuditTarget.of(AuditTargetType.COLLECTION, c.getId(), c.getName(), null);
+	}
 
 	/**
 	 * Returns public (system) collections plus the collections created by the specified user. If
@@ -130,9 +167,12 @@ public class CollectionService {
 					.build();
 
 			Collection saved = this.collectionRepository.save(collection);
+			CollectionDTO dto = collectionMapper.toDto(saved);
+			audit.record(AuditAction.COLLECTION_CREATED, target(saved), AuditDiff.of(objectMapper, null, dto, AUDIT_FIELDS),
+					null, null, null);
 			evictAllUserCollectionsCache();
 			LOG.info("Created system collection ID: {}", saved.getId());
-			return collectionMapper.toDto(saved);
+			return dto;
 		} else {
 			if (this.collectionRepository.existsByNameAndOwnerId(createCollectionDTO.getName(), userId)) {
 				throw new ResourceAlreadyExistException(
@@ -172,20 +212,26 @@ public class CollectionService {
 			if (!SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.ADMIN)) {
 				throw new AccessDeniedException("Only administrators can update system collections");
 			}
-			collection.setName(updateCollectionDTO.getName());
-			collection.setTranslation(updateCollectionDTO.getTranslation());
-			Collection updated = this.collectionRepository.save(collection);
-			evictAllUserCollectionsCache();
-			return collectionMapper.toDto(updated);
 		} else {
 			validateCollectionWriteAccess(collection, userId);
-			collection.setName(updateCollectionDTO.getName());
-			collection.setTranslation(updateCollectionDTO.getTranslation());
-			Collection updated = this.collectionRepository.save(collection);
-			Long ownerId = collection.getOwner() != null ? collection.getOwner().getId() : userId;
-			evictUserCollectionsCache(ownerId);
-			return collectionMapper.toDto(updated);
 		}
+		CollectionDTO before = collectionMapper.toDto(collection);
+		collection.setName(updateCollectionDTO.getName());
+		collection.setTranslation(updateCollectionDTO.getTranslation());
+		Collection updated = this.collectionRepository.save(collection);
+		CollectionDTO after = collectionMapper.toDto(updated);
+		if (auditable(updated)) {
+			List<AuditChange> changes = AuditDiff.of(objectMapper, before, after, AUDIT_FIELDS);
+			if (!changes.isEmpty()) {
+				audit.record(AuditAction.COLLECTION_UPDATED, target(updated), changes, null, null, null);
+			}
+		}
+		if (collection.getType() == CollectionType.SYSTEM) {
+			evictAllUserCollectionsCache();
+		} else {
+			evictUserCollectionsCache(collection.getOwner() != null ? collection.getOwner().getId() : userId);
+		}
+		return after;
 	}
 
 	/**
@@ -202,16 +248,27 @@ public class CollectionService {
 				.orElseThrow(
 						() -> new ResourceNotFoundException("Collection not found with id: " + collectionId));
 
+		if (collection.getType() != CollectionType.SYSTEM) {
+			validateCollectionWriteAccess(collection, userId);
+		} else if (!SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.ADMIN)) {
+			throw new AccessDeniedException("Only administrators can delete system collections");
+		}
+		if (auditable(collection)) {
+			List<Long> topicIds = topicRepository.findByCollectionId(collectionId).stream().map(Topic::getId).toList();
+			Map<String, Object> snapshot = new LinkedHashMap<>();
+			snapshot.put("name", collection.getName());
+			snapshot.put("topicCount", topicIds.size());
+			snapshot.put("itemCount", topicIds.isEmpty() ? 0 : topicItemRepository.countByTopicIdIn(topicIds));
+			audit.record(AuditAction.COLLECTION_DELETED, target(collection),
+					AuditDiff.of(objectMapper, snapshot, null, DELETE_FIELDS), null, null, null);
+		}
+
 		if (collection.getType() == CollectionType.SYSTEM) {
-			if (!SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.ADMIN)) {
-				throw new AccessDeniedException("Only administrators can delete system collections");
-			}
 			this.collectionRepository.delete(collection);
 			evictAllUserCollectionsCache();
 			evictTopicTreeCache(collectionId);
 			LOG.info("Deleted system collection ID: {}", collectionId);
 		} else {
-			validateCollectionWriteAccess(collection, userId);
 			Long ownerId = collection.getOwner() != null ? collection.getOwner().getId() : userId;
 			this.collectionRepository.delete(collection);
 			evictUserCollectionsCache(ownerId);

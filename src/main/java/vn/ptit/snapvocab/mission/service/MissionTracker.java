@@ -170,6 +170,34 @@ public class MissionTracker {
 		return walk(eligible, pool -> pool);
 	}
 
+	/**
+	 * Min/max Coin of any 5-mission set the current app can be handed from {@code active}, over every eligibility mix;
+	 * null when no mix fills the 5 slots. Max counts an item reward's fallback Coin. Mirror of the admin's
+	 * dailyOutlook(…, [CLIENTS.current]).coin (domains/admin-missions/mappers.ts), so every trigger is renderable.
+	 */
+	static int[] dailyCoinRange(List<MissionTemplate> active) {
+		List<MissionEligibilityRule> gates = Arrays.stream(MissionEligibilityRule.values())
+				.filter(r -> r != MissionEligibilityRule.NONE).toList();
+		int[] range = null;
+		for (int mask = 0; mask < 1 << gates.size(); mask++) {
+			Set<MissionEligibilityRule> mix = EnumSet.of(MissionEligibilityRule.NONE);
+			for (int g = 0; g < gates.size(); g++) {
+				if ((mask & 1 << g) != 0) {
+					mix.add(gates.get(g));
+				}
+			}
+			List<MissionTemplate> eligible = active.stream().filter(t -> mix.contains(t.getEligibilityRule())).toList();
+			for (List<MissionTemplate> set : outcomes(eligible)) {
+				int coin = set.stream().mapToInt(MissionTemplate::getRewardCoin).sum();
+				int max = coin + set.stream().filter(t -> t.getRewardItemCode() != null)
+						.mapToInt(t -> t.getRewardItemFallbackCoin() == null ? 0 : t.getRewardItemFallbackCoin()).sum();
+				range = range == null ? new int[] {coin, max}
+						: new int[] {Math.min(range[0], coin), Math.max(range[1], max)};
+			}
+		}
+		return range;
+	}
+
 	/** Fills the slots in choose's order; {@code branch} picks one template (choose) or all of them (outcomes). */
 	private static List<List<MissionTemplate>> walk(List<MissionTemplate> eligible,
 			Function<List<MissionTemplate>, List<MissionTemplate>> branch) {

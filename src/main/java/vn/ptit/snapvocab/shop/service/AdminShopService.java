@@ -25,6 +25,13 @@ import org.springframework.data.domain.Sort;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vn.ptit.snapvocab.audit.domain.dto.AuditChange;
+import vn.ptit.snapvocab.audit.domain.dto.AuditTarget;
+import vn.ptit.snapvocab.audit.domain.enumeration.AuditAction;
+import vn.ptit.snapvocab.audit.domain.enumeration.AuditTargetType;
+import vn.ptit.snapvocab.audit.service.AdminAuditService;
+import vn.ptit.snapvocab.audit.service.AuditDiff;
+import vn.ptit.snapvocab.audit.service.AuditReason;
 import vn.ptit.snapvocab.common.dto.Meta;
 import vn.ptit.snapvocab.common.dto.PaginationObject;
 import vn.ptit.snapvocab.storage.domain.dto.PresignedUploadResponse;
@@ -93,10 +100,18 @@ public class AdminShopService {
 	private static final ShopItemForm NEW_ITEM = new ShopItemForm(null, null, null, null, null, false, null, null,
 			null, 0, null, null, null, null);
 
+	/** Audit "changes" of a create/update, in ShopItemForm order (admin_audit_log_backend.md §4.4.1). */
+	static final List<String> AUDIT_FIELDS = List.of("code", "type", "name", "description", "iconKey", "purchasable",
+			"price", "availableFrom", "availableUntil", "sortOrder", "themeKey", "frameAssetKey", "boostDurationMinutes",
+			"maxQuantity");
+	static final List<String> DELETE_FIELDS = List.of("name", "type", "price", "status");
+
 	private final ShopItemRepository repository;
 	private final StorageService storageService;
 	private final ShopMapper mapper;
 	private final ObjectMapper objectMapper;
+	private final AdminAuditService audit;
+	private final PriceGuardrail priceGuardrail;
 
 	// ---- queries ----
 
@@ -182,17 +197,26 @@ public class AdminShopService {
 
 	@Transactional
 	public AdminShopItemDTO create(JsonNode body) {
-		ShopItemForm form = merge(NEW_ITEM, body, false);
+		ObjectNode request = objectBody(body);
+		String reason = AuditReason.take(request);
+		ShopItemForm form = merge(NEW_ITEM, request, false);
 		validate(form, null, false);
+		String guardrail = guardrail(null, form);
+		String why = AuditReason.check(reason, guardrail != null, AuditReason.PRICE_OUT_OF_BAND, guardrail);
 		ShopItem item = ShopItem.builder().status(ShopItemStatus.DRAFT).build();
 		apply(form, item);
-		return toDto(save(item));
+		ShopItem saved = save(item);
+		audit.record(AuditAction.SHOP_ITEM_CREATED, target(saved), AuditDiff.of(objectMapper, null, form, AUDIT_FIELDS),
+				why, guardrail, saved.getVersion());
+		return toDto(saved);
 	}
 
 	@Transactional
 	public AdminShopItemDTO update(Long id, JsonNode body) {
 		ShopItem item = find(id);
-		JsonNode version = body == null ? null : body.get("version");
+		ObjectNode request = objectBody(body);
+		String reason = AuditReason.take(request);
+		JsonNode version = request.get("version");
 		if (version == null || !version.isIntegralNumber()) {
 			throw invalid("version", ShopErrorCode.VALIDATION_ERROR, "version is required");
 		}
@@ -201,7 +225,7 @@ public class AdminShopService {
 					Map.of("currentVersion", item.getVersion()));
 		}
 		ShopItemForm current = formOf(item);
-		ShopItemForm next = merge(current, body, true);
+		ShopItemForm next = merge(current, request, true);
 
 		ObjectNode before = objectMapper.valueToTree(current);
 		ObjectNode after = objectMapper.valueToTree(next);
@@ -216,33 +240,60 @@ public class AdminShopService {
 		}
 		// A published/archived item stays publishable: its icon cannot be dropped or pointed at a missing upload.
 		validate(next, item.getId(), item.getStatus() != ShopItemStatus.DRAFT);
+		List<AuditChange> changes = AuditDiff.of(objectMapper, current, next, AUDIT_FIELDS);
+		if (changes.isEmpty()) {
+			return toDto(item);
+		}
+		String guardrail = AuditDiff.touches(changes, "price", "purchasable") ? guardrail(item.getId(), next) : null;
+		String why = AuditReason.check(reason, guardrail != null, AuditReason.PRICE_OUT_OF_BAND, guardrail);
 		apply(next, item);
-		return toDto(save(item));
+		ShopItem saved = save(item);
+		audit.record(AuditAction.SHOP_ITEM_UPDATED, target(saved), changes, why, guardrail, saved.getVersion());
+		return toDto(saved);
 	}
 
+	/** The price starts to count for learners now, so the guardrail is always checked. */
 	@Transactional
-	public AdminShopItemDTO publish(Long id) {
+	public AdminShopItemDTO publish(Long id, String reason) {
 		ShopItem item = find(id);
 		requireStatus(item, ShopItemStatus.DRAFT, "publish");
-		validate(formOf(item), item.getId(), true);
+		ShopItemForm form = formOf(item);
+		validate(form, item.getId(), true);
 		// One live Streak Freeze item: maxQuantity is per item, so a second one would double what a learner can hold.
 		if (item.getType() == ShopItemType.STREAK_FREEZE
 				&& repository.existsByTypeAndStatusAndIdNot(ShopItemType.STREAK_FREEZE, ShopItemStatus.PUBLISHED, id)) {
 			throw invalid("type", ShopErrorCode.INVALID_SHOP_ITEM_CONFIG, "only one STREAK_FREEZE item can be PUBLISHED");
 		}
+		String guardrail = guardrail(item.getId(), form);
+		String why = AuditReason.check(reason, guardrail != null, AuditReason.PRICE_OUT_OF_BAND, guardrail);
 		item.setStatus(ShopItemStatus.PUBLISHED);
 		item.setPublishedAt(Economy.now());
-		return toDto(save(item));
+		ShopItem saved = save(item);
+		audit.record(AuditAction.SHOP_ITEM_PUBLISHED, target(saved),
+				List.of(AuditDiff.change(objectMapper, "status", ShopItemStatus.DRAFT, ShopItemStatus.PUBLISHED)),
+				why, guardrail, saved.getVersion());
+		return toDto(saved);
 	}
 
-	/** Stops sales for good; ownership, equip and activation of owned units are untouched (shop.md §4.1). */
+	/**
+	 * Stops sales for good; ownership, equip and activation of owned units are untouched (shop.md §4.1).
+	 * Always needs a reason (design.md §8.3).
+	 */
 	@Transactional
-	public AdminShopItemDTO archive(Long id) {
+	public AdminShopItemDTO archive(Long id, String reason) {
 		ShopItem item = find(id);
 		requireStatus(item, ShopItemStatus.PUBLISHED, "archive");
+		String why = AuditReason.check(reason, true, AuditReason.ARCHIVE, null);
+		List<AuditChange> changes = new ArrayList<>(
+				List.of(AuditDiff.change(objectMapper, "status", ShopItemStatus.PUBLISHED, ShopItemStatus.ARCHIVED)));
+		if (Boolean.TRUE.equals(item.getPurchasable())) {
+			changes.add(AuditDiff.change(objectMapper, "purchasable", true, false));
+		}
 		item.setStatus(ShopItemStatus.ARCHIVED);
 		item.setPurchasable(false);
-		return toDto(save(item));
+		ShopItem saved = save(item);
+		audit.record(AuditAction.SHOP_ITEM_ARCHIVED, target(saved), changes, why, null, saved.getVersion());
+		return toDto(saved);
 	}
 
 	/** Hard delete, DRAFT only: a draft was never sellable or grantable, so nobody can own it. */
@@ -254,12 +305,21 @@ public class AdminShopService {
 					"Only DRAFT items can be deleted; archive a " + item.getStatus() + " item instead",
 					Map.of("status", item.getStatus()));
 		}
+		AuditTarget target = target(item);
+		Map<String, Object> snapshot = new LinkedHashMap<>();
+		snapshot.put("name", item.getName());
+		snapshot.put("type", item.getType());
+		snapshot.put("price", item.getPrice());
+		snapshot.put("status", item.getStatus());
+		Long version = item.getVersion();
 		try {
 			repository.delete(item);
 			repository.flush();
 		} catch (ObjectOptimisticLockingFailureException e) {
 			throw concurrentModification(id);
 		}
+		audit.record(AuditAction.SHOP_ITEM_DELETED, target, AuditDiff.of(objectMapper, snapshot, null, DELETE_FIELDS),
+				null, null, version);
 	}
 
 	/** Presigned PUT for an icon/frame under {@code public/shop/} (shop.md §10.2, purpose SHOP_ASSET). */
@@ -402,6 +462,23 @@ public class AdminShopService {
 	}
 
 	// ---- helpers ----
+
+	/** A copy, so "reason" can be taken out before merge (which rejects unknown keys). */
+	private static ObjectNode objectBody(JsonNode body) {
+		if (body == null || !body.isObject()) {
+			throw invalid("body", ShopErrorCode.VALIDATION_ERROR, "JSON object required");
+		}
+		return ((ObjectNode) body).deepCopy();
+	}
+
+	/** Price guardrail on a validated form, before it is applied (a catalog query would flush a dirty item). */
+	private String guardrail(Long id, ShopItemForm f) {
+		return priceGuardrail.check(id, ShopItemType.valueOf(f.type()), f.purchasable(), f.price()).orElse(null);
+	}
+
+	private static AuditTarget target(ShopItem item) {
+		return AuditTarget.of(AuditTargetType.SHOP_ITEM, item.getId(), item.getName(), item.getCode());
+	}
 
 	/** Overlays the JSON body onto {@code base}; unknown or server-managed fields are rejected, never ignored. */
 	private ShopItemForm merge(ShopItemForm base, JsonNode body, boolean allowVersion) {

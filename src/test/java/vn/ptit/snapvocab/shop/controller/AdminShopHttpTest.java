@@ -50,6 +50,7 @@ class AdminShopHttpTest {
 	private static final String ITEMS = "/api/admin/shop/items";
 	private static final String ICON = "public/shop/icon-1.png";
 	private static final String FRAME = "public/shop/frame-1.webp";
+	private static final Map<String, String> ARCHIVE_REASON = Map.of("reason", "Ngừng bán theo kế hoạch mùa.");
 
 	@MockitoBean
 	MinioClient minioClient;
@@ -86,7 +87,7 @@ class AdminShopHttpTest {
 	void cleanUp() {
 		// The learner purchase feeds the daily-mission tracker, which creates mission rows (FK → users).
 		for (String table : List.of("streak_freeze_days", "user_daily_mission_progress_logs", "user_daily_missions",
-				"experience_logs", "booster_activations", "coin_transactions", "user_items", "shop_items")) {
+				"experience_logs", "booster_activations", "coin_transactions", "user_items", "shop_items", "admin_audit_logs")) {
 			jdbc.update("DELETE FROM " + table);
 		}
 		jdbc.update("DELETE FROM users WHERE email LIKE 'shop-admin-it-%'");
@@ -380,7 +381,7 @@ class AdminShopHttpTest {
 		assertThat(error(call(admin, "POST", ITEMS + "/" + draft + "/archive", null, 409))).isEqualTo("INVALID_STATUS_TRANSITION");
 
 		publish(draft);
-		JsonNode archived = call(admin, "POST", ITEMS + "/" + draft + "/archive", null, 200).path("data");
+		JsonNode archived = call(admin, "POST", ITEMS + "/" + draft + "/archive", ARCHIVE_REASON, 200).path("data");
 		assertThat(archived.path("status").asText()).isEqualTo("ARCHIVED");
 		assertThat(archived.path("purchasable").asBoolean()).isFalse();
 
@@ -404,7 +405,7 @@ class AdminShopHttpTest {
 				"Idempotency-Key", "buy-1");
 		call(user, "PUT", "/api/me/equipment/AVATAR_FRAME", Map.of("itemId", frameId), 200);
 
-		call(admin, "POST", ITEMS + "/" + frameId + "/archive", null, 200);
+		call(admin, "POST", ITEMS + "/" + frameId + "/archive", ARCHIVE_REASON, 200);
 		assertThat(catalogCodes()).isEmpty();
 		assertThat(error(call(user, "POST", "/api/shop/items/" + frameId + "/purchase", Map.of("expectedPrice", 100), 409,
 				"Idempotency-Key", "buy-2"))).isEqualTo("ITEM_NOT_AVAILABLE");
@@ -428,7 +429,7 @@ class AdminShopHttpTest {
 		publish(published);
 		assertThat(error(call(admin, "DELETE", ITEMS + "/" + published, null, 409))).isEqualTo("ITEM_CANNOT_BE_DELETED");
 
-		call(admin, "POST", ITEMS + "/" + published + "/archive", null, 200);
+		call(admin, "POST", ITEMS + "/" + published + "/archive", ARCHIVE_REASON, 200);
 		assertThat(error(call(admin, "DELETE", ITEMS + "/" + published, null, 409))).isEqualTo("ITEM_CANNOT_BE_DELETED");
 		assertThat(status(published)).isEqualTo("ARCHIVED");
 	}

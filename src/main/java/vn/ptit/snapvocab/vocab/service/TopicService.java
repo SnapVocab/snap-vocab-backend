@@ -1,5 +1,6 @@
 package vn.ptit.snapvocab.vocab.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -11,6 +12,9 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,6 +27,12 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import vn.ptit.snapvocab.audit.domain.dto.AuditChange;
+import vn.ptit.snapvocab.audit.domain.dto.AuditTarget;
+import vn.ptit.snapvocab.audit.domain.enumeration.AuditAction;
+import vn.ptit.snapvocab.audit.domain.enumeration.AuditTargetType;
+import vn.ptit.snapvocab.audit.service.AdminAuditService;
+import vn.ptit.snapvocab.audit.service.AuditDiff;
 import vn.ptit.snapvocab.badge.service.BadgeService;
 import vn.ptit.snapvocab.common.dto.CursorPaginationResponse;
 import vn.ptit.snapvocab.common.dto.Meta;
@@ -100,7 +110,12 @@ public class TopicService {
 	private final QuizContentResolver quizContentResolver;
 	private final ScanRequestRepository scanRequestRepository;
 	private final ProgressService progressService;
+	private final AdminAuditService audit;
+	private final ObjectMapper objectMapper;
 	private final Logger LOG = LoggerFactory.getLogger(TopicService.class);
+
+	private static final List<String> TOPIC_CREATE_FIELDS = List.of("name", "translation", "description", "schema",
+			"template");
 
 	/**
 	 * Retrieves paginated vocabulary items for a given topic with EAV attributes aggregated into a
@@ -409,8 +424,48 @@ public class TopicService {
 				.build();
 
 		Topic saved = topicRepository.save(topic);
+		Map<String, Object> created = new LinkedHashMap<>();
+		created.put("name", saved.getName());
+		created.put("translation", saved.getTranslation());
+		created.put("description", saved.getDescription());
+		created.put("schema", schema.getName());
+		created.put("template", activeTemplate == null ? null : activeTemplate.getName());
+		auditTopic(AuditAction.TOPIC_CREATED, saved, () -> AuditDiff.of(objectMapper, null, created, TOPIC_CREATE_FIELDS));
 
 		return topicMapper.toDto(saved);
+	}
+
+	/**
+	 * Admin audit row for system content or an admin editing a learner's topic; a learner on their own collection is
+	 * not audited (admin_audit_log_backend.md §4.4.4).
+	 */
+	private void auditTopic(AuditAction action, Topic topic, Supplier<List<AuditChange>> diff) {
+		if (topic.getCollection() == null || !CollectionService.auditable(topic.getCollection())) {
+			return;
+		}
+		List<AuditChange> changes = diff.get();
+		if (changes.isEmpty()) {
+			return;
+		}
+		List<Long> parents = new ArrayList<>(List.of(topic.getCollection().getId()));
+		if (topic.getParent() != null) {
+			Topic root = topic.getParent();
+			while (root.getParent() != null) {
+				root = root.getParent();
+			}
+			parents.add(root.getId());
+		}
+		audit.record(action, new AuditTarget(AuditTargetType.TOPIC, String.valueOf(topic.getId()), topic.getName(), null,
+				parents), changes, null, null, null);
+	}
+
+	private List<AuditChange> renamed(String field, String before, String after) {
+		return Objects.equals(before, after) ? List.of()
+				: List.of(AuditDiff.change(objectMapper, field, before, after));
+	}
+
+	private static String nameOf(Schema schema) {
+		return schema == null ? null : schema.getName();
 	}
 
 	public void validateTopicAccess(Long topicId) {
@@ -511,8 +566,10 @@ public class TopicService {
 		schema.setIsSystem(false);
 		Schema savedSchema = this.schemaRepository.save(schema);
 
+		String previous = nameOf(topic.getSchema());
 		topic.setSchema(savedSchema);
 		this.topicRepository.save(topic);
+		auditTopic(AuditAction.TOPIC_SCHEMA_CHANGED, topic, () -> renamed("schema", previous, savedSchema.getName()));
 
 		return getTopicSchema(topicId);
 	}
@@ -529,8 +586,13 @@ public class TopicService {
 		Schema schema = this.schemaRepository.findById(schemaId)
 				.orElseThrow(() -> new ResourceNotFoundException("Schema not found with id: " + schemaId));
 
+		Schema previous = topic.getSchema();
 		topic.setSchema(schema);
 		this.topicRepository.save(topic);
+		if (previous == null || !previous.getId().equals(schema.getId())) {
+			auditTopic(AuditAction.TOPIC_SCHEMA_CHANGED, topic,
+					() -> List.of(AuditDiff.change(objectMapper, "schema", nameOf(previous), schema.getName())));
+		}
 
 		return getTopicSchema(topicId);
 	}
@@ -671,6 +733,8 @@ public class TopicService {
 
 		topic.setSchema(savedForkedSchema);
 		this.topicRepository.save(topic);
+		auditTopic(AuditAction.TOPIC_SCHEMA_CHANGED, topic,
+				() -> List.of(AuditDiff.change(objectMapper, "schema", originalSchema.getName(), savedForkedSchema.getName())));
 
 		// 5. Remap TopicItem EAV values for this topic
 		List<TopicItem> items = this.topicItemRepository.findByTopicIdWithEav(topicId);
@@ -721,8 +785,13 @@ public class TopicService {
 					"Template does not belong to the schema assigned to this topic");
 		}
 
+		Template previous = topic.getActiveTemplate();
 		topic.setActiveTemplate(template);
 		Topic saved = this.topicRepository.save(topic);
+		if (previous == null || !previous.getId().equals(template.getId())) {
+			auditTopic(AuditAction.TOPIC_TEMPLATE_CHANGED, saved, () -> List.of(AuditDiff.change(objectMapper, "template",
+					previous == null ? null : previous.getName(), template.getName())));
+		}
 		return this.topicMapper.toDto(saved);
 	}
 
@@ -876,11 +945,24 @@ public class TopicService {
 						Map.of("topicItemId", savedItem.getId(), "scanRequestId", scanRequestId), actionInstant);
 			}
 		}
+		if (learnerId == null) {
+			auditTopic(AuditAction.TOPIC_ITEM_ADDED, topic, () -> List.of(AuditDiff.change(objectMapper, "item", null,
+					itemWord(topic, savedItem.getId(), inputGroups))));
+		}
 		return TopicItemData.builder()
 				.topicItemId(savedItem.getId())
 				.createdAt(savedItem.getCreatedAt())
 				.groups(responseGroups)
 				.build();
+	}
+
+	/** The word the audit row shows: the Quiz target, else main.word as sent, else "#id" (§4.4.4). */
+	private String itemWord(Topic topic, Long topicItemId, Map<String, Object> inputGroups) {
+		return quizContentResolver.resolveQuizReady(topic, topicItemId)
+				.map(content -> content.targetWord())
+				.or(() -> inputGroups.get("main") instanceof Map<?, ?> main && main.get("word") instanceof String word
+						&& !word.isBlank() ? Optional.of(word) : Optional.empty())
+				.orElse("#" + topicItemId);
 	}
 
 	private boolean scanDetected(Long learnerId, String scanRequestId, byte[] wordHash) {

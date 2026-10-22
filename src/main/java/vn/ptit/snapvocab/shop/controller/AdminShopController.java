@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import vn.ptit.snapvocab.audit.domain.dto.AuditReasonRequest;
 import vn.ptit.snapvocab.common.dto.PaginationObject;
 import vn.ptit.snapvocab.storage.domain.dto.PresignedUploadResponse;
 import vn.ptit.snapvocab.storage.domain.dto.UploadUrlRequest;
@@ -70,15 +71,17 @@ public class AdminShopController {
 	}
 
 	@PostMapping("/items/{itemId}/publish")
-	@Operation(summary = "DRAFT → PUBLISHED after full revalidation")
-	public ResponseEntity<AdminShopItemDTO> publish(@PathVariable Long itemId) {
-		return ResponseEntity.ok(adminShopService.publish(itemId));
+	@Operation(summary = "DRAFT → PUBLISHED after full revalidation; reason required when the price is past the guardrail")
+	public ResponseEntity<AdminShopItemDTO> publish(@PathVariable Long itemId,
+			@RequestBody(required = false) AuditReasonRequest body) {
+		return ResponseEntity.ok(adminShopService.publish(itemId, body == null ? null : body.reason()));
 	}
 
 	@PostMapping("/items/{itemId}/archive")
-	@Operation(summary = "PUBLISHED → ARCHIVED (terminal, stops sales)")
-	public ResponseEntity<AdminShopItemDTO> archive(@PathVariable Long itemId) {
-		return ResponseEntity.ok(adminShopService.archive(itemId));
+	@Operation(summary = "PUBLISHED → ARCHIVED (terminal, stops sales); body { reason } required")
+	public ResponseEntity<AdminShopItemDTO> archive(@PathVariable Long itemId,
+			@RequestBody(required = false) AuditReasonRequest body) {
+		return ResponseEntity.ok(adminShopService.archive(itemId, body == null ? null : body.reason()));
 	}
 
 	@DeleteMapping("/items/{itemId}")

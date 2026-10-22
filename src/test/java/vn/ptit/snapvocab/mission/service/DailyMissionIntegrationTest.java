@@ -39,7 +39,9 @@ import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.stubbing.Answer;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import vn.ptit.snapvocab.audit.service.AdminAuditService;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
@@ -164,6 +166,10 @@ class DailyMissionIntegrationTest {
 	@Autowired
 	DailyMissionService dailyMissionService;
 	@Autowired
+	AdminAuditService adminAuditService;
+	@Autowired
+	ObjectMapper objectMapper;
+	@Autowired
 	QuizService quizService;
 	@Autowired
 	TopicService topicService;
@@ -195,6 +201,11 @@ class DailyMissionIntegrationTest {
 	DataSource dataSource;
 	@Autowired
 	PlatformTransactionManager transactionManager;
+
+	/** Not a bean here: as an ApplicationRunner it would seed at startup. */
+	private MissionCatalogSeeder seeder() {
+		return new MissionCatalogSeeder(templateRepository, adminAuditService, objectMapper, transactionManager);
+	}
 
 	@AfterEach
 	void cleanUp() {
@@ -877,7 +888,7 @@ class DailyMissionIntegrationTest {
 
 	@Test
 	void startupCheckSkipsAnInactiveCatalogButNeverALiveOne() {
-		MissionCatalogSeeder seeder = new MissionCatalogSeeder(templateRepository);
+		MissionCatalogSeeder seeder = seeder();
 		List<MissionTemplate> nothingToSeed = List.of();
 
 		// Not activated: nothing active ⇒ startup continues.
@@ -901,9 +912,12 @@ class DailyMissionIntegrationTest {
 
 	@Test
 	void seedIsIdempotentNeverOverwritesAndFailsFastOnABrokenCatalog() {
-		MissionCatalogSeeder seeder = new MissionCatalogSeeder(templateRepository);
-
+		MissionCatalogSeeder seeder = seeder();
+		jdbc().update("DELETE FROM admin_audit_logs");
 		seeder.seed(MissionCatalogSeeder.mvpCatalog());
+		// BE-AUD-09: one "Hệ thống" row per seeded template.
+		assertThat(count("SELECT COUNT(*) FROM admin_audit_logs WHERE action = 'MISSION_TEMPLATE_CREATED'"
+				+ " AND actor_id IS NULL")).isEqualTo(12);
 		MissionTemplate edited = templateRepository.findByCode("KEEP_DAILY_STREAK").orElseThrow();
 		edited.setWeight(9);
 		templateRepository.save(edited);
