@@ -52,7 +52,7 @@ public class MissionCatalogSeeder implements ApplicationRunner {
 		}
 	}
 
-	/** daily_mission.md §5.1; UI names of ADD_5_WORDS, FINISH_2_SHORT_QUIZZES, PERFECT_MINI_QUIZ per COPY-DM-01. */
+	/** daily_mission.md §5.1; UI names of ADD_5_WORDS, FINISH_2_SHORT_QUIZZES, PERFECT_MINI_QUIZ per COPY-DM-01; STUDY_5_CARDS, SCAN_SAVE_3_WORDS per PD-DM-07. */
 	static List<MissionTemplate> mvpCatalog() {
 		return List.of(
 				template("ADD_5_WORDS", "Góp Nhặt Từ Mới", "Thêm 5 từ mới có nghĩa", MissionCategory.VOCABULARY,
@@ -71,7 +71,28 @@ public class MissionCatalogSeeder implements ApplicationRunner {
 						MissionTriggerEvent.BOOSTER_USED, null, null, 1, 5, 10, MissionEligibilityRule.HAS_IDLE_XP_BOOSTER),
 				template("BUY_SHOP_ITEM", "Ghé Thăm Cửa Hàng", "Mua 1 vật phẩm trong Shop", MissionCategory.SHOP,
 						MissionTriggerEvent.SHOP_ITEM_PURCHASED, null, null, 1, 5, 10,
-						MissionEligibilityRule.HAS_PURCHASABLE_ITEM));
+						MissionEligibilityRule.HAS_PURCHASABLE_ITEM),
+				// New triggers: only an app that lists them in X-Mission-Triggers is handed these (PD-DM-13), so they ship on.
+				template("STUDY_5_CARDS", "Lật Thẻ Mỗi Ngày", "Học hoặc ôn 5 thẻ", MissionCategory.SRS,
+						MissionTriggerEvent.SRS_REVIEW_COMPLETED, null, null, 5, 15, 30, MissionEligibilityRule.NONE),
+				template("SCAN_SAVE_3_WORDS", "Săn Từ Qua Ảnh", "Lưu 3 từ từ ảnh bạn đã quét", MissionCategory.SCAN,
+						MissionTriggerEvent.SCAN_WORD_SAVED, null, null, 3, 10, 20, MissionEligibilityRule.NONE),
+				// Variants (PD-DM-12): a second template per slot so "not yesterday's" has something to pick. Coin
+				// never above the slot's other template, so the daily ceiling stays 75 Coin (PD-DM-02, PO 2026-10-22).
+				// ADD_3_WORDS uses a legacy trigger, so older apps would get it too, and there slots 1 and 3 still fall
+				// back to core: it would often land beside ADD_5_WORDS. Off until those apps are gone (Admin turns it on).
+				inactive(template("ADD_3_WORDS", "Thêm Vài Từ Mới", "Thêm 3 từ mới có nghĩa", MissionCategory.VOCABULARY,
+						MissionTriggerEvent.TOPIC_ITEM_CREATED, null, null, 3, 10, 15, MissionEligibilityRule.NONE)),
+				template("SCAN_SAVE_5_WORDS", "Thợ Săn Ảnh", "Lưu 5 từ từ ảnh bạn đã quét", MissionCategory.SCAN,
+						MissionTriggerEvent.SCAN_WORD_SAVED, null, null, 5, 10, 30, MissionEligibilityRule.NONE),
+				template("STUDY_10_CARDS", "Ôn Thẻ Chăm Chỉ", "Học hoặc ôn 10 thẻ", MissionCategory.SRS,
+						MissionTriggerEvent.SRS_REVIEW_COMPLETED, null, null, 10, 15, 40,
+						MissionEligibilityRule.HAS_STUDY_CARDS_FOR_TARGET));
+	}
+
+	private static MissionTemplate inactive(MissionTemplate template) {
+		template.setActive(false);
+		return template;
 	}
 
 	private static MissionTemplate template(String code, String name, String description, MissionCategory category,

@@ -10,7 +10,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -58,6 +58,10 @@ public class AdminShopService {
 	static final int MAX_QUANTITY_MIN = 1;
 	static final int MAX_QUANTITY_MAX = 10;
 	static final int MAX_QUANTITY_DEFAULT = 5;
+	// Streak Freeze holdings (streak_freeze.md PD-SF-03): more than a few and a long break still keeps the chain.
+	static final int FREEZE_MAX_QUANTITY_MIN = 1;
+	static final int FREEZE_MAX_QUANTITY_MAX = 5;
+	static final int FREEZE_MAX_QUANTITY_DEFAULT = 2;
 	static final int NAME_MAX = 100;
 	static final int DESCRIPTION_MAX = 500;
 	static final Pattern CODE = Pattern.compile("^[A-Z][A-Z0-9_]{2,63}$");
@@ -79,11 +83,12 @@ public class AdminShopService {
 			entry("price", UNTIL_ARCHIVED), entry("purchasable", UNTIL_ARCHIVED), entry("availableFrom", UNTIL_ARCHIVED),
 			entry("availableUntil", UNTIL_ARCHIVED), entry("maxQuantity", UNTIL_ARCHIVED));
 
-	/** Type-specific fields; a field owned by another type must be null. */
+	/** Type-specific fields; any field the type does not list must be null. */
 	private static final Map<ShopItemType, List<String>> TYPE_FIELDS = Map.of(
 			ShopItemType.THEME, List.of("themeKey"),
 			ShopItemType.AVATAR_FRAME, List.of("frameAssetKey"),
-			ShopItemType.XP_BOOSTER, List.of("boostDurationMinutes", "maxQuantity"));
+			ShopItemType.XP_BOOSTER, List.of("boostDurationMinutes", "maxQuantity"),
+			ShopItemType.STREAK_FREEZE, List.of("maxQuantity"));
 
 	private static final ShopItemForm NEW_ITEM = new ShopItemForm(null, null, null, null, null, false, null, null,
 			null, 0, null, null, null, null);
@@ -160,7 +165,12 @@ public class AdminShopService {
 										.min((long) DURATION_MIN).max((long) DURATION_MAX).defaultValue(DURATION_DEFAULT).build(),
 								spec("maxQuantity", InputType.NUMBER).required(true).requiredToPublish(true)
 										.min((long) MAX_QUANTITY_MIN).max((long) MAX_QUANTITY_MAX)
-										.defaultValue(MAX_QUANTITY_DEFAULT).build())));
+										.defaultValue(MAX_QUANTITY_DEFAULT).build())),
+				new TypeSpec(ShopItemType.STREAK_FREEZE, ShopItemType.STREAK_FREEZE.getBehavior(),
+						ShopItemType.STREAK_FREEZE.isStackable(), Map.of(),
+						List.of(spec("maxQuantity", InputType.NUMBER).required(true).requiredToPublish(true)
+								.min((long) FREEZE_MAX_QUANTITY_MIN).max((long) FREEZE_MAX_QUANTITY_MAX)
+								.defaultValue(FREEZE_MAX_QUANTITY_DEFAULT).build())));
 		return new ShopItemTypeMetadataDTO(common, types);
 	}
 
@@ -215,6 +225,11 @@ public class AdminShopService {
 		ShopItem item = find(id);
 		requireStatus(item, ShopItemStatus.DRAFT, "publish");
 		validate(formOf(item), item.getId(), true);
+		// One live Streak Freeze item: maxQuantity is per item, so a second one would double what a learner can hold.
+		if (item.getType() == ShopItemType.STREAK_FREEZE
+				&& repository.existsByTypeAndStatusAndIdNot(ShopItemType.STREAK_FREEZE, ShopItemStatus.PUBLISHED, id)) {
+			throw invalid("type", ShopErrorCode.INVALID_SHOP_ITEM_CONFIG, "only one STREAK_FREEZE item can be PUBLISHED");
+		}
 		item.setStatus(ShopItemStatus.PUBLISHED);
 		item.setPublishedAt(Economy.now());
 		return toDto(save(item));
@@ -316,15 +331,15 @@ public class AdminShopService {
 
 	private void validateTypeConfig(List<Violation> v, ShopItemType type, ShopItemForm f, long selfId,
 			boolean publishing) {
-		Map<String, Object> config = new HashMap<>();
+		Map<String, Object> config = new LinkedHashMap<>();
 		config.put("themeKey", f.themeKey());
 		config.put("frameAssetKey", f.frameAssetKey());
 		config.put("boostDurationMinutes", f.boostDurationMinutes());
 		config.put("maxQuantity", f.maxQuantity());
-		TYPE_FIELDS.forEach((owner, fields) -> {
-			if (owner != type) {
-				fields.stream().filter(field -> config.get(field) != null).forEach(field -> v.add(new Violation(field,
-						ShopErrorCode.INVALID_SHOP_ITEM_CONFIG, "must be null for " + type)));
+		List<String> own = TYPE_FIELDS.get(type);
+		config.forEach((field, value) -> {
+			if (value != null && !own.contains(field)) {
+				v.add(new Violation(field, ShopErrorCode.INVALID_SHOP_ITEM_CONFIG, "must be null for " + type));
 			}
 		});
 
@@ -349,6 +364,8 @@ public class AdminShopService {
 				checkRange(v, "boostDurationMinutes", f.boostDurationMinutes(), DURATION_MIN, DURATION_MAX);
 				checkRange(v, "maxQuantity", f.maxQuantity(), MAX_QUANTITY_MIN, MAX_QUANTITY_MAX);
 			}
+			case STREAK_FREEZE -> checkRange(v, "maxQuantity", f.maxQuantity(), FREEZE_MAX_QUANTITY_MIN,
+					FREEZE_MAX_QUANTITY_MAX);
 		}
 	}
 

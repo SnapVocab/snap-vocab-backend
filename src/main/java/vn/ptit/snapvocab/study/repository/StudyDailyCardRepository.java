@@ -10,7 +10,7 @@ import vn.ptit.snapvocab.study.domain.StudyDailyCard;
 
 @Repository
 public interface StudyDailyCardRepository extends JpaRepository<StudyDailyCard, Long> {
-	long countByUserIdAndCollectionIdAndStudyDate(Long userId, Long collectionId, LocalDate studyDate);
+	long countByUserIdAndStudyDate(Long userId, LocalDate studyDate);
 
 	@Query("""
 			SELECT dailyCard.topicItem.id FROM StudyDailyCard dailyCard

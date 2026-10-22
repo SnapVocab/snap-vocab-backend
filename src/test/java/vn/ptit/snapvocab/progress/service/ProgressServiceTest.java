@@ -23,10 +23,11 @@ class ProgressServiceTest {
 
 	@Test
 	void storedStreakIsBrokenAfterAMissedDay() {
-		assertThat(ProgressService.currentStreak(4, TODAY, TODAY)).isEqualTo(4);
-		assertThat(ProgressService.currentStreak(4, TODAY.minusDays(1), TODAY)).isEqualTo(4);
-		assertThat(ProgressService.currentStreak(4, TODAY.minusDays(2), TODAY)).isZero();
-		assertThat(ProgressService.currentStreak(0, null, TODAY)).isZero();
+		// Without a Streak Freeze unit: live only if the learner studied today or yesterday.
+		assertThat(StreakFreezeService.settle(4, TODAY, null, 0, TODAY).streak(4, TODAY)).isEqualTo(4);
+		assertThat(StreakFreezeService.settle(4, TODAY.minusDays(1), null, 0, TODAY).streak(4, TODAY)).isEqualTo(4);
+		assertThat(StreakFreezeService.settle(4, TODAY.minusDays(2), null, 0, TODAY).streak(4, TODAY)).isZero();
+		assertThat(StreakFreezeService.settle(0, null, null, 0, TODAY).streak(0, TODAY)).isZero();
 	}
 
 	@Test

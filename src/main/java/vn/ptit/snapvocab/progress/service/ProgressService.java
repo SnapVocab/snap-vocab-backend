@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
@@ -44,7 +45,7 @@ import vn.ptit.snapvocab.vocab.repository.TopicItemRepository;
 public class ProgressService {
 
 	public static final ZoneId ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
-	static final float MASTERED_STABILITY = 21f;
+	public static final float MASTERED_STABILITY = 21f;
 	static final int MAX_HISTORY_DAYS = 366;
 
 	private final UserRepository userRepository;
@@ -53,6 +54,7 @@ public class ProgressService {
 	private final TopicItemRepository topicItemRepository;
 	private final QuizRepository quizRepository;
 	private final MissionTracker missionTracker;
+	private final StreakFreezeService streakFreezeService;
 
 	@Transactional(readOnly = true)
 	public ProgressSummaryDTO getSummary(Long userId) {
@@ -69,11 +71,14 @@ public class ProgressService {
 				quiz.getQuizCount());
 	}
 
+	/** Read-only: a pending Streak Freeze settlement is shown, not written (streak_freeze.md §3.2). */
 	@Transactional(readOnly = true)
 	public StreakDTO getStreak(Long userId) {
 		User user = findUser(userId);
-		LocalDate last = lastStudiedDate(user);
-		return new StreakDTO(currentStreak(user.getStreakDays(), last, today()), user.getLongestStreakDays(), last);
+		LocalDate today = today();
+		StreakFreezeService.Settlement s = streakFreezeService.preview(user, today);
+		return new StreakDTO(s.streak(user.getStreakDays(), today), user.getLongestStreakDays(), lastStudiedDate(user),
+				s.remaining(), s.lastFrozen());
 	}
 
 	@Transactional(readOnly = true)
@@ -92,12 +97,13 @@ public class ProgressService {
 	@Transactional(readOnly = true)
 	public HomeWidgetDTO getHomeWidget(Long userId) {
 		User user = findUser(userId);
+		LocalDate today = today();
 		return new HomeWidgetDTO(
 				topicItemRepository.countOwnedBy(userId),
 				learnedCount(userId),
 				masteredCount(userId),
 				dueCount(userId),
-				currentStreak(user.getStreakDays(), lastStudiedDate(user), today()));
+				streakFreezeService.preview(user, today).streak(user.getStreakDays(), today));
 	}
 
 	/** {@link #record(Long, LearningEventType, String, Map, Instant)} at the current server time. */
@@ -128,7 +134,9 @@ public class ProgressService {
 				.metadata(metadata)
 				.createdAt(actionInstant)
 				.build());
-		int streak = nextStreak(user.getStreakDays(), lastStudiedDate(user), today);
+		// Missed days take Streak Freeze units first; the chain then continues from the last covered day (§3.4).
+		LocalDate covered = streakFreezeService.settle(user, today).coveredThrough();
+		int streak = nextStreak(user.getStreakDays(), covered, today);
 		user.setStreakDays(streak);
 		user.setLongestStreakDays(Math.max(user.getLongestStreakDays(), streak));
 		user.setLastStudiedAt(actionInstant);
@@ -136,17 +144,15 @@ public class ProgressService {
 				MissionFacts.NONE, actionInstant);
 	}
 
-	/** Streak after studying on {@code today}: unchanged same day, +1 the day after, else restart at 1. */
-	static int nextStreak(int stored, LocalDate last, LocalDate today) {
-		if (today.equals(last)) {
+	/**
+	 * Streak after studying on {@code today}: unchanged same day, +1 the day after, else restart at 1.
+	 * {@code covered} is the last day the chain reaches, a frozen day included (a frozen day adds nothing, PD-SF-01).
+	 */
+	static int nextStreak(int stored, LocalDate covered, LocalDate today) {
+		if (today.equals(covered)) {
 			return Math.max(stored, 1);
 		}
-		return today.minusDays(1).equals(last) ? stored + 1 : 1;
-	}
-
-	/** Stored streak is only live if the learner studied today or yesterday; otherwise it is already broken. */
-	static int currentStreak(int stored, LocalDate last, LocalDate today) {
-		return last != null && !last.isBefore(today.minusDays(1)) ? stored : 0;
+		return today.minusDays(1).equals(covered) ? stored + 1 : 1;
 	}
 
 	static List<ProgressHistoryDTO.Bucket> buckets(HistoryPeriod period, LocalDate from, LocalDate to,
@@ -200,10 +206,10 @@ public class ProgressService {
 				MASTERED_STABILITY);
 	}
 
-	/** Workload, not a learning state; suspended cards are never due. */
+	/** Workload, not a learning state; suspended cards are never due. {@code due} is stored in UTC (TD-NOTIF-01). */
 	private long dueCount(Long userId) {
 		return fsrsRecordRepository.countByUserIdAndStateNotAndDueLessThanEqual(userId, CardState.SUSPENDED,
-				LocalDateTime.now(ZONE));
+				LocalDateTime.now(ZoneOffset.UTC));
 	}
 
 	private User findUser(Long userId) {

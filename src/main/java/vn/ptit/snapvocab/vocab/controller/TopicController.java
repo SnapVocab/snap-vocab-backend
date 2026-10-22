@@ -86,12 +86,13 @@ public class TopicController {
 	@PostMapping("/{topicId}/items")
 	public ResponseEntity<TopicItemData> addTopicItem(
 			@PathVariable Long topicId,
-			@Valid @RequestBody CreateTopicItemDTO createTopicItemDTO
+			@Valid @RequestBody CreateTopicItemDTO createTopicItemDTO,
+			@RequestParam(required = false) String scanRequestId
 	) {
 		LOG.info("[POST: /{}/items] Adding topic item with topicId: {}, createTopicItemDTO: {}",
 				topicId, topicId, createTopicItemDTO);
 		return ResponseEntity.status(HttpStatus.CREATED)
-				.body(topicService.addTopicItem(topicId, createTopicItemDTO));
+				.body(topicService.addTopicItem(topicId, createTopicItemDTO, scanRequestId));
 	}
 
 	@GetMapping("/{topicId}/cursor")

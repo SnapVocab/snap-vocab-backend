@@ -52,7 +52,7 @@ class UserSettingsServiceTest {
 		UserSettingsDTO settings = service.get(USER_ID);
 
 		assertThat(settings).isEqualTo(
-				new UserSettingsDTO("vi", ThemePreference.SYSTEM, 20, 20, null, true));
+				new UserSettingsDTO("vi", ThemePreference.SYSTEM, 10, 20, null, true));
 		verify(userSettingsRepository).save(any());
 	}
 

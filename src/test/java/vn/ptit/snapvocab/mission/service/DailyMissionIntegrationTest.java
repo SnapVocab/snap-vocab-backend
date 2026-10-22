@@ -12,6 +12,8 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 import java.time.Instant;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -57,6 +59,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import vn.ptit.snapvocab.badge.service.BadgeService;
 import vn.ptit.snapvocab.config.DataInitializer;
 import vn.ptit.snapvocab.mission.domain.MissionTemplate;
+import vn.ptit.snapvocab.mission.domain.UserDailyMission;
 import vn.ptit.snapvocab.mission.domain.dto.DailyMissionsDTO;
 import vn.ptit.snapvocab.mission.domain.dto.MissionClaimResultDTO;
 import vn.ptit.snapvocab.mission.domain.enumeration.DailyMissionStatus;
@@ -65,9 +68,11 @@ import vn.ptit.snapvocab.mission.domain.enumeration.MissionErrorCode;
 import vn.ptit.snapvocab.mission.domain.enumeration.MissionTriggerEvent;
 import vn.ptit.snapvocab.mission.exception.MissionException;
 import vn.ptit.snapvocab.mission.repository.MissionTemplateRepository;
+import vn.ptit.snapvocab.mission.repository.UserDailyMissionRepository;
 import vn.ptit.snapvocab.mission.repository.UserDailyMissionClaimRepository;
 import vn.ptit.snapvocab.progress.service.ProgressEventListener;
 import vn.ptit.snapvocab.progress.service.ProgressService;
+import vn.ptit.snapvocab.progress.service.StreakFreezeService;
 import vn.ptit.snapvocab.quiz.domain.Quiz;
 import vn.ptit.snapvocab.quiz.domain.QuizQuestion;
 import vn.ptit.snapvocab.quiz.domain.dto.CheckQuestionRequest;
@@ -119,7 +124,8 @@ import vn.ptit.snapvocab.xp.service.XpService;
 @Import({ DataInitializer.class, SemanticBindingMigration.class, QuizService.class, QuizContentResolver.class,
 		QuizGenerator.class, XpService.class, TopicService.class, ShopService.class, InventoryService.class,
 		WalletService.class, ShopRewardService.class, ShopMapper.class, MissionTracker.class, DailyMissionService.class,
-		ProgressService.class, ProgressEventListener.class, BadgeService.class, DailyMissionIntegrationTest.Beans.class })
+		ProgressService.class, StreakFreezeService.class, ProgressEventListener.class, BadgeService.class,
+		DailyMissionIntegrationTest.Beans.class })
 class DailyMissionIntegrationTest {
 
 	private static final String CORE_QUIZ_PERFECT = "PERFECT_MINI_QUIZ";
@@ -168,6 +174,8 @@ class DailyMissionIntegrationTest {
 	@Autowired
 	MissionTemplateRepository templateRepository;
 	@Autowired
+	UserDailyMissionRepository missionRepository;
+	@Autowired
 	UserRepository userRepository;
 	@Autowired
 	ShopItemRepository shopItemRepository;
@@ -196,7 +204,7 @@ class DailyMissionIntegrationTest {
 				"user_daily_missions", "mission_templates", "learning_events", "quiz_matching_attempts",
 				"quiz_question_options", "quiz_matching_tiles", "quiz_questions", "quizzes",
 				"topic_item_attribute_values", "topic_item_attribute_groups", "topic_items", "topics", "collections",
-				"experience_logs", "booster_activations", "coin_transactions", "user_items", "shop_items")) {
+				"experience_logs", "booster_activations", "coin_transactions", "user_items", "shop_items", "scan_requests")) {
 			jdbc.update("DELETE FROM " + table);
 		}
 		jdbc.update("DELETE FROM users WHERE email LIKE 'dm-it-%'");
@@ -282,6 +290,23 @@ class DailyMissionIntegrationTest {
 						e -> assertThat(e.getCode()).isEqualTo(MissionErrorCode.MISSION_POOL_INSUFFICIENT));
 		// Booster owned and idle, but nothing affordable: slot 5 can only be USE_XP_BOOSTER.
 		assertThat(dailyMissionService.getToday(owner.getId()).missions().get(4).code()).isEqualTo("USE_XP_BOOSTER");
+	}
+
+	@Test
+	void hasPurchasableItemCountsStreakFreezeUnitsAfterThePendingSettlement() {
+		catalog();
+		deactivate("KEEP_DAILY_STREAK", "USE_XP_BOOSTER");
+		ShopItem freeze = shopItemRepository.save(ShopItem.builder().code("IT_FREEZE").type(ShopItemType.STREAK_FREEZE)
+				.name("Freeze").status(ShopItemStatus.PUBLISHED).purchasable(true).price(200L).maxQuantity(2).build());
+		// Held 2 of 2, but yesterday was missed: one unit is already spent, so a second one can be bought.
+		User user = newUser(1000);
+		user.setStreakDays(5);
+		user.setLastStudiedAt(MissionTracker.missionDate(Instant.now()).minusDays(2).atTime(12, 0)
+				.atZone(ProgressService.ZONE).toInstant());
+		userRepository.save(user);
+		grant(user, freeze, 2);
+
+		assertThat(dailyMissionService.getToday(user.getId()).missions().get(4).code()).isEqualTo("BUY_SHOP_ITEM");
 	}
 
 	@Test
@@ -404,6 +429,71 @@ class DailyMissionIntegrationTest {
 	}
 
 	@Test
+	void scanSaveCreditsOnlyWordsTheLearnersOwnFinishedScanDetectedOncePerScan() { // PD-DM-07, §6.1
+		catalog();
+		jdbc().update("UPDATE mission_templates SET is_active = 1 WHERE code = 'SCAN_SAVE_3_WORDS'");
+		User user = newUser(0);
+		User other = newUser(0);
+		Topic topic = userTopic(user);
+		Topic second = userTopic(user);
+		String detections = "[" + detection("coffee mug", "\"mug\"") + "," + detection("Laptop", "null") + "]";
+		String scan = scan(user, "DONE", detections);
+		String foreign = scan(other, "DONE", detections);
+		String unfinished = scan(user, "PROCESSING", null);
+		authenticate(user);
+
+		topicService.addTopicItem(topic.getId(), word("Mug", "cốc"), scan); // headword
+		topicService.addTopicItem(second.getId(), word("mug", "cái cốc"), scan); // same word, same scan
+		topicService.addTopicItem(topic.getId(), word("laptop", "máy tính"), scan); // label, any case
+		topicService.addTopicItem(topic.getId(), word("banana", "chuối"), scan); // not detected
+		topicService.addTopicItem(topic.getId(), word("laptop", "máy tính xách tay"), foreign);
+		topicService.addTopicItem(topic.getId(), word("laptop", "laptop"), unfinished);
+		topicService.addTopicItem(topic.getId(), word("laptop", "máy xách tay"), "no-such-scan");
+
+		// Every word is saved; only the two detected ones count, and slot 1 is the Scan mission.
+		assertThat(count("SELECT COUNT(*) FROM topic_items")).isEqualTo(7);
+		assertThat(progress(user).get("SCAN_SAVE_3_WORDS")).isEqualTo(2);
+		assertThat(count("SELECT COUNT(*) FROM user_daily_missions WHERE user_id = ? AND code = 'SCAN_SAVE_3_WORDS' AND slot = 1",
+				user.getId())).isEqualTo(1);
+		// The same two credited saves are learning activity (PO 2026-10-22): streak and KEEP_DAILY_STREAK.
+		assertThat(count("SELECT COUNT(*) FROM learning_events WHERE user_id = ? AND event_type = 'WORD_SCANNED_AND_SAVED'",
+				user.getId())).isEqualTo(2);
+		assertThat(userRepository.findById(user.getId()).orElseThrow().getStreakDays()).isEqualTo(1);
+		assertThat(status(user, "KEEP_DAILY_STREAK")).isEqualTo("COMPLETED");
+	}
+
+	@Test
+	void weeklyReportRatesEachCodePerLearnerStageAndSkipsToday() throws Exception { // PD-DM-14
+		catalog();
+		User user = newUser(0);
+		LocalDate today = MissionTracker.missionDate(Instant.now());
+		MissionTemplate add = templateRepository.findByCode("ADD_5_WORDS").orElseThrow();
+		MissionTemplate quiz = templateRepository.findByCode("QUIZ_SCORE_80").orElseThrow();
+		pastMission(user, add, today.minusDays(8), 1, "CLAIMED"); // the learner's first mission day
+		pastMission(user, add, today.minusDays(1), 1, "COMPLETED"); // completed, never claimed: expired
+		pastMission(user, quiz, today.minusDays(1), 2, "IN_PROGRESS");
+		pastMission(user, add, today, 1, "IN_PROGRESS"); // still running: not reported
+
+		String sql = Files.readString(Path.of("reports/daily_mission_report.sql")).trim();
+		List<Map<String, Object>> rows = jdbc().queryForList(sql.substring(0, sql.length() - 1));
+
+		assertThat(rows).extracting(row -> row.get("code") + " " + row.get("stage") + " " + row.get("assigned") + " "
+				+ row.get("completed_pct") + " " + row.get("claimed_pct") + " " + row.get("expired_pct"))
+				.containsExactly(
+						"ADD_5_WORDS 1. Ngày đầu 1 100.0 100.0 0.0",
+						"ADD_5_WORDS 3. Sau tuần đầu 1 100.0 0.0 100.0",
+						"QUIZ_SCORE_80 3. Sau tuần đầu 1 0.0 0.0 0.0");
+	}
+
+	private void pastMission(User user, MissionTemplate template, LocalDate date, int slot, String status) {
+		Long id = missionRepository.save(UserDailyMission.assign(user, template, date, slot)).getId();
+		if (!status.equals("IN_PROGRESS")) {
+			jdbc().update("UPDATE user_daily_missions SET status = ?, current_progress = target_value, completed_at = NOW(6),"
+					+ " claimed_at = IF(? = 'CLAIMED', NOW(6), NULL) WHERE id = ?", status, status, id);
+		}
+	}
+
+	@Test
 	void wordsAddedOnADayWithoutAnAddWordMissionLeaveNoCredit() {
 		catalog();
 		deactivate("ADD_5_WORDS");
@@ -521,7 +611,7 @@ class DailyMissionIntegrationTest {
 
 		assertThat(claimed.replayed()).isFalse();
 		assertThat(claimed.status()).isEqualTo(DailyMissionStatus.CLAIMED);
-		assertThat(claimed.rewardGranted()).isEqualTo(new MissionClaimResultDTO.Granted(20, 40, null, 0, 0));
+		assertThat(claimed.rewardGranted()).isEqualTo(new MissionClaimResultDTO.Granted(20, 40, null, null, 0, 0));
 		assertThat(claimed.coinBalance()).isEqualTo(20);
 		assertThat(claimed.totalXp()).isEqualTo(expBefore + 40);
 		assertThat(lostResponseRetry.replayed()).isTrue();
@@ -641,8 +731,13 @@ class DailyMissionIntegrationTest {
 		MissionClaimResultDTO first = dailyMissionService.claim(user.getId(), mission, "item");
 		MissionClaimResultDTO replay = dailyMissionService.claim(user.getId(), mission, "item");
 
-		assertThat(first.rewardGranted()).isEqualTo(new MissionClaimResultDTO.Granted(20, 40, booster.getCode(), 1, 0));
+		assertThat(first.rewardGranted())
+				.isEqualTo(new MissionClaimResultDTO.Granted(20, 40, booster.getCode(), booster.getName(), 1, 0));
 		assertThat(replay.rewardGranted()).isEqualTo(first.rewardGranted());
+		// The learner reads the item's name, never its code (shop.md §11.3).
+		assertThat(dailyMissionService.getToday(user.getId()).missions().stream()
+				.filter(m -> m.id().equals(mission)).findFirst().orElseThrow().reward().itemName())
+				.isEqualTo(booster.getName());
 		assertThat(userItemRepository.findByUserIdAndItemId(user.getId(), booster.getId()).orElseThrow().getQuantity())
 				.isEqualTo(1);
 	}
@@ -661,7 +756,8 @@ class DailyMissionIntegrationTest {
 		MissionClaimResultDTO first = dailyMissionService.claim(user.getId(), mission, "fb");
 		MissionClaimResultDTO replay = dailyMissionService.claim(user.getId(), mission, "fb");
 
-		assertThat(first.rewardGranted()).isEqualTo(new MissionClaimResultDTO.Granted(20, 40, frame.getCode(), 0, 7));
+		assertThat(first.rewardGranted())
+				.isEqualTo(new MissionClaimResultDTO.Granted(20, 40, frame.getCode(), frame.getName(), 0, 7));
 		assertThat(first.coinBalance()).isEqualTo(27);
 		assertThat(replay.replayed()).isTrue();
 		assertThat(replay.rewardGranted()).isEqualTo(first.rewardGranted());
@@ -813,18 +909,22 @@ class DailyMissionIntegrationTest {
 		templateRepository.save(edited);
 		seeder.seed(MissionCatalogSeeder.mvpCatalog());
 
-		assertThat(templateRepository.count()).isEqualTo(7);
+		assertThat(templateRepository.count()).isEqualTo(12);
 		assertThat(templateRepository.findByCode("KEEP_DAILY_STREAK").orElseThrow().getWeight()).isEqualTo(9);
 
-		deactivate("ADD_5_WORDS");
+		deactivate("ADD_5_WORDS", "ADD_3_WORDS");
 		assertThatThrownBy(() -> seeder.seed(MissionCatalogSeeder.mvpCatalog()))
 				.isInstanceOf(IllegalStateException.class).hasMessageContaining("invariant");
 	}
 	// --- Fixtures --------------------------------------------------------------------------------
 
-	/** The §5.1 catalog. */
+	/**
+	 * The §5.1 catalog as these tests were written for it: the PD-DM-07 templates (new triggers, which service-level
+	 * calls do not filter) are off; tests that need one turn it on.
+	 */
 	private void catalog() {
 		templateRepository.saveAll(MissionCatalogSeeder.mvpCatalog());
+		deactivate("SCAN_SAVE_3_WORDS", "SCAN_SAVE_5_WORDS", "STUDY_5_CARDS", "STUDY_10_CARDS");
 	}
 
 	private static MissionTemplate template(String code, MissionCategory category, MissionTriggerEvent trigger) {
@@ -916,6 +1016,19 @@ class DailyMissionIntegrationTest {
 			topicService.addTopicItem(topic.getId(), word("word" + i, "nghĩa " + i));
 		}
 		return topic;
+	}
+
+	private String scan(User user, String status, String detections) {
+		String id = UUID.randomUUID().toString();
+		jdbc().update("INSERT INTO scan_requests (id, user_id, status, result_json, created_at, updated_at) "
+				+ "VALUES (?, ?, ?, ?, NOW(6), NOW(6))", id, user.getId(), status,
+				detections == null ? null : "{\"imageWidth\":1,\"imageHeight\":1,\"detections\":" + detections + "}");
+		return id;
+	}
+
+	private static String detection(String label, String headwordJson) {
+		return "{\"label\":\"" + label + "\",\"headword\":" + headwordJson + ",\"score\":1,\"source\":\"IT\","
+				+ "\"reliability\":\"HIGH\",\"box\":{\"x1\":0,\"y1\":0,\"x2\":1,\"y2\":1}}";
 	}
 
 	private static CreateTopicItemDTO word(String word, String translation) {

@@ -49,6 +49,7 @@ class MissionMigrationScriptTest {
 			"user_daily_mission_progress_logs", "user_daily_mission_claims", "user_word_credits");
 	private static final Path SCRIPT = Path.of("migration/migration_daily_mission_v1.sql");
 	private static final Path CATALOG_TEMPLATE = Path.of("migration/migration_daily_mission_catalog_template.sql");
+	private static final Path TRIGGERS_SCRIPT = Path.of("migration/migration_daily_mission_triggers_v2.sql");
 
 	@Autowired
 	DataSource dataSource;
@@ -89,6 +90,34 @@ class MissionMigrationScriptTest {
 			assertThat(constraints(info, scratch, table)).as(table + " UNIQUE/CHECK")
 					.isEqualTo(constraints(info, entitySchema, table));
 		}
+	}
+
+	@Test
+	void triggersMigrationWidensADeployedSchemaAndIsIdempotent() throws Exception { // PD-DM-07
+		run(read(SCRIPT));
+		JdbcTemplate db = scratch();
+		String old = "('QUIZ_COMPLETED', 'LEARNING_ACTIVITY_RECORDED', 'TOPIC_ITEM_CREATED', 'SHOP_ITEM_PURCHASED', 'BOOSTER_USED')";
+		for (String table : List.of("mission_templates", "user_daily_missions")) { // the pre-SRS deployed CHECK
+			String chk = table + "_chk_3";
+			db.execute("ALTER TABLE " + table + " DROP CHECK " + chk);
+			db.execute("ALTER TABLE " + table + " ADD CONSTRAINT " + chk + " CHECK (trigger_event IN " + old + ")");
+		}
+		db.execute("ALTER TABLE mission_templates DROP CHECK mission_templates_chk_2");
+		db.execute("ALTER TABLE mission_templates ADD CONSTRAINT mission_templates_chk_2 CHECK (eligibility_rule IN "
+				+ "('NONE', 'HAS_IDLE_XP_BOOSTER', 'HAS_PURCHASABLE_ITEM'))");
+		assertRejected(db, template("SRS", "'SRS'", "'SRS_REVIEW_COMPLETED'", "NULL", "NULL", 1, 1, "NULL", "NULL"));
+
+		run(read(TRIGGERS_SCRIPT));
+		run(read(TRIGGERS_SCRIPT));
+
+		JdbcTemplate info = new JdbcTemplate(dataSource);
+		for (String table : TABLES) {
+			assertThat(constraints(info, scratch, table)).as(table + " UNIQUE/CHECK")
+					.isEqualTo(constraints(info, entitySchema, table));
+		}
+		db.update(template("SRS", "'SRS'", "'SRS_REVIEW_COMPLETED'", "NULL", "NULL", 1, 1, "NULL", "NULL"));
+		db.update(template("SCAN", "'SCAN'", "'SCAN_WORD_SAVED'", "NULL", "NULL", 1, 1, "NULL", "NULL"));
+		db.update("UPDATE mission_templates SET eligibility_rule = 'HAS_STUDY_CARDS_FOR_TARGET' WHERE code = 'SRS'");
 	}
 
 	@Test

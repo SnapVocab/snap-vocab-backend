@@ -59,8 +59,8 @@ CREATE TABLE IF NOT EXISTS `mission_templates` (
     CONSTRAINT `chk_mission_templates_weight` CHECK (`weight` >= 1),
     -- Enum domains, unnamed like Hibernate's (MySQL names them mission_templates_chk_1..3 in this order).
     CHECK (`category` IN ('SCAN', 'VOCABULARY', 'FLASHCARD', 'SRS', 'QUIZ', 'RETENTION', 'SHOP')),
-    CHECK (`eligibility_rule` IN ('NONE', 'HAS_IDLE_XP_BOOSTER', 'HAS_PURCHASABLE_ITEM')),
-    CHECK (`trigger_event` IN ('QUIZ_COMPLETED', 'LEARNING_ACTIVITY_RECORDED', 'TOPIC_ITEM_CREATED', 'SHOP_ITEM_PURCHASED', 'BOOSTER_USED'))
+    CHECK (`eligibility_rule` IN ('NONE', 'HAS_IDLE_XP_BOOSTER', 'HAS_PURCHASABLE_ITEM', 'HAS_STUDY_CARDS_FOR_TARGET')),
+    CHECK (`trigger_event` IN ('QUIZ_COMPLETED', 'LEARNING_ACTIVITY_RECORDED', 'TOPIC_ITEM_CREATED', 'SHOP_ITEM_PURCHASED', 'BOOSTER_USED', 'SRS_REVIEW_COMPLETED', 'SCAN_WORD_SAVED'))
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS `user_daily_missions` (
@@ -113,7 +113,7 @@ CREATE TABLE IF NOT EXISTS `user_daily_missions` (
     -- Enum domains, unnamed like Hibernate's (user_daily_missions_chk_1..3 in this order).
     CHECK (`category` IN ('SCAN', 'VOCABULARY', 'FLASHCARD', 'SRS', 'QUIZ', 'RETENTION', 'SHOP')),
     CHECK (`status` IN ('IN_PROGRESS', 'COMPLETED', 'CLAIMED')),
-    CHECK (`trigger_event` IN ('QUIZ_COMPLETED', 'LEARNING_ACTIVITY_RECORDED', 'TOPIC_ITEM_CREATED', 'SHOP_ITEM_PURCHASED', 'BOOSTER_USED'))
+    CHECK (`trigger_event` IN ('QUIZ_COMPLETED', 'LEARNING_ACTIVITY_RECORDED', 'TOPIC_ITEM_CREATED', 'SHOP_ITEM_PURCHASED', 'BOOSTER_USED', 'SRS_REVIEW_COMPLETED', 'SCAN_WORD_SAVED'))
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS `user_daily_mission_progress_logs` (
@@ -174,7 +174,10 @@ BEGIN
            COALESCE(SUM(`category` IN ('RETENTION', 'SHOP')), 0)
       INTO core_count, slot5_count
       FROM `mission_templates`
-     WHERE `is_active` = 1 AND `eligibility_rule` = 'NONE';
+     WHERE `is_active` = 1 AND `eligibility_rule` = 'NONE'
+       -- Only triggers every app can render (MissionTriggerEvent.LEGACY, PD-DM-13).
+       AND `trigger_event` IN ('QUIZ_COMPLETED', 'LEARNING_ACTIVITY_RECORDED', 'TOPIC_ITEM_CREATED',
+                               'SHOP_ITEM_PURCHASED', 'BOOSTER_USED');
     IF NOT (core_count >= 4 AND (slot5_count >= 1 OR core_count >= 5)) THEN
         SIGNAL SQLSTATE '45000'
             SET MESSAGE_TEXT = 'MISSION_POOL_INSUFFICIENT: active catalog violates daily_mission.md 4.2 invariant';

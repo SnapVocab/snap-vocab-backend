@@ -39,6 +39,7 @@ import vn.ptit.snapvocab.config.DataInitializer;
 import vn.ptit.snapvocab.mission.service.MissionTracker;
 import vn.ptit.snapvocab.progress.service.ProgressEventListener;
 import vn.ptit.snapvocab.progress.service.ProgressService;
+import vn.ptit.snapvocab.progress.service.StreakFreezeService;
 import vn.ptit.snapvocab.quiz.domain.Quiz;
 import vn.ptit.snapvocab.quiz.domain.QuizQuestion;
 import vn.ptit.snapvocab.quiz.domain.dto.CheckQuestionRequest;
@@ -72,7 +73,7 @@ import vn.ptit.snapvocab.xp.service.XpService;
 @LocalMySqlJpaTest
 @Import({ DataInitializer.class, SemanticBindingMigration.class, QuizService.class, QuizContentResolver.class,
 		QuizGenerator.class, XpService.class, TopicService.class, MissionTracker.class, ProgressService.class,
-		ProgressEventListener.class, BadgeService.class, BadgeIntegrationTest.Beans.class })
+		StreakFreezeService.class, ProgressEventListener.class, BadgeService.class, BadgeIntegrationTest.Beans.class })
 class BadgeIntegrationTest {
 
 	@TestConfiguration

@@ -40,6 +40,21 @@ public interface TopicItemRepository extends JpaRepository<TopicItem, Long> {
 			Pageable pageable
 	);
 
+	interface CollectionWordCount {
+		Long getCollectionId();
+
+		Long getTotal();
+	}
+
+	@Query("""
+			SELECT ti.topic.collection.id AS collectionId, COUNT(ti) AS total FROM TopicItem ti
+			WHERE ti.topic.collection.id IN :collectionIds
+			GROUP BY ti.topic.collection.id
+			""")
+	List<CollectionWordCount> countByCollectionIds(@Param("collectionIds") List<Long> collectionIds);
+
+	long countByTopicIdIn(List<Long> topicIds);
+
 	@Query("SELECT COUNT(ti) FROM TopicItem ti WHERE ti.topic.collection.owner.id = :userId")
 	long countOwnedBy(@Param("userId") Long userId);
 

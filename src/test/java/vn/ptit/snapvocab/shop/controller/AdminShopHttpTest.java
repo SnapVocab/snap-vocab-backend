@@ -85,8 +85,8 @@ class AdminShopHttpTest {
 	@AfterEach
 	void cleanUp() {
 		// The learner purchase feeds the daily-mission tracker, which creates mission rows (FK → users).
-		for (String table : List.of("user_daily_mission_progress_logs", "user_daily_missions", "experience_logs",
-				"booster_activations", "coin_transactions", "user_items", "shop_items")) {
+		for (String table : List.of("streak_freeze_days", "user_daily_mission_progress_logs", "user_daily_missions",
+				"experience_logs", "booster_activations", "coin_transactions", "user_items", "shop_items")) {
 			jdbc.update("DELETE FROM " + table);
 		}
 		jdbc.update("DELETE FROM users WHERE email LIKE 'shop-admin-it-%'");
@@ -114,6 +114,8 @@ class AdminShopHttpTest {
 		long t = create(theme("THEME_OCEAN", "MIDNIGHT_NEON"));
 		create(frame("FRAME_GOLD_WEEKLY"));
 		create(booster("XP_BOOSTER_X2_30M"));
+		// Creating and publishing can share one clock tick; age the new rows so the publish is strictly newest.
+		jdbc.update("UPDATE shop_items SET updated_at = updated_at - INTERVAL 1 SECOND");
 		publish(t);
 
 		JsonNode all = call(admin, "GET", ITEMS, null, 200);
@@ -438,7 +440,8 @@ class AdminShopHttpTest {
 		create(theme("THEME_OCEAN", "MIDNIGHT_NEON"));
 		JsonNode data = call(admin, "GET", "/api/admin/shop/item-types", null, 200).path("data");
 
-		assertThat(data.path("types").findValuesAsText("type")).containsExactly("THEME", "AVATAR_FRAME", "XP_BOOSTER");
+		assertThat(data.path("types").findValuesAsText("type"))
+				.containsExactly("THEME", "AVATAR_FRAME", "XP_BOOSTER", "STREAK_FREEZE");
 		JsonNode themeKey = data.path("types").get(0).path("fields").get(0);
 		assertThat(themeKey.path("name").asText()).isEqualTo("themeKey");
 		assertThat(themeKey.path("inputType").asText()).isEqualTo("SELECT");
@@ -453,9 +456,42 @@ class AdminShopHttpTest {
 		assertThat(duration.path("max").asInt()).isEqualTo(180);
 		assertThat(duration.path("defaultValue").asInt()).isEqualTo(30);
 
+		// streak_freeze.md §6, PD-SF-03: passive, holds 1–5, default 2.
+		JsonNode freeze = data.path("types").get(3);
+		assertThat(freeze.path("behavior").asText()).isEqualTo("PASSIVE");
+		assertThat(freeze.path("stackable").asBoolean()).isTrue();
+		JsonNode held = freeze.path("fields").get(0);
+		assertThat(held.path("name").asText()).isEqualTo("maxQuantity");
+		assertThat(held.path("min").asInt()).isEqualTo(1);
+		assertThat(held.path("max").asInt()).isEqualTo(5);
+		assertThat(held.path("defaultValue").asInt()).isEqualTo(2);
+
 		JsonNode price = StreamSupport.stream(data.path("commonFields").spliterator(), false)
 				.filter(f -> f.path("name").asText().equals("price")).findFirst().orElseThrow();
 		assertThat(price.path("max").asLong()).isEqualTo(100_000);
+	}
+
+	@Test
+	void streakFreezeTakesOnlyMaxQuantityAndOneCanBeLive() throws Exception { // AC-SF-08
+		Map<String, Object> withDuration = freeze("STREAK_FREEZE_X");
+		withDuration.put("boostDurationMinutes", 30);
+		JsonNode foreign = call(admin, "POST", ITEMS, withDuration, 400);
+		assertThat(error(foreign)).isEqualTo("INVALID_SHOP_ITEM_CONFIG");
+		assertThat(firstField(foreign)).isEqualTo("boostDurationMinutes");
+		for (int bad : new int[] { 0, 6 }) {
+			Map<String, Object> body = freeze("STREAK_FREEZE_BAD");
+			body.put("maxQuantity", bad);
+			assertThat(firstField(call(admin, "POST", ITEMS, body, 400))).isEqualTo("maxQuantity");
+		}
+
+		JsonNode first = call(admin, "POST", ITEMS, freeze("STREAK_FREEZE_A"), 201).path("data");
+		assertThat(first.path("behavior").asText()).isEqualTo("PASSIVE");
+		publish(first.path("id").asLong());
+		long second = create(freeze("STREAK_FREEZE_B"));
+		JsonNode rejected = call(admin, "POST", ITEMS + "/" + second + "/publish", null, 400);
+		assertThat(error(rejected)).isEqualTo("INVALID_SHOP_ITEM_CONFIG");
+		assertThat(firstField(rejected)).isEqualTo("type");
+		assertThat(status(second)).isEqualTo("DRAFT");
 	}
 
 	@Test
@@ -498,6 +534,12 @@ class AdminShopHttpTest {
 		Map<String, Object> body = base(code, "XP_BOOSTER");
 		body.put("boostDurationMinutes", 30);
 		body.put("maxQuantity", 5);
+		return body;
+	}
+
+	private Map<String, Object> freeze(String code) {
+		Map<String, Object> body = base(code, "STREAK_FREEZE");
+		body.put("maxQuantity", 2);
 		return body;
 	}
 

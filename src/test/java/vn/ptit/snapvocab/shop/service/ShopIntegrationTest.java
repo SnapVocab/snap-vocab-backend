@@ -56,12 +56,13 @@ import vn.ptit.snapvocab.xp.domain.ExperienceLog;
 import vn.ptit.snapvocab.xp.domain.XpSourceType;
 import vn.ptit.snapvocab.xp.service.XpService;
 import vn.ptit.snapvocab.mission.service.MissionTracker;
+import vn.ptit.snapvocab.progress.service.StreakFreezeService;
 
 /** Shop / Inventory / Booster / Wallet / XP against LOCAL MySQL (real locks, constraints and generated columns). */
 @LocalMySqlJpaTest
 @RecordApplicationEvents
 @Import({ ShopService.class, InventoryService.class, WalletService.class, ShopRewardService.class, ShopMapper.class,
-		XpService.class, MissionTracker.class })
+		StreakFreezeService.class, XpService.class, MissionTracker.class })
 class ShopIntegrationTest {
 
 	@MockitoBean
@@ -93,8 +94,8 @@ class ShopIntegrationTest {
 	@AfterEach
 	void cleanUp() {
 		JdbcTemplate jdbc = jdbc();
-		for (String table : List.of("experience_logs", "booster_activations", "coin_transactions", "user_items",
-				"shop_items")) {
+		for (String table : List.of("streak_freeze_days", "experience_logs", "booster_activations", "coin_transactions",
+				"user_items", "shop_items")) {
 			jdbc.update("DELETE FROM " + table);
 		}
 		jdbc.update("DELETE FROM users WHERE email LIKE 'shop-it-%'");

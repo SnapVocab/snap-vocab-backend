@@ -57,10 +57,10 @@ public class UserSettings extends BaseTimeEntity {
 	@Column(nullable = false, length = 10)
 	private ThemePreference theme = ThemePreference.SYSTEM;
 
-	/** Words the learner aims to study each day. */
+	/** New words the learner may start each day; due reviews are never capped (learn_ui.md UI-LEARN-02). */
 	@Builder.Default
 	@Column(name = "daily_goal", nullable = false)
-	private Integer dailyGoal = 20;
+	private Integer dailyGoal = 10;
 
 	/** Maximum cards returned in one study queue. */
 	@Builder.Default

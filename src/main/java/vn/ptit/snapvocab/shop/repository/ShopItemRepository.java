@@ -41,6 +41,8 @@ public interface ShopItemRepository extends JpaRepository<ShopItem, Long> {
 
 	boolean existsByThemeKeyAndIdNot(ThemeKey themeKey, Long id);
 
+	boolean existsByTypeAndStatusAndIdNot(ShopItemType type, ShopItemStatus status, Long id);
+
 	@Query("SELECT i.themeKey FROM ShopItem i WHERE i.themeKey IS NOT NULL")
 	List<ThemeKey> findUsedThemeKeys();
 }

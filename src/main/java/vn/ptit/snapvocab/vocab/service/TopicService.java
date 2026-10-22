@@ -3,8 +3,10 @@ package vn.ptit.snapvocab.vocab.service;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -31,10 +33,15 @@ import vn.ptit.snapvocab.common.exception.ResourceNotFoundException;
 import vn.ptit.snapvocab.mission.domain.enumeration.MissionTriggerEvent;
 import vn.ptit.snapvocab.mission.service.MissionFacts;
 import vn.ptit.snapvocab.mission.service.MissionTracker;
+import vn.ptit.snapvocab.progress.domain.enumeration.LearningEventType;
+import vn.ptit.snapvocab.progress.service.ProgressService;
 import vn.ptit.snapvocab.quiz.service.QuizContentResolver;
 import vn.ptit.snapvocab.security.AuthoritiesConstants;
 import vn.ptit.snapvocab.shop.service.Economy;
 import vn.ptit.snapvocab.security.SecurityUtils;
+import vn.ptit.snapvocab.scan.domain.enumeration.ScanStatus;
+import vn.ptit.snapvocab.scan.repository.ScanRequestRepository;
+import vn.ptit.snapvocab.scan.service.ScanDetectedWords;
 import vn.ptit.snapvocab.user.domain.User;
 import vn.ptit.snapvocab.user.repository.UserRepository;
 import vn.ptit.snapvocab.vocab.domain.Collection;
@@ -91,6 +98,8 @@ public class TopicService {
 	private final MissionTracker missionTracker;
 	private final BadgeService badgeService;
 	private final QuizContentResolver quizContentResolver;
+	private final ScanRequestRepository scanRequestRepository;
+	private final ProgressService progressService;
 	private final Logger LOG = LoggerFactory.getLogger(TopicService.class);
 
 	/**
@@ -728,6 +737,16 @@ public class TopicService {
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	@CacheEvict(cacheNames = "topic-items", allEntries = true)
 	public TopicItemData addTopicItem(Long topicId, CreateTopicItemDTO createTopicItemDTO) {
+		return addTopicItem(topicId, createTopicItemDTO, null);
+	}
+
+	/**
+	 * {@code scanRequestId}: the scan the word was saved from. It only feeds the SCAN_WORD_SAVED mission; an unknown,
+	 * foreign or unfinished scan, or a word the scan did not detect, still saves the word (daily_mission.md §6.1).
+	 */
+	@Transactional(isolation = Isolation.READ_COMMITTED)
+	@CacheEvict(cacheNames = "topic-items", allEntries = true)
+	public TopicItemData addTopicItem(Long topicId, CreateTopicItemDTO createTopicItemDTO, String scanRequestId) {
 		Topic topic = this.topicRepository.findById(topicId)
 				.orElseThrow(() -> new ResourceNotFoundException("Topic not found with id: " + topicId));
 
@@ -847,12 +866,29 @@ public class TopicService {
 			if (wordHash != null) {
 				badgeService.recordWordCredit(learnerId, wordHash, actionInstant);
 			}
+			if (wordHash != null && scanRequestId != null && scanDetected(learnerId, scanRequestId, wordHash)) {
+				// One credit per word per scan: saving it again, or into another topic, does not count twice.
+				String sourceKey = "SCAN_SAVE:" + scanRequestId + ":" + HexFormat.of().formatHex(wordHash);
+				missionTracker.apply(learnerId, missionDate, MissionTriggerEvent.SCAN_WORD_SAVED, sourceKey,
+						MissionFacts.NONE, actionInstant);
+				// Saving a scanned word is a learning activity (PO 2026-10-22): streak and KEEP_DAILY_STREAK.
+				progressService.record(learnerId, LearningEventType.WORD_SCANNED_AND_SAVED, sourceKey,
+						Map.of("topicItemId", savedItem.getId(), "scanRequestId", scanRequestId), actionInstant);
+			}
 		}
 		return TopicItemData.builder()
 				.topicItemId(savedItem.getId())
 				.createdAt(savedItem.getCreatedAt())
 				.groups(responseGroups)
 				.build();
+	}
+
+	private boolean scanDetected(Long learnerId, String scanRequestId, byte[] wordHash) {
+		return scanRequestRepository.findByIdAndUser_Id(scanRequestId, learnerId)
+				.filter(scan -> scan.getStatus() == ScanStatus.DONE)
+				.map(scan -> ScanDetectedWords.of(scan.getResultJson()).stream()
+						.anyMatch(word -> Arrays.equals(MissionTracker.wordHash(word), wordHash)))
+				.orElse(false);
 	}
 
 	private Map<String, Object> buildAndValidateValues(TopicItemAttributeGroup groupInstance,
