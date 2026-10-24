@@ -47,6 +47,7 @@ import vn.ptit.snapvocab.shop.repository.UserItemRepository;
 import vn.ptit.snapvocab.shop.service.ShopPurchasePolicy;
 import vn.ptit.snapvocab.user.domain.User;
 import vn.ptit.snapvocab.user.repository.UserRepository;
+import vn.ptit.snapvocab.vocab.repository.TopicItemRepository;
 
 /**
  * Assignment and progress of Daily Missions (daily_mission.md §4, §6). Both always join the caller's transaction
@@ -82,12 +83,14 @@ public class MissionTracker {
 	private final UserItemRepository userItemRepository;
 	private final ShopItemRepository shopItemRepository;
 	private final BoosterActivationRepository activationRepository;
+	private final TopicItemRepository topicItemRepository;
 	private final Counter poolInsufficient;
 
 	public MissionTracker(MissionTemplateRepository templateRepository, UserDailyMissionRepository missionRepository,
 			UserDailyMissionProgressLogRepository progressLogRepository, UserWordCreditRepository wordCreditRepository,
 			UserRepository userRepository, UserItemRepository userItemRepository, ShopItemRepository shopItemRepository,
-			BoosterActivationRepository activationRepository, ObjectProvider<MeterRegistry> meterRegistry) {
+			BoosterActivationRepository activationRepository, TopicItemRepository topicItemRepository,
+			ObjectProvider<MeterRegistry> meterRegistry) {
 		this.templateRepository = templateRepository;
 		this.missionRepository = missionRepository;
 		this.progressLogRepository = progressLogRepository;
@@ -96,6 +99,7 @@ public class MissionTracker {
 		this.userItemRepository = userItemRepository;
 		this.shopItemRepository = shopItemRepository;
 		this.activationRepository = activationRepository;
+		this.topicItemRepository = topicItemRepository;
 		// Exported as mission_pool_insufficient_total (daily_mission.md §12); expected to stay 0, alert on any increase.
 		this.poolInsufficient = Counter.builder(POOL_INSUFFICIENT_METRIC)
 				.description("ensureAssigned results that could not fill 5 slots (catalog misconfigured)")
@@ -259,6 +263,7 @@ public class MissionTracker {
 							.anyMatch(item -> ShopPurchasePolicy.canBuyNow(item, quantities.getOrDefault(item.getId(), 0),
 									coin, now));
 				}
+				case HAS_STUDY_CARDS_FOR_TARGET -> topicItemRepository.existsOwnedBy(userId);
 			};
 		}
 

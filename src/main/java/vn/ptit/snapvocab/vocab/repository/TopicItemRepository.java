@@ -46,6 +46,10 @@ public interface TopicItemRepository extends JpaRepository<TopicItem, Long> {
 	@Query("SELECT COUNT(ti) FROM TopicItem ti WHERE ti.topic.collection.owner.id = :userId")
 	long countOwnedBy(@Param("userId") Long userId);
 
+	default boolean existsOwnedBy(Long userId) {
+		return countOwnedBy(userId) > 0;
+	}
+
 	@Query("""
 			SELECT DISTINCT ti
 			FROM TopicItem ti
