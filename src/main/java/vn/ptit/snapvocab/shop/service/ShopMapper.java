@@ -26,6 +26,7 @@ public class ShopMapper {
 			case AVATAR_FRAME -> new ItemConfig(null, url(item.getFrameAssetKey()), null, null, null);
 			case XP_BOOSTER -> new ItemConfig(null, null, ShopItemType.XP_BOOSTER_MULTIPLIER,
 					item.boostDurationMinutesOrDefault(), item.maxQuantityOrDefault());
+			case STREAK_FREEZE -> new ItemConfig(null, null, null, null, item.maxQuantityOrDefault());
 		};
 	}
 
