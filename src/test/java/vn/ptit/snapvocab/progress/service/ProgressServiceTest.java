@@ -19,14 +19,18 @@ class ProgressServiceTest {
 		assertThat(ProgressService.nextStreak(4, TODAY, TODAY)).isEqualTo(4);
 		assertThat(ProgressService.nextStreak(4, TODAY.minusDays(1), TODAY)).isEqualTo(5);
 		assertThat(ProgressService.nextStreak(4, TODAY.minusDays(2), TODAY)).isEqualTo(1);
+		assertThat(ProgressService.nextStreak(1, TODAY, TODAY)).isEqualTo(1);
+		assertThat(ProgressService.nextStreak(0, TODAY.minusDays(1), TODAY)).isEqualTo(2);
 	}
 
 	@Test
-	void storedStreakIsBrokenAfterAMissedDay() {
+	void missedDaysAndNewLearnersHaveABaselineOfOne() {
 		assertThat(ProgressService.currentStreak(4, TODAY, TODAY)).isEqualTo(4);
 		assertThat(ProgressService.currentStreak(4, TODAY.minusDays(1), TODAY)).isEqualTo(4);
-		assertThat(ProgressService.currentStreak(4, TODAY.minusDays(2), TODAY)).isZero();
-		assertThat(ProgressService.currentStreak(0, null, TODAY)).isZero();
+		assertThat(ProgressService.currentStreak(4, TODAY.minusDays(2), TODAY)).isEqualTo(1);
+		assertThat(ProgressService.currentStreak(0, null, TODAY)).isEqualTo(1);
+		assertThat(ProgressService.currentStreak(0, TODAY, TODAY)).isEqualTo(1);
+		assertThat(ProgressService.currentStreak(4, TODAY.plusDays(1), TODAY)).isEqualTo(1);
 	}
 
 	@Test

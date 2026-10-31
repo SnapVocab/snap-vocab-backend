@@ -2,7 +2,7 @@ package vn.ptit.snapvocab.badge.domain.enumeration;
 
 /** What a badge threshold is compared against (badges.md §3). */
 public enum BadgeMetric {
-	/** {@code users.longest_streak_days}; a study day is a day with a completed quiz (PD-BDG-11). */
+	/** {@code users.longest_streak_days}; a study day has a completed quiz or an accepted SRS rating. */
 	LONGEST_STREAK_DAYS,
 	/** Quizzes with status {@code COMPLETED}. */
 	QUIZ_COMPLETED,

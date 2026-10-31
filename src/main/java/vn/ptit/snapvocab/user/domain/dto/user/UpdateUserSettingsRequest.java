@@ -1,23 +1,19 @@
 package vn.ptit.snapvocab.user.domain.dto.user;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.Pattern;
 import java.time.LocalTime;
-import vn.ptit.snapvocab.user.domain.enumeration.ThemePreference;
 
 /**
  * Partial update: every field is optional, and null leaves the stored value
  * alone. Turning the reminder off therefore needs {@code srsReminderCleared}
  * rather than a null time.
  */
+// Older clients may still send these device-local fields; never persist them.
+@JsonIgnoreProperties({"uiLanguage", "theme"})
 public record UpdateUserSettingsRequest(
-		@Pattern(regexp = "vi|en", message = "uiLanguage must be vi or en")
-		String uiLanguage,
-
-		ThemePreference theme,
-
 		@Min(value = 1, message = "dailyGoal must be at least 1")
 		@Max(value = 500, message = "dailyGoal must be at most 500")
 		Integer dailyGoal,

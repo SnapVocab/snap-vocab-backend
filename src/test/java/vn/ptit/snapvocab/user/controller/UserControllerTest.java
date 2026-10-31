@@ -29,7 +29,6 @@ import vn.ptit.snapvocab.user.domain.dto.user.UpdateProfileRequest;
 import vn.ptit.snapvocab.user.domain.dto.user.UpdateUserSettingsRequest;
 import vn.ptit.snapvocab.user.domain.dto.user.UserDTO;
 import vn.ptit.snapvocab.user.domain.dto.user.UserSettingsDTO;
-import vn.ptit.snapvocab.user.domain.enumeration.ThemePreference;
 import vn.ptit.snapvocab.user.service.UserService;
 import vn.ptit.snapvocab.user.service.UserSettingsService;
 
@@ -87,11 +86,12 @@ class UserControllerTest {
 	void getSettingsUsesTheUserId() throws Exception {
 		when(userService.getCurrentUserId()).thenReturn(Optional.of(USER_ID));
 		when(userSettingsService.get(USER_ID)).thenReturn(
-				new UserSettingsDTO("vi", ThemePreference.SYSTEM, 20, 20, LocalTime.of(20, 0), true));
+				new UserSettingsDTO(20, 20, LocalTime.of(20, 0), true));
 
 		mockMvc.perform(get("/api/users/me/settings"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.uiLanguage").value("vi"))
+				.andExpect(jsonPath("$.uiLanguage").doesNotExist())
+				.andExpect(jsonPath("$.theme").doesNotExist())
 				.andExpect(jsonPath("$.dailyGoal").value(20))
 				.andExpect(jsonPath("$.studySessionCardLimit").value(20))
 				.andExpect(jsonPath("$.pushEnabled").value(true));
@@ -101,12 +101,14 @@ class UserControllerTest {
 	void putSettingsPassesThePartialUpdateThrough() throws Exception {
 		when(userService.getCurrentUserId()).thenReturn(Optional.of(USER_ID));
 		when(userSettingsService.update(eq(USER_ID), any())).thenReturn(
-				new UserSettingsDTO("en", ThemePreference.DARK, 30, 20, null, false));
+				new UserSettingsDTO(30, 20, null, false));
 
 		mockMvc.perform(put("/api/users/me/settings").contentType(MediaType.APPLICATION_JSON)
-						.content("{\"uiLanguage\":\"en\",\"theme\":\"DARK\",\"dailyGoal\":30,\"srsReminderCleared\":true}"))
+						.content("{\"dailyGoal\":30,\"srsReminderCleared\":true}"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.theme").value("DARK"));
+				.andExpect(jsonPath("$.dailyGoal").value(30))
+				.andExpect(jsonPath("$.theme").doesNotExist())
+				.andExpect(jsonPath("$.uiLanguage").doesNotExist());
 
 		ArgumentCaptor<UpdateUserSettingsRequest> request = ArgumentCaptor.forClass(UpdateUserSettingsRequest.class);
 		verify(userSettingsService).update(eq(USER_ID), request.capture());
@@ -114,12 +116,19 @@ class UserControllerTest {
 	}
 
 	@Test
-	void settingsRejectAnUnsupportedLanguage() throws Exception {
+	void legacyDevicePreferencesAreIgnored() throws Exception {
+		when(userService.getCurrentUserId()).thenReturn(Optional.of(USER_ID));
+		when(userSettingsService.update(eq(USER_ID), any())).thenReturn(
+				new UserSettingsDTO(30, 20, null, true));
 		mockMvc.perform(put("/api/users/me/settings").contentType(MediaType.APPLICATION_JSON)
-						.content("{\"uiLanguage\":\"fr\"}"))
-				.andExpect(status().isBadRequest());
+						.content("{\"uiLanguage\":\"fr\",\"theme\":\"DARK\",\"dailyGoal\":30}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.uiLanguage").doesNotExist())
+				.andExpect(jsonPath("$.theme").doesNotExist());
 
-		verifyNoInteractions(userSettingsService);
+		ArgumentCaptor<UpdateUserSettingsRequest> request = ArgumentCaptor.forClass(UpdateUserSettingsRequest.class);
+		verify(userSettingsService).update(eq(USER_ID), request.capture());
+		org.assertj.core.api.Assertions.assertThat(request.getValue().dailyGoal()).isEqualTo(30);
 	}
 
 	@Test
