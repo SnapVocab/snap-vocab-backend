@@ -2,8 +2,6 @@ package vn.ptit.snapvocab.user.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
@@ -18,7 +16,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import vn.ptit.snapvocab.common.domain.BaseTimeEntity;
-import vn.ptit.snapvocab.user.domain.enumeration.ThemePreference;
 
 /**
  * Per-user preferences shown on the Settings screen (MH-PROFILE-03). Kept apart
@@ -46,16 +43,6 @@ public class UserSettings extends BaseTimeEntity {
 	@OneToOne(fetch = FetchType.LAZY)
 	@JoinColumn(name = "user_id")
 	private User user;
-
-	/** App interface language (i18n), not the language being learned. */
-	@Builder.Default
-	@Column(name = "ui_language", nullable = false, length = 10)
-	private String uiLanguage = "vi";
-
-	@Builder.Default
-	@Enumerated(EnumType.STRING)
-	@Column(nullable = false, length = 10)
-	private ThemePreference theme = ThemePreference.SYSTEM;
 
 	/** Words the learner aims to study each day. */
 	@Builder.Default

@@ -45,12 +45,6 @@ public class UserSettingsService {
 	public UserSettingsDTO update(Long userId, UpdateUserSettingsRequest request) {
 		UserSettings settings = getOrCreate(userId);
 
-		if (request.uiLanguage() != null) {
-			settings.setUiLanguage(request.uiLanguage());
-		}
-		if (request.theme() != null) {
-			settings.setTheme(request.theme());
-		}
 		if (request.dailyGoal() != null) {
 			settings.setDailyGoal(request.dailyGoal());
 		}
@@ -92,8 +86,6 @@ public class UserSettingsService {
 
 	private UserSettingsDTO toDto(UserSettings settings) {
 		return new UserSettingsDTO(
-				settings.getUiLanguage(),
-				settings.getTheme(),
 				settings.getDailyGoal(),
 				settings.getStudySessionCardLimit(),
 				settings.getSrsReminderAt(),

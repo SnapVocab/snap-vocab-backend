@@ -141,12 +141,13 @@ public class ProgressService {
 		if (today.equals(last)) {
 			return Math.max(stored, 1);
 		}
-		return today.minusDays(1).equals(last) ? stored + 1 : 1;
+		return today.minusDays(1).equals(last) ? Math.max(stored, 1) + 1 : 1;
 	}
 
-	/** Stored streak is only live if the learner studied today or yesterday; otherwise it is already broken. */
+	/** One is the baseline, including before the first study and after a missed day. */
 	static int currentStreak(int stored, LocalDate last, LocalDate today) {
-		return last != null && !last.isBefore(today.minusDays(1)) ? stored : 0;
+		return last != null && !last.isBefore(today.minusDays(1)) && !last.isAfter(today)
+				? Math.max(stored, 1) : 1;
 	}
 
 	static List<ProgressHistoryDTO.Bucket> buckets(HistoryPeriod period, LocalDate from, LocalDate to,

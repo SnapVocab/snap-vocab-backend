@@ -14,6 +14,12 @@ for the active Spring profile and use matching service tokens on both services.
 
 ## Overview
 
+Theme and interface language are device-local app preferences stored in MMKV;
+`/api/users/me/settings` only stores account preferences such as study goals and reminders.
+For existing databases, stop the old backend and run
+[`migration_remove_device_preferences.sql`](migration/migration_remove_device_preferences.sql)
+before starting this version. Hibernate schema updates do not remove the old columns.
+
 SnapVocab helps learners build English vocabulary by taking photos of real-world objects. The system
 uses Florence-2 zero-shot object detection (CLIP optional) to identify objects in images, then returns English words with Vietnamese
 definitions, pronunciations, and audio.
