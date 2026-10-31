@@ -1,7 +1,6 @@
 package vn.ptit.snapvocab.user.domain.dto.user;
 
 import java.time.LocalTime;
-import vn.ptit.snapvocab.user.domain.enumeration.ThemePreference;
 
 /**
  * Settings shown on MH-PROFILE-03.
@@ -10,8 +9,6 @@ import vn.ptit.snapvocab.user.domain.enumeration.ThemePreference;
  *                      when off
  */
 public record UserSettingsDTO(
-		String uiLanguage,
-		ThemePreference theme,
 		Integer dailyGoal,
 		Integer studySessionCardLimit,
 		LocalTime srsReminderAt,
