@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 class UserLegacyNullTest {
 
 	@Test
-	void nullCountersFromLegacyRowsReadAsZero() {
+	void legacyCountersUseZeroBalancesAndABaselineStreakOfOne() {
 		User user = new User();
 		user.setExp(null);
 		user.setCoin(null);
@@ -15,6 +15,11 @@ class UserLegacyNullTest {
 
 		assertThat(user.getExp()).isZero();
 		assertThat(user.getCoin()).isZero();
-		assertThat(user.getStreakDays()).isZero();
+		assertThat(user.getStreakDays()).isEqualTo(1);
+		user.normalizeStreak();
+		assertThat(user.getStreakDays()).isEqualTo(1);
+		user.setStreakDays(0);
+		user.normalizeStreak();
+		assertThat(user.getStreakDays()).isEqualTo(1);
 	}
 }

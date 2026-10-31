@@ -170,7 +170,7 @@ public class AuthenticationService {
 		User u = User.builder()
 				.exp(0L)
 				.coin(0L)
-				.streakDays(0)
+				.streakDays(1)
 				.activated(false)
 				.email(requestRegisterDTO.getEmail())
 				.authorities(Set.of(userAuthority))
