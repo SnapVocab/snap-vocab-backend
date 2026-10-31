@@ -1,7 +1,7 @@
 package vn.ptit.snapvocab.scan.domain.dto.scan;
 
 /**
- * Mirrors the AI service's {@code Detection} schema (ai-service/app/schemas.py).
+ * Mirrors the AI service's {@code Detection} schema (snap-vocab-ai: app/schemas.py).
  *
  * @param headword   singular last word of {@code label}, the dictionary fallback
  *                   when {@code label} itself has no entry
