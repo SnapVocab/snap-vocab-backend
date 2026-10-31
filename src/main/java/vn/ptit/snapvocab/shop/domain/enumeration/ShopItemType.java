@@ -3,7 +3,8 @@ package vn.ptit.snapvocab.shop.domain.enumeration;
 public enum ShopItemType {
 	THEME(Behavior.EQUIP, false),
 	AVATAR_FRAME(Behavior.EQUIP, false),
-	XP_BOOSTER(Behavior.ACTIVATE, true);
+	XP_BOOSTER(Behavior.ACTIVATE, true),
+	STREAK_FREEZE(Behavior.PASSIVE, true);
 
 	/** XP Booster multiplier is a developer constant, not item config (shop.md §2.3). */
 	public static final int XP_BOOSTER_MULTIPLIER = 2;
