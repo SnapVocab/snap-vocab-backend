@@ -5,6 +5,12 @@ Telecommunications Institute of Technology).
 
 - **Mobile app**: [snap-vocab-mobile](https://github.com/thanhthbm/SnapVocab) _(coming soon)_
 - **Backend**: this repo
+- **AI service**: [snap-vocab-ai](https://github.com/SnapVocab/snap-vocab-ai)
+
+The AI service is developed and deployed from its own repository. For local development,
+clone it separately and follow its README to start FastAPI on port 8000. The backend
+continues to call `POST /api/v1/detect` over HTTP; configure `ai-service.base-url`
+for the active Spring profile and use matching service tokens on both services.
 
 ## Overview
 

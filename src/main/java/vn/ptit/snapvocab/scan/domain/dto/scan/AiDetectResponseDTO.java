@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
 /**
- * Mirrors the AI service's {@code DetectResponse} schema (ai-service/app/schemas.py).
+ * Mirrors the AI service's {@code DetectResponse} schema (snap-vocab-ai: app/schemas.py).
  */
 public record AiDetectResponseDTO(
 		@JsonProperty("request_id") String requestId,
