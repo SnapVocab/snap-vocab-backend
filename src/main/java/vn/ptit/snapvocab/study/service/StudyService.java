@@ -17,15 +17,21 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.ptit.snapvocab.common.exception.ResourceNotFoundException;
+import vn.ptit.snapvocab.mission.domain.enumeration.MissionTriggerEvent;
+import vn.ptit.snapvocab.mission.service.MissionFacts;
+import vn.ptit.snapvocab.mission.service.MissionTracker;
+import vn.ptit.snapvocab.shop.service.Economy;
 import vn.ptit.snapvocab.security.AuthoritiesConstants;
 import vn.ptit.snapvocab.security.SecurityUtils;
 import vn.ptit.snapvocab.study.domain.StudyDailyCard;
 import vn.ptit.snapvocab.study.domain.dto.ReviewResultDTO;
+import vn.ptit.snapvocab.study.domain.dto.SrsReviewCompletedEvent;
 import vn.ptit.snapvocab.study.domain.dto.StudyCardDTO;
 import vn.ptit.snapvocab.study.domain.dto.StudyQueueDTO;
 import vn.ptit.snapvocab.study.exception.StudyQuotaExceededException;
@@ -66,6 +72,8 @@ public class StudyService {
 	private final UserRepository userRepository;
 	private final UserSettingsService userSettingsService;
 	private final TopicService topicService;
+	private final MissionTracker missionTracker;
+	private final ApplicationEventPublisher eventPublisher;
 	private final Scheduler scheduler = Scheduler.builder().build();
 
 	@Transactional
@@ -164,7 +172,11 @@ public class StudyService {
 	}
 
 	private ReviewResultDTO review(Long userId, Collection collection, TopicItem item, Rating rating) {
-		LocalDate today = LocalDate.now(STUDY_ZONE);
+		// Keep the same writer lock order as quizzes, progress and mission rewards.
+		Economy.lockUser(userRepository, userId);
+		Instant reviewedAt = Economy.now();
+		LocalDate today = LocalDate.ofInstant(reviewedAt, STUDY_ZONE);
+		missionTracker.ensureAssigned(userId, today, reviewedAt);
 		dailyProgressRepository.createIfMissing(userId, collection.getId(), today);
 		dailyProgressRepository.findForUpdate(userId, collection.getId(), today)
 				.orElseThrow(() -> new IllegalStateException("Daily progress row was not created"));
@@ -180,7 +192,6 @@ public class StudyService {
 
 		FsrsRecord record = studyQueueRepository.findForUpdate(userId, item.getId()).orElse(null);
 		Card previousCard = record == null ? newCard(item.getId()) : toFsrsCard(record);
-		Instant reviewedAt = Instant.now();
 		Card nextCard = scheduler.reviewCard(previousCard, rating, reviewedAt).card();
 
 		if (record == null) {
@@ -212,6 +223,11 @@ public class StudyService {
 		}
 		int studiedToday = (int) dailyCardRepository
 				.countByUserIdAndCollectionIdAndStudyDate(userId, collection.getId(), today);
+		SrsReviewCompletedEvent event = new SrsReviewCompletedEvent(userId, collection.getId(), item.getId(),
+				record.getReps(), rating, reviewedAt);
+		eventPublisher.publishEvent(event);
+		missionTracker.apply(userId, today, MissionTriggerEvent.SRS_REVIEW_COMPLETED, event.sourceKey(),
+				MissionFacts.NONE, reviewedAt);
 		return new ReviewResultDTO(item.getId(), record.getState(), record.getDue(),
 				record.getStability(), record.getDifficulty(), record.getReps(), record.getLapses(),
 				studiedToday, dailyGoal, Math.max(0, dailyGoal - studiedToday));
