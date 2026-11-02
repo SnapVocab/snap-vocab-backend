@@ -114,25 +114,25 @@ class StudyReviewXpTest {
 		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM experience_logs WHERE user_id = ? AND source_type = 'FLASHCARD_REVIEW'"
 				+ " AND base_amount = ?", Integer.class, user.getId(), StudyService.XP_PER_REVIEW)).isEqualTo(2);
 
-		// Reviewing is a learning activity (PO 2026-10-18), counted once per card per study day like XP.
+		// Every accepted rating is a learning activity (master 2026-10-31); only XP stays once per card per day.
 		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM learning_events WHERE user_id = ? AND event_type = 'SRS_REVIEW_COMPLETED'",
-				Integer.class, user.getId())).isEqualTo(2);
+				Integer.class, user.getId())).isEqualTo(3);
 		assertThat(userRepository.findById(user.getId()).orElseThrow().getStreakDays()).isEqualTo(1);
 		// Coin 0 and no booster ⇒ slot 5 is KEEP_DAILY_STREAK (daily_mission.md §5.1).
 		assertThat(jdbc.queryForObject("SELECT status FROM user_daily_missions WHERE user_id = ? AND code = 'KEEP_DAILY_STREAK'",
 				String.class, user.getId())).isEqualTo("COMPLETED");
-		// Same once-per-card-day rule: two cards, re-rating the first does not count. Slot 3 is its own slot.
+		// Every rating counts, re-rating the first card included. Slot 3 is its own slot.
 		entityManager.flush();
 		assertThat(jdbc.queryForMap("SELECT slot, current_progress FROM user_daily_missions WHERE user_id = ?"
-				+ " AND code = 'STUDY_5_CARDS'", user.getId())).containsEntry("slot", 3).containsEntry("current_progress", 2);
+				+ " AND code = 'STUDY_5_CARDS'", user.getId())).containsEntry("slot", 3).containsEntry("current_progress", 3);
 	}
 
 	@Test
-	void studyTenCardsGoesOnlyToALearnerWithTenCardsToStudyToday() { // PD-DM-12, HAS_STUDY_CARDS_FOR_TARGET
+	void studyTenCardsGoesOnlyToALearnerWithOwnWords() { // PD-DM-12, HAS_STUDY_CARDS_FOR_TARGET (master rule)
 		jdbc.update("UPDATE mission_templates SET is_active = (code = 'STUDY_10_CARDS')"
 				+ " WHERE code IN ('STUDY_5_CARDS', 'STUDY_10_CARDS')");
-		User ready = learnerWithOwnWords(10);
-		User shortOfCards = learnerWithOwnWords(9);
+		User ready = learnerWithOwnWords(1);
+		User shortOfCards = learnerWithOwnWords(0);
 
 		assertThat(dailyMissionService.getToday(ready.getId()).missions().get(2).code()).isEqualTo("STUDY_10_CARDS");
 		// Not eligible and no other SRS template: slot 3 falls back to a core template.

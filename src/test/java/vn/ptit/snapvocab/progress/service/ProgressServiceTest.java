@@ -19,6 +19,8 @@ class ProgressServiceTest {
 		assertThat(ProgressService.nextStreak(4, TODAY, TODAY)).isEqualTo(4);
 		assertThat(ProgressService.nextStreak(4, TODAY.minusDays(1), TODAY)).isEqualTo(5);
 		assertThat(ProgressService.nextStreak(4, TODAY.minusDays(2), TODAY)).isEqualTo(1);
+		assertThat(ProgressService.nextStreak(1, TODAY, TODAY)).isEqualTo(1);
+		assertThat(ProgressService.nextStreak(0, TODAY.minusDays(1), TODAY)).isEqualTo(2);
 	}
 
 	@Test
@@ -28,6 +30,13 @@ class ProgressServiceTest {
 		assertThat(StreakFreezeService.settle(4, TODAY.minusDays(1), null, 0, TODAY).streak(4, TODAY)).isEqualTo(4);
 		assertThat(StreakFreezeService.settle(4, TODAY.minusDays(2), null, 0, TODAY).streak(4, TODAY)).isZero();
 		assertThat(StreakFreezeService.settle(0, null, null, 0, TODAY).streak(0, TODAY)).isZero();
+	}
+
+	@Test
+	void missedDaysAndNewLearnersShowABaselineOfOne() {
+		assertThat(StreakFreezeService.settle(4, TODAY.minusDays(1), null, 0, TODAY).shownStreak(4, TODAY)).isEqualTo(4);
+		assertThat(StreakFreezeService.settle(4, TODAY.minusDays(2), null, 0, TODAY).shownStreak(4, TODAY)).isEqualTo(1);
+		assertThat(StreakFreezeService.settle(0, null, null, 0, TODAY).shownStreak(0, TODAY)).isEqualTo(1);
 	}
 
 	@Test

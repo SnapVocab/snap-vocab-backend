@@ -129,7 +129,7 @@ class StudyTodayTest {
 		assertThat(backlog.newCount()).isZero();
 		assertThat(backlog.sessionCount()).isEqualTo(1);
 
-		userSettingsService.update(user.getId(), new UpdateUserSettingsRequest(null, null, null, 10, null, null, null));
+		userSettingsService.update(user.getId(), new UpdateUserSettingsRequest(null, 10, null, null, null));
 		entityManager.flush();
 		jdbc.update("DELETE FROM study_daily_cards WHERE user_id = ?", user.getId());
 		jdbc.update("UPDATE users SET last_studied_at = DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 DAY) WHERE id = ?",
@@ -152,7 +152,7 @@ class StudyTodayTest {
 				.activated(true)
 				.build());
 		userSettingsService.update(user.getId(),
-				new UpdateUserSettingsRequest(null, null, newPerDay, sessionLimit, null, null, null));
+				new UpdateUserSettingsRequest(newPerDay, sessionLimit, null, null, null));
 		return user;
 	}
 

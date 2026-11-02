@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -39,6 +40,13 @@ public class TopicController {
 			@PathVariable Long topicId, Pageable pageable) {
 		LOG.info("[GET: /{}/items] Fetching topic items for topicId: {}", topicId, topicId);
 		return ResponseEntity.ok(topicService.getTopicItems(topicId, pageable));
+	}
+
+	@GetMapping("/{topicId}/items/{itemId}")
+	public ResponseEntity<TopicItemData> getTopicItem(
+			@PathVariable Long topicId, @PathVariable Long itemId) {
+		LOG.info("[GET: /{}/items/{}] Fetching topic item", topicId, itemId);
+		return ResponseEntity.ok(topicService.getTopicItem(topicId, itemId));
 	}
 
 	@GetMapping("/{topicId}/schema")
@@ -93,6 +101,24 @@ public class TopicController {
 				topicId, topicId, createTopicItemDTO);
 		return ResponseEntity.status(HttpStatus.CREATED)
 				.body(topicService.addTopicItem(topicId, createTopicItemDTO, scanRequestId));
+	}
+
+	@PutMapping("/{topicId}/items/{itemId}")
+	public ResponseEntity<TopicItemData> updateTopicItem(
+			@PathVariable Long topicId,
+			@PathVariable Long itemId,
+			@Valid @RequestBody CreateTopicItemDTO updateTopicItemDTO
+	) {
+		LOG.info("[PUT: /{}/items/{}] Updating topic item", topicId, itemId);
+		return ResponseEntity.ok(topicService.updateTopicItem(topicId, itemId, updateTopicItemDTO));
+	}
+
+	@DeleteMapping("/{topicId}/items/{itemId}")
+	public ResponseEntity<Void> deleteTopicItem(
+			@PathVariable Long topicId, @PathVariable Long itemId) {
+		LOG.info("[DELETE: /{}/items/{}] Deleting topic item", topicId, itemId);
+		topicService.deleteTopicItem(topicId, itemId);
+		return ResponseEntity.noContent().build();
 	}
 
 	@GetMapping("/{topicId}/cursor")

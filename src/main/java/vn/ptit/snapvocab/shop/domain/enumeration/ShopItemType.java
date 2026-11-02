@@ -4,7 +4,6 @@ public enum ShopItemType {
 	THEME(Behavior.EQUIP, false),
 	AVATAR_FRAME(Behavior.EQUIP, false),
 	XP_BOOSTER(Behavior.ACTIVATE, true),
-	/** One unit covers one missed study day, automatically (streak_freeze.md). */
 	STREAK_FREEZE(Behavior.PASSIVE, true);
 
 	/** XP Booster multiplier is a developer constant, not item config (shop.md §2.3). */

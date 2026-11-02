@@ -113,12 +113,12 @@ class MissionMigrationScriptTest {
 		JdbcTemplate db = scratch();
 		String old = "('QUIZ_COMPLETED', 'LEARNING_ACTIVITY_RECORDED', 'TOPIC_ITEM_CREATED', 'SHOP_ITEM_PURCHASED', 'BOOSTER_USED')";
 		for (String table : List.of("mission_templates", "user_daily_missions")) { // the pre-SRS deployed CHECK
-			String chk = table + "_chk_3";
+			String chk = "chk_" + table + "_trigger_event_values"; // explicit names since master 2026-10-24
 			db.execute("ALTER TABLE " + table + " DROP CHECK " + chk);
 			db.execute("ALTER TABLE " + table + " ADD CONSTRAINT " + chk + " CHECK (trigger_event IN " + old + ")");
 		}
-		db.execute("ALTER TABLE mission_templates DROP CHECK mission_templates_chk_2");
-		db.execute("ALTER TABLE mission_templates ADD CONSTRAINT mission_templates_chk_2 CHECK (eligibility_rule IN "
+		db.execute("ALTER TABLE mission_templates DROP CHECK chk_mission_templates_eligibility_rule_values");
+		db.execute("ALTER TABLE mission_templates ADD CONSTRAINT chk_mission_templates_eligibility_rule_values CHECK (eligibility_rule IN "
 				+ "('NONE', 'HAS_IDLE_XP_BOOSTER', 'HAS_PURCHASABLE_ITEM'))");
 		assertRejected(db, template("SRS", "'SRS'", "'SRS_REVIEW_COMPLETED'", "NULL", "NULL", 1, 1, "NULL", "NULL"));
 
@@ -420,16 +420,19 @@ class MissionMigrationScriptTest {
 				+ "information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY COLUMN_NAME", schema, table);
 	}
 
-	/** UNIQUE and CHECK constraints by name with their columns / normalized clause; FK names are Hibernate-generated. */
+	/**
+	 * Compare index names/columns and CHECK expressions. Hibernate-generated CHECK names can differ from the explicit
+	 * names in migration scripts without changing the constraints enforced by the database.
+	 */
 	private static List<Map<String, Object>> constraints(JdbcTemplate info, String schema, String table) {
 		List<Map<String, Object>> result = new ArrayList<>(info.queryForList("SELECT INDEX_NAME, NON_UNIQUE, "
 				+ "GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) AS cols FROM information_schema.STATISTICS "
 				+ "WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND (NON_UNIQUE = 0 OR INDEX_NAME LIKE 'idx\\_%') "
 				+ "GROUP BY INDEX_NAME, NON_UNIQUE ORDER BY INDEX_NAME", schema, table));
-		result.addAll(info.queryForList("SELECT c.CONSTRAINT_NAME, c.CHECK_CLAUSE FROM information_schema.CHECK_CONSTRAINTS c "
+		result.addAll(info.queryForList("SELECT c.CHECK_CLAUSE FROM information_schema.CHECK_CONSTRAINTS c "
 				+ "JOIN information_schema.TABLE_CONSTRAINTS t ON t.CONSTRAINT_SCHEMA = c.CONSTRAINT_SCHEMA "
 				+ "AND t.CONSTRAINT_NAME = c.CONSTRAINT_NAME WHERE t.TABLE_SCHEMA = ? AND t.TABLE_NAME = ? "
-				+ "AND t.CONSTRAINT_TYPE = 'CHECK' ORDER BY c.CONSTRAINT_NAME", schema, table));
+				+ "AND t.CONSTRAINT_TYPE = 'CHECK' ORDER BY c.CHECK_CLAUSE", schema, table));
 		return result;
 	}
 

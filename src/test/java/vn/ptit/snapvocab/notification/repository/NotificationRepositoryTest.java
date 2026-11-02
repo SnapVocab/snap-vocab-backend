@@ -74,7 +74,7 @@ class NotificationRepositoryTest {
 		assertThat(window).extracting(SrsReminderCandidate::getUserId).containsExactly(lan)
 				.doesNotContain(inactive, early, noReminder);
 		assertThat(window.get(0).getFirstName()).isEqualTo("Lan");
-		assertThat(window.get(0).getUiLanguage()).isEqualTo("vi");
+		assertThat(window.get(0).getUiLanguage()).isNull(); // language lives on the device; pushes render Vietnamese
 		assertThat(window.get(0).isPushEnabled()).isFalse();
 		assertThat(candidates(LocalTime.MIDNIGHT, LocalTime.MIDNIGHT, TODAY))
 				.extracting(SrsReminderCandidate::getUserId).containsExactly(midnight);
@@ -195,8 +195,8 @@ class NotificationRepositoryTest {
 				activated, firstName);
 		long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 		userIds.add(id);
-		jdbc.update("INSERT INTO user_settings (user_id, ui_language, theme, daily_goal, study_session_card_limit, "
-				+ "srs_reminder_at, push_enabled, created_at, updated_at) VALUES (?, 'vi', 'SYSTEM', 20, 20, ?, ?, NOW(6), NOW(6))",
+		jdbc.update("INSERT INTO user_settings (user_id, daily_goal, study_session_card_limit, "
+				+ "srs_reminder_at, push_enabled, created_at, updated_at) VALUES (?, 20, 20, ?, ?, NOW(6), NOW(6))",
 				id, reminderAt, pushEnabled);
 		return id;
 	}

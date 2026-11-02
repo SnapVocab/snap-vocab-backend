@@ -128,7 +128,7 @@ class NotificationJobsTest {
 
 	@Test
 	void remindsOnceAtTheChosenTimeAndPushesEveryDevice() { // AC-01, AC-04
-		long lan = learner("Lan", "vi", LocalTime.of(20, 0), true);
+		long lan = learner("Lan", LocalTime.of(20, 0), true);
 		String token = token(lan);
 		dueCards(lan, 12, 2);
 		dueCards(lan, 5, 4); // SUSPENDED: never due
@@ -157,14 +157,14 @@ class NotificationJobsTest {
 
 	@Test
 	void noDueCardsNoReminderPushOffInAppOnlyNoTimeNothing() { // AC-02, AC-03, AC-05
-		long empty = learner("Empty", "vi", LocalTime.of(20, 0), true);
+		long empty = learner("Empty", LocalTime.of(20, 0), true);
 		token(empty);
-		long quiet = learner("Quiet", "en", LocalTime.of(19, 45), false);
+		long quiet = learner("Quiet", LocalTime.of(19, 45), false);
 		String quietToken = token(quiet);
 		dueCards(quiet, 3, 2);
-		long unset = learner("Unset", "vi", null, true);
+		long unset = learner("Unset", null, true);
 		dueCards(unset, 50, 2);
-		long later = learner("Later", "vi", LocalTime.of(20, 5), true);
+		long later = learner("Later", LocalTime.of(20, 5), true);
 		dueCards(later, 2, 2);
 
 		jobs.runSrsReminders(AT_20);
@@ -175,13 +175,13 @@ class NotificationJobsTest {
 		assertThat(inboxRows(quiet)).isOne();
 		assertThat(jdbc.queryForObject("SELECT n.content FROM notifications n JOIN user_notifications un"
 				+ " ON un.notification_id = n.id WHERE un.user_id = ?", String.class, quiet))
-				.isEqualTo("Quiet, you have 3 words to review. Review now to remember them longer!");
+				.isEqualTo("Quiet ơi, bạn có 3 từ cần ôn. Ôn ngay để nhớ lâu hơn nhé!");
 		assertThat(pushesTo(quietToken)).isZero();
 	}
 
 	@Test
 	void deadTokensAreRemovedAndServerErrorsAreRetried() { // AC-20, J2 retry
-		long lan = learner("Lan", "vi", LocalTime.of(20, 0), true);
+		long lan = learner("Lan", LocalTime.of(20, 0), true);
 		token(lan);
 		token(lan);
 		dueCards(lan, 1, 2);
@@ -199,7 +199,7 @@ class NotificationJobsTest {
 
 	@Test
 	void retentionDropsOldNotificationsAndIdleDevices() { // AC-21, J3
-		long lan = learner("Lan", "vi", LocalTime.of(20, 0), true);
+		long lan = learner("Lan", LocalTime.of(20, 0), true);
 		String idle = token(lan);
 		String fresh = token(lan);
 		dueCards(lan, 1, 2);
@@ -216,7 +216,7 @@ class NotificationJobsTest {
 
 	@Test
 	void aNewReminderSupersedesTheUnreadOneAndPushesTheUnreadCount() { // UI-NOTIF-05, OQ-NOTIF-06
-		long lan = learner("Lan", "vi", LocalTime.of(20, 0), true);
+		long lan = learner("Lan", LocalTime.of(20, 0), true);
 		String token = token(lan);
 		dueCards(lan, 3, 2);
 		jobs.runSrsReminders(AT_20.minus(1, ChronoUnit.DAYS));
@@ -230,7 +230,7 @@ class NotificationJobsTest {
 
 	@Test
 	void remindersLiveSevenDaysOtherNotificationsNinety() { // UI-NOTIF-05, OQ-NOTIF-05
-		long lan = learner("Lan", "vi", LocalTime.of(20, 0), true);
+		long lan = learner("Lan", LocalTime.of(20, 0), true);
 		dueCards(lan, 1, 2);
 		jobs.runSrsReminders(AT_20);
 		jdbc.update("INSERT INTO notifications (type, title, content, created_at) VALUES ('SYSTEM', 't', 'c', NOW(6))");
@@ -286,20 +286,20 @@ class NotificationJobsTest {
 
 	/** {@code lastStudiedUtc}: users.last_studied_at, stored in UTC. */
 	private long streaker(String firstName, int streak, String lastStudiedUtc) {
-		long id = learner(firstName, "vi", null, true);
+		long id = learner(firstName, null, true);
 		jdbc.update("UPDATE users SET streak_days = ?, last_studied_at = ? WHERE id = ?", streak, lastStudiedUtc, id);
 		return id;
 	}
 
-	private long learner(String firstName, String language, LocalTime reminderAt, boolean pushEnabled) {
+	private long learner(String firstName, LocalTime reminderAt, boolean pushEnabled) {
 		jdbc.update("INSERT INTO users (activated, first_name, password_hash, email, longest_streak_days, created_at, "
 				+ "updated_at) VALUES (TRUE, ?, REPEAT('x', 60), CONCAT('notif-job-it-', UUID(), '@test.local'), 0, NOW(6), NOW(6))",
 				firstName);
 		long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 		userIds.add(id);
-		jdbc.update("INSERT INTO user_settings (user_id, ui_language, theme, daily_goal, study_session_card_limit, "
-				+ "srs_reminder_at, push_enabled, created_at, updated_at) VALUES (?, ?, 'SYSTEM', 20, 20, ?, ?, NOW(6), NOW(6))",
-				id, language, reminderAt, pushEnabled);
+		jdbc.update("INSERT INTO user_settings (user_id, daily_goal, study_session_card_limit, "
+				+ "srs_reminder_at, push_enabled, created_at, updated_at) VALUES (?, 20, 20, ?, ?, NOW(6), NOW(6))",
+				id, reminderAt, pushEnabled);
 		return id;
 	}
 

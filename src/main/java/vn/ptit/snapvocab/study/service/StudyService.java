@@ -18,6 +18,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -26,13 +27,13 @@ import vn.ptit.snapvocab.common.exception.ResourceNotFoundException;
 import vn.ptit.snapvocab.mission.domain.enumeration.MissionTriggerEvent;
 import vn.ptit.snapvocab.mission.service.MissionFacts;
 import vn.ptit.snapvocab.mission.service.MissionTracker;
-import vn.ptit.snapvocab.progress.domain.enumeration.LearningEventType;
 import vn.ptit.snapvocab.progress.service.ProgressService;
 import vn.ptit.snapvocab.security.AuthoritiesConstants;
 import vn.ptit.snapvocab.shop.service.Economy;
 import vn.ptit.snapvocab.security.SecurityUtils;
 import vn.ptit.snapvocab.study.domain.StudyDailyCard;
 import vn.ptit.snapvocab.study.domain.dto.ReviewResultDTO;
+import vn.ptit.snapvocab.study.domain.dto.SrsReviewCompletedEvent;
 import vn.ptit.snapvocab.study.domain.dto.StudyCardDTO;
 import vn.ptit.snapvocab.study.domain.dto.StudyCollectionDTO;
 import vn.ptit.snapvocab.study.domain.dto.StudyQueueDTO;
@@ -84,8 +85,8 @@ public class StudyService {
 	private final UserSettingsService userSettingsService;
 	private final TopicService topicService;
 	private final XpService xpService;
-	private final ProgressService progressService;
 	private final MissionTracker missionTracker;
+	private final ApplicationEventPublisher eventPublisher;
 	private final Scheduler scheduler = Scheduler.builder().build();
 
 	@Transactional
@@ -277,7 +278,11 @@ public class StudyService {
 	}
 
 	private ReviewResultDTO review(Long userId, Collection collection, TopicItem item, Rating rating) {
-		LocalDate today = LocalDate.now(STUDY_ZONE);
+		// Keep the same writer lock order as quizzes, progress and mission rewards.
+		Economy.lockUser(userRepository, userId);
+		Instant reviewedAt = Economy.now();
+		LocalDate today = LocalDate.ofInstant(reviewedAt, STUDY_ZONE);
+		missionTracker.ensureAssigned(userId, today, reviewedAt);
 		dailyProgressRepository.createIfMissing(userId, collection.getId(), today);
 		dailyProgressRepository.findForUpdate(userId, collection.getId(), today)
 				.orElseThrow(() -> new IllegalStateException("Daily progress row was not created"));
@@ -286,16 +291,11 @@ public class StudyService {
 				userId, collection.getId(), today, item.getId());
 		FsrsRecord record = studyQueueRepository.findForUpdate(userId, item.getId()).orElse(null);
 		Card previousCard = record == null ? newCard(item.getId()) : toFsrsCard(record);
-		// Daily Mission producer (daily_mission.md §3.2): lock order study progress → fsrs → users, one actionInstant,
-		// missions assigned before the review's own mutation.
-		Economy.lockUser(userRepository, userId);
 		// Counted under the user lock, so parallel first reviews in different collections cannot overshoot.
 		if (record == null && newWordsStarted(userId, today) >= userSettingsService.get(userId).dailyGoal()) {
 			throw new StudyQuotaExceededException();
 		}
 		boolean wasMastered = isMastered(record);
-		Instant reviewedAt = Economy.now();
-		missionTracker.ensureAssigned(userId, MissionTracker.missionDate(reviewedAt), reviewedAt);
 		Card nextCard = scheduler.reviewCard(previousCard, rating, reviewedAt).card();
 
 		if (record == null) {
@@ -328,14 +328,13 @@ public class StudyService {
 			// XP only for a card's first review of the study day; re-rating it that day earns none (PO 2026-10-18).
 			xpAwarded = xpService.award(userId, XpSourceType.FLASHCARD_REVIEW, XP_PER_REVIEW,
 					"FLASHCARD_REVIEW:" + userId + ":" + item.getId() + ":" + today).getAmount();
-			// Reviewing counts as a learning activity (PO 2026-10-18): streak + KEEP_DAILY_STREAK, same once-per-card-day rule.
-			progressService.record(userId, LearningEventType.SRS_REVIEW_COMPLETED,
-					"SRS_REVIEW:" + userId + ":" + item.getId() + ":" + today,
-					Map.of("topicItemId", item.getId(), "collectionId", collection.getId(), "rating", rating.name()),
-					reviewedAt);
-			missionTracker.apply(userId, MissionTracker.missionDate(reviewedAt), MissionTriggerEvent.SRS_REVIEW_COMPLETED,
-					"SRS_REVIEW:" + userId + ":" + item.getId() + ":" + today, MissionFacts.NONE, reviewedAt);
 		}
+		// Every accepted rating is one study action (master 2026-10-31): learning event via ProgressEventListener.
+		SrsReviewCompletedEvent event = new SrsReviewCompletedEvent(userId, collection.getId(), item.getId(),
+				record.getReps(), rating, reviewedAt);
+		eventPublisher.publishEvent(event);
+		missionTracker.apply(userId, today, MissionTriggerEvent.SRS_REVIEW_COMPLETED, event.sourceKey(),
+				MissionFacts.NONE, reviewedAt);
 		return new ReviewResultDTO(item.getId(), record.getState(), record.getDue(),
 				record.getStability(), record.getDifficulty(), record.getReps(), record.getLapses(),
 				xpAwarded, !wasMastered && isMastered(record));

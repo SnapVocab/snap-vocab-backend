@@ -114,13 +114,13 @@ class StreakFreezeIntegrationTest {
 		User user = learner(T.minusDays(3), 1000);
 		ShopItem freeze = freeze(2);
 		hold(user, freeze, 1);
-		assertThat(progressService.getStreak(user.getId()).currentStreak()).isZero();
+		assertThat(progressService.getStreak(user.getId()).currentStreak()).isOne(); // broken: shown at the baseline of 1
 
 		shopService.purchase(user.getId(), freeze.getId(), 200L, "buy");
 
 		// The purchase settled first: T-2 took the held unit, T-1 broke the chain and closed it.
 		assertThat(frozenDays(user)).containsExactly(T.minusDays(2));
-		assertThat(streakDays(user)).isZero();
+		assertThat(streakDays(user)).isOne(); // closed chain rests at the baseline of 1
 		assertThat(quantity(user, freeze)).isEqualTo(1);
 		assertThat(progressService.getStreak(user.getId()).freezeCount()).isEqualTo(1);
 

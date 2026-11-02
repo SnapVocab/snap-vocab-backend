@@ -1,0 +1,11 @@
+services:
+  agent:
+    image: snapvocab-jenkins-agent:local
+    build:
+      context: ../snapvocab-jenkins
+      dockerfile: Dockerfile.agent
+    group_add:
+      - "${DOCKER_GID:?Set DOCKER_GID to the Docker socket group on the host}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /opt/snapvocab:/opt/snapvocab

@@ -1,6 +1,7 @@
 package vn.ptit.snapvocab.vocab.repository;
 
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -12,6 +13,8 @@ import vn.ptit.snapvocab.vocab.domain.dto.topic.TopicItemAttributeRow;
 
 @Repository
 public interface TopicItemRepository extends JpaRepository<TopicItem, Long> {
+
+	Optional<TopicItem> findByIdAndTopicId(Long id, Long topicId);
 
 	@Query("""
 			SELECT ti
@@ -57,6 +60,10 @@ public interface TopicItemRepository extends JpaRepository<TopicItem, Long> {
 
 	@Query("SELECT COUNT(ti) FROM TopicItem ti WHERE ti.topic.collection.owner.id = :userId")
 	long countOwnedBy(@Param("userId") Long userId);
+
+	default boolean existsOwnedBy(Long userId) {
+		return countOwnedBy(userId) > 0;
+	}
 
 	@Query("""
 			SELECT DISTINCT ti

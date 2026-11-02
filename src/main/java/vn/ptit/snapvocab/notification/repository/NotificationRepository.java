@@ -22,7 +22,7 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
 	 * window is clamped to 00:00; the extra tick it allows is absorbed by the dedupe key.
 	 */
 	@Query(value = """
-			SELECT s.user_id AS userId, s.ui_language AS uiLanguage, s.push_enabled AS pushEnabled,
+			SELECT s.user_id AS userId, NULL AS uiLanguage, s.push_enabled AS pushEnabled,
 			       u.first_name AS firstName
 			FROM user_settings s
 			JOIN users u ON u.id = s.user_id
@@ -41,7 +41,7 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
 	 * streak and today's study in Java. No settings row = defaults (Vietnamese, push on).
 	 */
 	@Query(value = """
-			SELECT u.id AS userId, s.ui_language AS uiLanguage, s.push_enabled AS pushEnabled
+			SELECT u.id AS userId, NULL AS uiLanguage, s.push_enabled AS pushEnabled
 			FROM users u
 			LEFT JOIN user_settings s ON s.user_id = u.id
 			WHERE u.activated = TRUE
@@ -55,6 +55,8 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
 	interface StreakWarningCandidate {
 		Long getUserId();
 
+		// ponytail: UI language moved to the device (migration_remove_device_preferences.sql), so this is always
+		// null and pushes render Vietnamese; send the locale on device register when English pushes matter.
 		String getUiLanguage();
 
 		Boolean getPushEnabled();

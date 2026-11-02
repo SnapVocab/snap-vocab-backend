@@ -89,8 +89,8 @@ CREATE TABLE IF NOT EXISTS `mission_templates` (
     CONSTRAINT `chk_mission_templates_weight` CHECK (`weight` >= 1),
     -- Enum domains, unnamed like Hibernate's (MySQL names them mission_templates_chk_1..3 in this order).
     CHECK (`category` IN ('SCAN', 'VOCABULARY', 'FLASHCARD', 'SRS', 'QUIZ', 'RETENTION', 'SHOP')),
-    CHECK (`eligibility_rule` IN ('NONE', 'HAS_IDLE_XP_BOOSTER', 'HAS_PURCHASABLE_ITEM', 'HAS_STUDY_CARDS_FOR_TARGET')),
-    CHECK (`trigger_event` IN ('QUIZ_COMPLETED', 'LEARNING_ACTIVITY_RECORDED', 'TOPIC_ITEM_CREATED', 'SHOP_ITEM_PURCHASED', 'BOOSTER_USED', 'SRS_REVIEW_COMPLETED', 'SCAN_WORD_SAVED'))
+    CONSTRAINT `chk_mission_templates_eligibility_rule_values` CHECK (`eligibility_rule` IN ('NONE', 'HAS_IDLE_XP_BOOSTER', 'HAS_PURCHASABLE_ITEM', 'HAS_STUDY_CARDS_FOR_TARGET')),
+    CONSTRAINT `chk_mission_templates_trigger_event_values` CHECK (`trigger_event` IN ('QUIZ_COMPLETED', 'LEARNING_ACTIVITY_RECORDED', 'TOPIC_ITEM_CREATED', 'SHOP_ITEM_PURCHASED', 'BOOSTER_USED', 'SRS_REVIEW_COMPLETED', 'SCAN_WORD_SAVED'))
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS `user_daily_missions` (
@@ -143,7 +143,7 @@ CREATE TABLE IF NOT EXISTS `user_daily_missions` (
     -- Enum domains, unnamed like Hibernate's (user_daily_missions_chk_1..3 in this order).
     CHECK (`category` IN ('SCAN', 'VOCABULARY', 'FLASHCARD', 'SRS', 'QUIZ', 'RETENTION', 'SHOP')),
     CHECK (`status` IN ('IN_PROGRESS', 'COMPLETED', 'CLAIMED')),
-    CHECK (`trigger_event` IN ('QUIZ_COMPLETED', 'LEARNING_ACTIVITY_RECORDED', 'TOPIC_ITEM_CREATED', 'SHOP_ITEM_PURCHASED', 'BOOSTER_USED', 'SRS_REVIEW_COMPLETED', 'SCAN_WORD_SAVED'))
+    CONSTRAINT `chk_user_daily_missions_trigger_event_values` CHECK (`trigger_event` IN ('QUIZ_COMPLETED', 'LEARNING_ACTIVITY_RECORDED', 'TOPIC_ITEM_CREATED', 'SHOP_ITEM_PURCHASED', 'BOOSTER_USED', 'SRS_REVIEW_COMPLETED', 'SCAN_WORD_SAVED'))
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS `user_daily_mission_progress_logs` (

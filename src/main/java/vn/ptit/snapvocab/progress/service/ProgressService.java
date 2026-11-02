@@ -77,7 +77,7 @@ public class ProgressService {
 		User user = findUser(userId);
 		LocalDate today = today();
 		StreakFreezeService.Settlement s = streakFreezeService.preview(user, today);
-		return new StreakDTO(s.streak(user.getStreakDays(), today), user.getLongestStreakDays(), lastStudiedDate(user),
+		return new StreakDTO(s.shownStreak(user.getStreakDays(), today), user.getLongestStreakDays(), lastStudiedDate(user),
 				s.remaining(), s.lastFrozen());
 	}
 
@@ -103,7 +103,7 @@ public class ProgressService {
 				learnedCount(userId),
 				masteredCount(userId),
 				dueCount(userId),
-				streakFreezeService.preview(user, today).streak(user.getStreakDays(), today));
+				streakFreezeService.preview(user, today).shownStreak(user.getStreakDays(), today));
 	}
 
 	/** {@link #record(Long, LearningEventType, String, Map, Instant)} at the current server time. */
@@ -152,7 +152,7 @@ public class ProgressService {
 		if (today.equals(covered)) {
 			return Math.max(stored, 1);
 		}
-		return today.minusDays(1).equals(covered) ? stored + 1 : 1;
+		return today.minusDays(1).equals(covered) ? Math.max(stored, 1) + 1 : 1;
 	}
 
 	static List<ProgressHistoryDTO.Bucket> buckets(HistoryPeriod period, LocalDate from, LocalDate to,
