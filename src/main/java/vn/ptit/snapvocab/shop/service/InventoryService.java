@@ -88,10 +88,11 @@ public class InventoryService {
 		return new InventoryDTO(now, active == null ? null : ShopMapper.toActiveBooster(active), items);
 	}
 
-	/** Equipped frame for GET /api/users/me, so the app can apply them at start (shop.md §10.1). */
+	/** Equipped avatar and card frames for GET /api/users/me, so the app can apply them at start (shop.md §10.1). */
 	@Transactional(readOnly = true)
 	public EquippedDTO getEquipped(Long userId) {
 		String frameUrl = null;
+		String cardFrameUrl = null;
 		for (UserItem owned : userItemRepository.findAllByUserId(userId)) {
 			if (!Boolean.TRUE.equals(owned.getEquipped())) {
 				continue;
@@ -99,9 +100,11 @@ public class InventoryService {
 			ItemConfig config = mapper.config(owned.getItem());
 			if (owned.getItemType() == ShopItemType.AVATAR_FRAME) {
 				frameUrl = config.frameUrl();
+			} else if (owned.getItemType() == ShopItemType.CARD_FRAME) {
+				cardFrameUrl = config.frameUrl();
 			}
 		}
-		return new EquippedDTO(frameUrl);
+		return new EquippedDTO(frameUrl, cardFrameUrl);
 	}
 
 	@Transactional(readOnly = true)
@@ -222,7 +225,7 @@ public class InventoryService {
 			}
 		}
 		throw new ShopException(ShopErrorCode.INVALID_EQUIPMENT_SLOT, "Unknown equipment slot: " + slot,
-				Map.of("allowed", List.of(ShopItemType.AVATAR_FRAME)));
+				Map.of("allowed", List.of(ShopItemType.AVATAR_FRAME, ShopItemType.CARD_FRAME)));
 	}
 
 	private static ShopException notOwned(Long itemId) {

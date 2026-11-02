@@ -2,6 +2,8 @@ package vn.ptit.snapvocab.shop.domain.enumeration;
 
 public enum ShopItemType {
 	AVATAR_FRAME(Behavior.EQUIP, false),
+	/** Decorative overlay around study flashcards (plan/shop-item/card_frame_plan.md). */
+	CARD_FRAME(Behavior.EQUIP, false),
 	XP_BOOSTER(Behavior.ACTIVATE, true),
 	STREAK_FREEZE(Behavior.PASSIVE, true);
 

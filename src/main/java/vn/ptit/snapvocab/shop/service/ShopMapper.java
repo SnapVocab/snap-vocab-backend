@@ -22,7 +22,7 @@ public class ShopMapper {
 
 	public ItemConfig config(ShopItem item) {
 		return switch (item.getType()) {
-			case AVATAR_FRAME -> new ItemConfig(url(item.getFrameAssetKey()), null, null, null);
+			case AVATAR_FRAME, CARD_FRAME -> new ItemConfig(url(item.getFrameAssetKey()), null, null, null);
 			case XP_BOOSTER -> new ItemConfig(null, ShopItemType.XP_BOOSTER_MULTIPLIER,
 					item.boostDurationMinutesOrDefault(), item.maxQuantityOrDefault());
 			case STREAK_FREEZE -> new ItemConfig(null, null, null, item.maxQuantityOrDefault());

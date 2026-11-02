@@ -76,6 +76,13 @@ public class AdminShopService {
 	static final List<String> ASSET_FORMATS = List.of("png", "webp");
 	static final long ICON_MAX_BYTES = 200 * 1024;
 	static final long FRAME_MAX_BYTES = 300 * 1024;
+	static final long CARD_FRAME_MAX_BYTES = 500 * 1024;
+	/**
+	 * One window for every card frame (PD-CF-03): the app draws card content inside it. Relative to the asset, origin
+	 * top-left. Mirrored in SnapVocab card-frame.ts; change both together.
+	 */
+	static final Map<String, Object> CARD_FRAME_CONTRACT = Map.of("aspectRatio", "3:4", "designWidth", 1080,
+			"designHeight", 1440, "contentWindow", Map.of("x", 0.09, "y", 0.09, "width", 0.82, "height", 0.82));
 
 	private static final Set<ShopItemStatus> DRAFT_ONLY = EnumSet.of(ShopItemStatus.DRAFT);
 	private static final Set<ShopItemStatus> UNTIL_ARCHIVED = EnumSet.of(ShopItemStatus.DRAFT, ShopItemStatus.PUBLISHED);
@@ -92,6 +99,7 @@ public class AdminShopService {
 	/** Type-specific fields; any field the type does not list must be null. */
 	private static final Map<ShopItemType, List<String>> TYPE_FIELDS = Map.of(
 			ShopItemType.AVATAR_FRAME, List.of("frameAssetKey"),
+			ShopItemType.CARD_FRAME, List.of("frameAssetKey"),
 			ShopItemType.XP_BOOSTER, List.of("boostDurationMinutes", "maxQuantity"),
 			ShopItemType.STREAK_FREEZE, List.of("maxQuantity"));
 
@@ -161,6 +169,11 @@ public class AdminShopService {
 						List.of(spec("frameAssetKey", InputType.IMAGE).required(true).requiredToPublish(true)
 								.formats(ASSET_FORMATS).maxBytes(FRAME_MAX_BYTES).dimensions("512x512, transparent")
 								.build())),
+				new TypeSpec(ShopItemType.CARD_FRAME, ShopItemType.CARD_FRAME.getBehavior(),
+						ShopItemType.CARD_FRAME.isStackable(), CARD_FRAME_CONTRACT,
+						List.of(spec("frameAssetKey", InputType.IMAGE).required(true).requiredToPublish(true)
+								.formats(ASSET_FORMATS).maxBytes(CARD_FRAME_MAX_BYTES)
+								.dimensions("1080x1440, transparent content window").build())),
 				new TypeSpec(ShopItemType.XP_BOOSTER, ShopItemType.XP_BOOSTER.getBehavior(),
 						ShopItemType.XP_BOOSTER.isStackable(),
 						Map.of("multiplier", ShopItemType.XP_BOOSTER_MULTIPLIER),
@@ -391,6 +404,8 @@ public class AdminShopService {
 
 		switch (type) {
 			case AVATAR_FRAME -> checkAsset(v, "frameAssetKey", f.frameAssetKey(), FRAME_MAX_BYTES, true, publishing,
+					ShopErrorCode.INVALID_SHOP_ITEM_CONFIG);
+			case CARD_FRAME -> checkAsset(v, "frameAssetKey", f.frameAssetKey(), CARD_FRAME_MAX_BYTES, true, publishing,
 					ShopErrorCode.INVALID_SHOP_ITEM_CONFIG);
 			case XP_BOOSTER -> {
 				checkRange(v, "boostDurationMinutes", f.boostDurationMinutes(), DURATION_MIN, DURATION_MAX);

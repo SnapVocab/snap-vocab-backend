@@ -39,6 +39,7 @@ import vn.ptit.snapvocab.user.repository.UserRepository;
 import vn.ptit.snapvocab.storage.service.StorageService;
 import vn.ptit.snapvocab.shop.domain.ShopItem;
 import vn.ptit.snapvocab.shop.domain.dto.ActivationResultDTO;
+import vn.ptit.snapvocab.shop.domain.dto.EquippedDTO;
 import vn.ptit.snapvocab.shop.domain.dto.InventoryDTO;
 import vn.ptit.snapvocab.shop.domain.dto.PurchaseResultDTO;
 import vn.ptit.snapvocab.shop.domain.dto.ShopEvents;
@@ -374,6 +375,32 @@ class ShopIntegrationTest {
 				ShopErrorCode.INVALID_EQUIPMENT_SLOT);
 		assertShopError(() -> inventoryService.equip(user.getId(), "AVATAR_FRAME", booster.getId()),
 				ShopErrorCode.ITEM_NOT_EQUIPPABLE);
+	}
+
+	@Test
+	@DisplayName("card frame: its own slot next to the avatar frame, both on /api/users/me")
+	void cardFrameHasItsOwnSlot() {
+		User user = newUser(1000);
+		ShopItem avatar = frame(100);
+		ShopItem card = save(base(ShopItemType.CARD_FRAME, 500).frameAssetKey("public/shop/card.png"));
+		shopService.purchase(user.getId(), avatar.getId(), 100L, "a");
+		shopService.purchase(user.getId(), card.getId(), 500L, "c");
+		assertShopError(() -> shopService.purchase(user.getId(), card.getId(), 500L, "c2"), ShopErrorCode.ITEM_ALREADY_OWNED);
+
+		inventoryService.equip(user.getId(), "AVATAR_FRAME", avatar.getId());
+		inventoryService.equip(user.getId(), "CARD_FRAME", card.getId());
+		assertShopError(() -> inventoryService.equip(user.getId(), "AVATAR_FRAME", card.getId()),
+				ShopErrorCode.ITEM_NOT_EQUIPPABLE);
+		when(storageService.createDownloadUrl("public/shop/frame.png")).thenReturn("https://cdn/frame.png");
+		when(storageService.createDownloadUrl("public/shop/card.png")).thenReturn("https://cdn/card.png");
+		assertThat(inventoryService.getEquipped(user.getId()))
+				.extracting(EquippedDTO::avatarFrameUrl, EquippedDTO::cardFrameUrl)
+				.containsExactly("https://cdn/frame.png", "https://cdn/card.png");
+
+		inventoryService.unequip(user.getId(), "CARD_FRAME");
+		assertThat(equipped(user, card)).isFalse();
+		assertThat(equipped(user, avatar)).isTrue();
+		assertThat(inventoryService.getEquipped(user.getId()).cardFrameUrl()).isNull();
 	}
 
 	@Test

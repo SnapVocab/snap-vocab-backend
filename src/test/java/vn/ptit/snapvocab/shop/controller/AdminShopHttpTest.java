@@ -288,6 +288,24 @@ class AdminShopHttpTest {
 		assertThat(status(frameId)).isEqualTo("DRAFT");
 	}
 
+	@Test
+	void cardFrameTakesAFrameAssetUpTo500Kb() throws Exception { // card_frame_plan.md §3
+		Map<String, Object> noAsset = cardFrame("CARD_FRAME_X");
+		noAsset.remove("frameAssetKey");
+		assertThat(error(call(admin, "POST", ITEMS, noAsset, 400))).isEqualTo("INVALID_SHOP_ITEM_CONFIG");
+		Map<String, Object> withBoosterField = cardFrame("CARD_FRAME_X");
+		withBoosterField.put("maxQuantity", 1);
+		assertThat(firstField(call(admin, "POST", ITEMS, withBoosterField, 400))).isEqualTo("maxQuantity");
+
+		long id = create(cardFrame("CARD_FRAME_STARS"));
+		assetSize(600 * 1024);
+		assertThat(call(admin, "POST", ITEMS + "/" + id + "/publish", null, 400).path("data").path("errors")
+				.findValuesAsText("field")).contains("frameAssetKey");
+		assetSize(150 * 1024); // over an avatar frame's 300 KB is fine here; icon stays under 200 KB
+		call(admin, "POST", ITEMS + "/" + id + "/publish", null, 200);
+		assertThat(catalogCodes()).contains("CARD_FRAME_STARS");
+	}
+
 	// ---- update / locking ----
 
 	@Test
@@ -423,13 +441,20 @@ class AdminShopHttpTest {
 		JsonNode data = call(admin, "GET", "/api/admin/shop/item-types", null, 200).path("data");
 
 		assertThat(data.path("types").findValuesAsText("type"))
-				.containsExactly("AVATAR_FRAME", "XP_BOOSTER", "STREAK_FREEZE");
+				.containsExactly("AVATAR_FRAME", "CARD_FRAME", "XP_BOOSTER", "STREAK_FREEZE");
 		JsonNode frameAsset = data.path("types").get(0).path("fields").get(0);
 		assertThat(frameAsset.path("name").asText()).isEqualTo("frameAssetKey");
 		assertThat(frameAsset.path("inputType").asText()).isEqualTo("IMAGE");
 		assertThat(frameAsset.path("editableIn").toString()).isEqualTo("[\"DRAFT\"]");
 
-		JsonNode xp = data.path("types").get(1);
+		// card_frame_plan.md §3: one content window for every card frame, served as a developer constant.
+		JsonNode card = data.path("types").get(1);
+		assertThat(card.path("behavior").asText()).isEqualTo("EQUIP");
+		assertThat(card.path("fixed").path("aspectRatio").asText()).isEqualTo("3:4");
+		assertThat(card.path("fixed").path("contentWindow").path("width").asDouble()).isEqualTo(0.82);
+		assertThat(card.path("fields").get(0).path("maxBytes").asLong()).isEqualTo(500 * 1024);
+
+		JsonNode xp = data.path("types").get(2);
 		assertThat(xp.path("behavior").asText()).isEqualTo("ACTIVATE");
 		assertThat(xp.path("fixed").path("multiplier").asInt()).isEqualTo(2);
 		JsonNode duration = xp.path("fields").get(0);
@@ -438,7 +463,7 @@ class AdminShopHttpTest {
 		assertThat(duration.path("defaultValue").asInt()).isEqualTo(30);
 
 		// streak_freeze.md §6, PD-SF-03: passive, holds 1–5, default 2.
-		JsonNode freeze = data.path("types").get(2);
+		JsonNode freeze = data.path("types").get(3);
 		assertThat(freeze.path("behavior").asText()).isEqualTo("PASSIVE");
 		assertThat(freeze.path("stackable").asBoolean()).isTrue();
 		JsonNode held = freeze.path("fields").get(0);
@@ -501,6 +526,12 @@ class AdminShopHttpTest {
 
 	private Map<String, Object> frame(String code) {
 		Map<String, Object> body = base(code, "AVATAR_FRAME");
+		body.put("frameAssetKey", FRAME);
+		return body;
+	}
+
+	private Map<String, Object> cardFrame(String code) {
+		Map<String, Object> body = base(code, "CARD_FRAME");
 		body.put("frameAssetKey", FRAME);
 		return body;
 	}

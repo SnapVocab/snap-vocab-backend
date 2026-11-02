@@ -64,7 +64,7 @@ public class ShopController {
 	}
 
 	@PutMapping("/me/equipment/{slot}")
-	@Operation(summary = "Equip an AVATAR_FRAME; replaces the item currently in the slot")
+	@Operation(summary = "Equip an AVATAR_FRAME or CARD_FRAME; replaces the item currently in the slot")
 	public ResponseEntity<EquipmentDTO> equip(@PathVariable String slot,
 			@RequestBody(required = false) EquipRequest request) {
 		Long itemId = request == null ? null : request.itemId();
