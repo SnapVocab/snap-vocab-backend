@@ -155,6 +155,7 @@ public class AdminShopService {
 						.options(Arrays.stream(ShopItemType.values()).map(Enum::name).toList()).build(),
 				spec("name", InputType.TEXT).required(true).requiredToPublish(true).min(1L).max((long) NAME_MAX).build(),
 				spec("description", InputType.TEXTAREA).max((long) DESCRIPTION_MAX).build(),
+				// requiredToPublish holds for XP_BOOSTER and STREAK_FREEZE; frames (EQUIP) may publish without an icon.
 				spec("iconKey", InputType.IMAGE).requiredToPublish(true).formats(ASSET_FORMATS).maxBytes(ICON_MAX_BYTES)
 						.dimensions("square, >= 256x256").build(),
 				spec("purchasable", InputType.BOOLEAN).required(true).requiredToPublish(true).defaultValue(false).build(),
@@ -364,7 +365,9 @@ public class AdminShopService {
 		if (f.description() != null && f.description().length() > DESCRIPTION_MAX) {
 			v.add(new Violation("description", ShopErrorCode.VALIDATION_ERROR, "at most " + DESCRIPTION_MAX + " characters"));
 		}
-		checkAsset(v, "iconKey", f.iconKey(), ICON_MAX_BYTES, publishing, publishing, ShopErrorCode.VALIDATION_ERROR);
+		// Frames draw their own artwork everywhere (avatar / mini card), so an icon is optional for them; checked if sent.
+		boolean iconRequired = publishing && (type == null || !type.isEquippable());
+		checkAsset(v, "iconKey", f.iconKey(), ICON_MAX_BYTES, iconRequired, publishing, ShopErrorCode.VALIDATION_ERROR);
 		if (f.purchasable() == null) {
 			v.add(new Violation("purchasable", ShopErrorCode.VALIDATION_ERROR, "required"));
 		}

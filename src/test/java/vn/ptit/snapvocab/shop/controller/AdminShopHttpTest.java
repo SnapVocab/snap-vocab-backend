@@ -306,6 +306,18 @@ class AdminShopHttpTest {
 		assertThat(catalogCodes()).contains("CARD_FRAME_STARS");
 	}
 
+	@Test
+	void framesPublishWithoutAnIconOtherTypesDoNot() throws Exception { // frames draw their own artwork
+		assetSize(100 * 1024);
+		for (Map<String, Object> body : List.of(cardFrame("CARD_FRAME_NO_ICON"), frame("FRAME_NO_ICON"))) {
+			body.remove("iconKey");
+			call(admin, "POST", ITEMS + "/" + create(body) + "/publish", null, 200);
+		}
+		Map<String, Object> freeze = freeze("STREAK_FREEZE_NO_ICON");
+		freeze.remove("iconKey");
+		assertThat(firstField(call(admin, "POST", ITEMS + "/" + create(freeze) + "/publish", null, 400))).isEqualTo("iconKey");
+	}
+
 	// ---- update / locking ----
 
 	@Test
