@@ -36,7 +36,7 @@ public class AdminShopController {
 	private final AdminShopService adminShopService;
 
 	@GetMapping("/item-types")
-	@Operation(summary = "Dynamic-form metadata: fields, limits, defaults, free themeKeys, lock rules")
+	@Operation(summary = "Dynamic-form metadata: fields, limits, defaults, lock rules")
 	public ResponseEntity<ShopItemTypeMetadataDTO> itemTypes() {
 		return ResponseEntity.ok(adminShopService.itemTypes());
 	}

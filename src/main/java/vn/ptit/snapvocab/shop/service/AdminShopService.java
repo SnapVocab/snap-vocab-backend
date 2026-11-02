@@ -46,7 +46,6 @@ import vn.ptit.snapvocab.shop.domain.dto.ShopItemTypeMetadataDTO.TypeSpec;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopErrorCode;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopItemStatus;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopItemType;
-import vn.ptit.snapvocab.shop.domain.enumeration.ThemeKey;
 import vn.ptit.snapvocab.shop.exception.ShopException;
 import vn.ptit.snapvocab.shop.repository.ShopItemRepository;
 
@@ -85,24 +84,23 @@ public class AdminShopService {
 	/** shop.md §8.2 — statuses in which each form field may change. Drives FIELD_LOCKED and the form metadata. */
 	static final Map<String, Set<ShopItemStatus>> EDITABLE_IN = Map.ofEntries(
 			entry("code", DRAFT_ONLY), entry("type", DRAFT_ONLY),
-			entry("themeKey", DRAFT_ONLY), entry("frameAssetKey", DRAFT_ONLY), entry("boostDurationMinutes", DRAFT_ONLY),
+			entry("frameAssetKey", DRAFT_ONLY), entry("boostDurationMinutes", DRAFT_ONLY),
 			entry("name", ALWAYS), entry("description", ALWAYS), entry("iconKey", ALWAYS), entry("sortOrder", ALWAYS),
 			entry("price", UNTIL_ARCHIVED), entry("purchasable", UNTIL_ARCHIVED), entry("availableFrom", UNTIL_ARCHIVED),
 			entry("availableUntil", UNTIL_ARCHIVED), entry("maxQuantity", UNTIL_ARCHIVED));
 
 	/** Type-specific fields; any field the type does not list must be null. */
 	private static final Map<ShopItemType, List<String>> TYPE_FIELDS = Map.of(
-			ShopItemType.THEME, List.of("themeKey"),
 			ShopItemType.AVATAR_FRAME, List.of("frameAssetKey"),
 			ShopItemType.XP_BOOSTER, List.of("boostDurationMinutes", "maxQuantity"),
 			ShopItemType.STREAK_FREEZE, List.of("maxQuantity"));
 
 	private static final ShopItemForm NEW_ITEM = new ShopItemForm(null, null, null, null, null, false, null, null,
-			null, 0, null, null, null, null);
+			null, 0, null, null, null);
 
 	/** Audit "changes" of a create/update, in ShopItemForm order (admin_audit_log_backend.md §4.4.1). */
 	static final List<String> AUDIT_FIELDS = List.of("code", "type", "name", "description", "iconKey", "purchasable",
-			"price", "availableFrom", "availableUntil", "sortOrder", "themeKey", "frameAssetKey", "boostDurationMinutes",
+			"price", "availableFrom", "availableUntil", "sortOrder", "frameAssetKey", "boostDurationMinutes",
 			"maxQuantity");
 	static final List<String> DELETE_FIELDS = List.of("name", "type", "price", "status");
 
@@ -143,13 +141,6 @@ public class AdminShopService {
 
 	@Transactional(readOnly = true)
 	public ShopItemTypeMetadataDTO itemTypes() {
-		Set<ThemeKey> used = EnumSet.noneOf(ThemeKey.class);
-		used.addAll(repository.findUsedThemeKeys());
-		List<String> freeThemeKeys = Arrays.stream(ThemeKey.values())
-				.filter(k -> k != ThemeKey.DEFAULT && !used.contains(k))
-				.map(Enum::name)
-				.toList();
-
 		List<FieldSpec> common = List.of(
 				spec("code", InputType.TEXT).required(true).requiredToPublish(true).pattern(CODE.pattern()).build(),
 				spec("type", InputType.SELECT).required(true).requiredToPublish(true)
@@ -165,9 +156,6 @@ public class AdminShopService {
 				spec("sortOrder", InputType.NUMBER).required(true).requiredToPublish(true).min(0L).defaultValue(0).build());
 
 		List<TypeSpec> types = List.of(
-				new TypeSpec(ShopItemType.THEME, ShopItemType.THEME.getBehavior(), ShopItemType.THEME.isStackable(),
-						Map.of(), List.of(spec("themeKey", InputType.SELECT).required(true).requiredToPublish(true)
-								.options(freeThemeKeys).build())),
 				new TypeSpec(ShopItemType.AVATAR_FRAME, ShopItemType.AVATAR_FRAME.getBehavior(),
 						ShopItemType.AVATAR_FRAME.isStackable(), Map.of(),
 						List.of(spec("frameAssetKey", InputType.IMAGE).required(true).requiredToPublish(true)
@@ -380,7 +368,7 @@ public class AdminShopService {
 			v.add(new Violation("sortOrder", ShopErrorCode.VALIDATION_ERROR, "required, >= 0"));
 		}
 		if (type != null) {
-			validateTypeConfig(v, type, f, selfId, publishing);
+			validateTypeConfig(v, type, f, publishing);
 		}
 
 		if (!v.isEmpty()) {
@@ -389,10 +377,8 @@ public class AdminShopService {
 		}
 	}
 
-	private void validateTypeConfig(List<Violation> v, ShopItemType type, ShopItemForm f, long selfId,
-			boolean publishing) {
+	private void validateTypeConfig(List<Violation> v, ShopItemType type, ShopItemForm f, boolean publishing) {
 		Map<String, Object> config = new LinkedHashMap<>();
-		config.put("themeKey", f.themeKey());
 		config.put("frameAssetKey", f.frameAssetKey());
 		config.put("boostDurationMinutes", f.boostDurationMinutes());
 		config.put("maxQuantity", f.maxQuantity());
@@ -404,20 +390,6 @@ public class AdminShopService {
 		});
 
 		switch (type) {
-			case THEME -> {
-				if (f.themeKey() == null) {
-					v.add(new Violation("themeKey", ShopErrorCode.INVALID_SHOP_ITEM_CONFIG, "required for THEME"));
-					return;
-				}
-				ThemeKey key = parseEnum(ThemeKey.class, f.themeKey());
-				if (key == null || key == ThemeKey.DEFAULT) {
-					v.add(new Violation("themeKey", ShopErrorCode.INVALID_THEME_KEY,
-							"not a sellable theme of the registry"));
-				} else if (repository.existsByThemeKeyAndIdNot(key, selfId)) {
-					v.add(new Violation("themeKey", ShopErrorCode.INVALID_SHOP_ITEM_CONFIG,
-							"theme " + key + " is already sold by another item"));
-				}
-			}
 			case AVATAR_FRAME -> checkAsset(v, "frameAssetKey", f.frameAssetKey(), FRAME_MAX_BYTES, true, publishing,
 					ShopErrorCode.INVALID_SHOP_ITEM_CONFIG);
 			case XP_BOOSTER -> {
@@ -510,7 +482,7 @@ public class AdminShopService {
 	private static ShopItemForm formOf(ShopItem i) {
 		return new ShopItemForm(i.getCode(), i.getType().name(), i.getName(), i.getDescription(), i.getIconKey(),
 				i.getPurchasable(), i.getPrice(), i.getAvailableFrom(), i.getAvailableUntil(), i.getSortOrder(),
-				i.getThemeKey() == null ? null : i.getThemeKey().name(), i.getFrameAssetKey(),
+				i.getFrameAssetKey(),
 				i.getBoostDurationMinutes(), i.getMaxQuantity());
 	}
 
@@ -526,7 +498,6 @@ public class AdminShopService {
 		item.setAvailableFrom(f.availableFrom());
 		item.setAvailableUntil(f.availableUntil());
 		item.setSortOrder(f.sortOrder());
-		item.setThemeKey(f.themeKey() == null ? null : ThemeKey.valueOf(f.themeKey()));
 		item.setFrameAssetKey(f.frameAssetKey());
 		item.setBoostDurationMinutes(f.boostDurationMinutes());
 		item.setMaxQuantity(f.maxQuantity());
@@ -582,7 +553,7 @@ public class AdminShopService {
 		return new AdminShopItemDTO(i.getId(), i.getVersion(), i.getCode(), i.getType(), i.getType().getBehavior(),
 				i.getName(), i.getDescription(), i.getIconKey(), mapper.url(i.getIconKey()), i.getStatus(),
 				Boolean.TRUE.equals(i.getPurchasable()), i.getPrice(), i.getAvailableFrom(), i.getAvailableUntil(),
-				i.getSortOrder(), i.getThemeKey(), i.getFrameAssetKey(), mapper.url(i.getFrameAssetKey()),
+				i.getSortOrder(), i.getFrameAssetKey(), mapper.url(i.getFrameAssetKey()),
 				i.getBoostDurationMinutes(), i.getMaxQuantity(),
 				i.getType() == ShopItemType.XP_BOOSTER ? ShopItemType.XP_BOOSTER_MULTIPLIER : null,
 				i.getPublishedAt(), i.getCreatedAt(), i.getUpdatedAt());

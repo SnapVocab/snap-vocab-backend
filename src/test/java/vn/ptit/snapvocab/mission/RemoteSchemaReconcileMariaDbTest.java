@@ -36,7 +36,8 @@ class RemoteSchemaReconcileMariaDbTest {
 			"migration_notifications_v1.sql", "migration_notifications_v2.sql", "migration_admin_audit_logs_v1.sql",
 			"migration_badges_v1.sql", "migration_badges_v2.sql", "migration_streak_freeze_v1.sql",
 			"migration_badges_streak_copy_v2.sql", "migration_daily_mission_v1.sql",
-			"migration_daily_mission_triggers_v2.sql");
+			"migration_daily_mission_triggers_v2.sql",
+			"migration_remove_theme_v1.sql");
 
 	private SingleConnectionDataSource db;
 

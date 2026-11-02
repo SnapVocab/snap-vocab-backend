@@ -132,10 +132,10 @@ class StreakFreezeMigrationScriptTest {
 		// Data and the generated equip slot survive; the new type is now storable.
 		assertThat(db().queryForMap("SELECT item_type, equipped_slot FROM user_items"))
 				.containsEntry("item_type", "THEME").containsEntry("equipped_slot", "THEME");
-		db().update("INSERT INTO shop_items (created_at, updated_at, name, type, code, purchasable, sort_order, status,"
-				+ " version) VALUES (NOW(6), NOW(6), 'Freeze', 'STREAK_FREEZE', 'STREAK_FREEZE', 0, 0, 'DRAFT', 0)");
+		db().update("INSERT INTO shop_items (id, created_at, updated_at, name, type, code, purchasable, sort_order,"
+				+ " status, version) VALUES (2, NOW(6), NOW(6), 'Freeze', 'STREAK_FREEZE', 'STREAK_FREEZE', 0, 0, 'DRAFT', 0)");
 		db().update("INSERT INTO streak_freeze_days (user_id, frozen_date, shop_item_id, created_at)"
-				+ " VALUES (1, '2026-10-20', 1, NOW(6))");
+				+ " VALUES (1, '2026-10-20', 2, NOW(6))");
 		// Seeded copy is rewritten; an Admin edit is left alone (PD-SF-06).
 		assertThat(db().queryForList("SELECT description FROM badges ORDER BY sort_order", String.class))
 				.containsExactly("Làm quiz hoặc ôn thẻ 7 ngày trong một chuỗi không đứt", "Admin đã sửa");
@@ -145,6 +145,15 @@ class StreakFreezeMigrationScriptTest {
 		assertThat(mysql(client, badgesV2)).as("badges v2").startsWith("exit=0");
 		assertThat(mysql(client, badgesV2)).as("badges v2 re-run").startsWith("exit=0");
 		assertThat(db().queryForList("SELECT version FROM badges", Long.class)).containsExactly(0L, 0L);
+
+		// THEME is removed next (2026-11-02): its owned and catalog rows, then theme_key itself.
+		String removeTheme = Files.readString(Path.of("migration/migration_remove_theme_v1.sql"), StandardCharsets.UTF_8);
+		assertThat(mysql(client, removeTheme)).as("remove theme").startsWith("exit=0");
+		assertThat(mysql(client, removeTheme)).as("remove theme re-run").startsWith("exit=0");
+		assertThat(db().queryForObject("SELECT COUNT(*) FROM user_items", Integer.class)).isZero();
+		assertThat(db().queryForList("SELECT type FROM shop_items", String.class)).containsExactly("STREAK_FREEZE");
+		assertThat(db().queryForObject("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ?"
+				+ " AND TABLE_NAME = 'shop_items' AND COLUMN_NAME = 'theme_key'", Integer.class, scratch)).isZero();
 
 		hibernateValidate();
 	}

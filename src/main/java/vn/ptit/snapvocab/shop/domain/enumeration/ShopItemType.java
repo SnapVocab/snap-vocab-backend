@@ -1,7 +1,6 @@
 package vn.ptit.snapvocab.shop.domain.enumeration;
 
 public enum ShopItemType {
-	THEME(Behavior.EQUIP, false),
 	AVATAR_FRAME(Behavior.EQUIP, false),
 	XP_BOOSTER(Behavior.ACTIVATE, true),
 	STREAK_FREEZE(Behavior.PASSIVE, true);

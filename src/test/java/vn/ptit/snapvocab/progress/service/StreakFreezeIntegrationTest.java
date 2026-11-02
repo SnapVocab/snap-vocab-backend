@@ -174,7 +174,7 @@ class StreakFreezeIntegrationTest {
 
 		assertShopError(() -> inventoryService.activate(user.getId(), freeze.getId(), "act"),
 				ShopErrorCode.ITEM_NOT_ACTIVATABLE);
-		assertShopError(() -> inventoryService.equip(user.getId(), "THEME", freeze.getId()),
+		assertShopError(() -> inventoryService.equip(user.getId(), "AVATAR_FRAME", freeze.getId()),
 				ShopErrorCode.ITEM_NOT_EQUIPPABLE);
 		assertShopError(() -> inventoryService.equip(user.getId(), "STREAK_FREEZE", freeze.getId()),
 				ShopErrorCode.INVALID_EQUIPMENT_SLOT);

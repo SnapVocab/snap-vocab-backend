@@ -24,7 +24,7 @@ class PriceGuardrail {
 	static final double FACTOR = 1.5;
 	static final int MIN_SAMPLE = 3;
 	private static final Map<ShopItemType, String> TYPE_LABEL = Map.of(ShopItemType.XP_BOOSTER, "XP Booster",
-			ShopItemType.THEME, "Bộ màu", ShopItemType.AVATAR_FRAME, "Khung avatar",
+			ShopItemType.AVATAR_FRAME, "Khung avatar",
 			ShopItemType.STREAK_FREEZE, "Đóng băng chuỗi");
 
 	private final ShopItemRepository repository;

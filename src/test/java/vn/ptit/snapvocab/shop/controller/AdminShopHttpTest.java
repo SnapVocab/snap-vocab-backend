@@ -104,7 +104,7 @@ class AdminShopHttpTest {
 	@Test
 	void nonAdminIs403() throws Exception {
 		call(user, "GET", ITEMS, null, 403);
-		call(user, "POST", ITEMS, theme("THEME_X", "MIDNIGHT_NEON"), 403);
+		call(user, "POST", ITEMS, frame("FRAME_X"), 403);
 		call(user, "GET", "/api/admin/shop/item-types", null, 403);
 	}
 
@@ -112,7 +112,7 @@ class AdminShopHttpTest {
 
 	@Test
 	void listFiltersAndSearch() throws Exception {
-		long t = create(theme("THEME_OCEAN", "MIDNIGHT_NEON"));
+		long t = create(freeze("STREAK_FREEZE_X"));
 		create(frame("FRAME_GOLD_WEEKLY"));
 		create(booster("XP_BOOSTER_X2_30M"));
 		// Creating and publishing can share one clock tick; age the new rows so the publish is strictly newest.
@@ -122,11 +122,11 @@ class AdminShopHttpTest {
 		JsonNode all = call(admin, "GET", ITEMS, null, 200);
 		assertThat(all.path("data").path("data")).hasSize(3);
 		assertThat(all.path("data").path("meta").path("total").asLong()).isEqualTo(3);
-		// updatedAt DESC: the just-published theme is the most recently updated
+		// updatedAt DESC: the just-published freeze is the most recently updated
 		assertThat(all.path("data").path("data").get(0).path("id").asLong()).isEqualTo(t);
 
 		assertThat(codes(call(admin, "GET", ITEMS + "?type=AVATAR_FRAME", null, 200))).containsExactly("FRAME_GOLD_WEEKLY");
-		assertThat(codes(call(admin, "GET", ITEMS + "?status=PUBLISHED", null, 200))).containsExactly("THEME_OCEAN");
+		assertThat(codes(call(admin, "GET", ITEMS + "?status=PUBLISHED", null, 200))).containsExactly("STREAK_FREEZE_X");
 		assertThat(codes(call(admin, "GET", ITEMS + "?status=DRAFT", null, 200)))
 				.containsExactlyInAnyOrder("FRAME_GOLD_WEEKLY", "XP_BOOSTER_X2_30M");
 		assertThat(codes(call(admin, "GET", ITEMS + "?q=gold", null, 200))).containsExactly("FRAME_GOLD_WEEKLY");
@@ -141,16 +141,13 @@ class AdminShopHttpTest {
 
 	@Test
 	void createDraftsOfEveryType() throws Exception {
-		JsonNode t = call(admin, "POST", ITEMS, theme("THEME_OCEAN", "MIDNIGHT_NEON"), 201).path("data");
-		assertThat(t.path("status").asText()).isEqualTo("DRAFT");
-		assertThat(t.path("version").asLong()).isZero();
-		assertThat(t.path("themeKey").asText()).isEqualTo("MIDNIGHT_NEON");
-		assertThat(t.path("behavior").asText()).isEqualTo("EQUIP");
-		assertThat(t.path("createdAt").asText()).isNotBlank();
-
 		JsonNode f = call(admin, "POST", ITEMS, frame("FRAME_GOLD"), 201).path("data");
+		assertThat(f.path("status").asText()).isEqualTo("DRAFT");
+		assertThat(f.path("version").asLong()).isZero();
 		assertThat(f.path("type").asText()).isEqualTo("AVATAR_FRAME");
 		assertThat(f.path("frameAssetKey").asText()).isEqualTo(FRAME);
+		assertThat(f.path("behavior").asText()).isEqualTo("EQUIP");
+		assertThat(f.path("createdAt").asText()).isNotBlank();
 
 		JsonNode b = call(admin, "POST", ITEMS, booster("XP_BOOSTER_X2_30M"), 201).path("data");
 		assertThat(b.path("boostDurationMinutes").asInt()).isEqualTo(30);
@@ -164,21 +161,21 @@ class AdminShopHttpTest {
 
 	@Test
 	void createRejectsServerManagedAndMalformedInput() throws Exception {
-		Map<String, Object> body = theme("THEME_OCEAN", "MIDNIGHT_NEON");
+		Map<String, Object> body = frame("FRAME_OCEAN");
 		body.put("status", "PUBLISHED");
 		JsonNode resp = call(admin, "POST", ITEMS, body, 400);
 		assertThat(error(resp)).isEqualTo("VALIDATION_ERROR");
 		assertThat(resp.path("data").path("errors").get(0).path("field").asText()).isEqualTo("status");
 
-		Map<String, Object> badCode = theme("theme ocean", "MIDNIGHT_NEON");
+		Map<String, Object> badCode = frame("frame ocean");
 		assertThat(firstField(call(admin, "POST", ITEMS, badCode, 400))).isEqualTo("code");
-		Map<String, Object> badType = theme("THEME_OCEAN", "MIDNIGHT_NEON");
+		Map<String, Object> badType = frame("FRAME_OCEAN");
 		badType.put("type", "CHEST");
 		assertThat(firstField(call(admin, "POST", ITEMS, badType, 400))).isEqualTo("type");
-		Map<String, Object> blankName = theme("THEME_OCEAN", "MIDNIGHT_NEON");
+		Map<String, Object> blankName = frame("FRAME_OCEAN");
 		blankName.put("name", " ");
 		assertThat(firstField(call(admin, "POST", ITEMS, blankName, 400))).isEqualTo("name");
-		Map<String, Object> wrongType = theme("THEME_OCEAN", "MIDNIGHT_NEON");
+		Map<String, Object> wrongType = frame("FRAME_OCEAN");
 		wrongType.put("price", "cheap");
 		assertThat(firstField(call(admin, "POST", ITEMS, wrongType, 400))).isEqualTo("price");
 	}
@@ -191,15 +188,11 @@ class AdminShopHttpTest {
 
 	@Test
 	void invalidTypeConfig() throws Exception {
-		Map<String, Object> themeWithBoosterField = theme("THEME_OCEAN", "MIDNIGHT_NEON");
-		themeWithBoosterField.put("maxQuantity", 5);
-		JsonNode resp = call(admin, "POST", ITEMS, themeWithBoosterField, 400);
+		Map<String, Object> frameWithBoosterField = frame("FRAME_OCEAN");
+		frameWithBoosterField.put("maxQuantity", 5);
+		JsonNode resp = call(admin, "POST", ITEMS, frameWithBoosterField, 400);
 		assertThat(error(resp)).isEqualTo("INVALID_SHOP_ITEM_CONFIG");
 		assertThat(firstField(resp)).isEqualTo("maxQuantity");
-
-		Map<String, Object> themeWithoutKey = theme("THEME_OCEAN", "MIDNIGHT_NEON");
-		themeWithoutKey.remove("themeKey");
-		assertThat(error(call(admin, "POST", ITEMS, themeWithoutKey, 400))).isEqualTo("INVALID_SHOP_ITEM_CONFIG");
 
 		Map<String, Object> frameWithoutAsset = frame("FRAME_GOLD");
 		frameWithoutAsset.remove("frameAssetKey");
@@ -209,9 +202,9 @@ class AdminShopHttpTest {
 		foreignAsset.put("frameAssetKey", "avatars/someone.png");
 		assertThat(error(call(admin, "POST", ITEMS, foreignAsset, 400))).isEqualTo("INVALID_SHOP_ITEM_CONFIG");
 
-		Map<String, Object> boosterWithTheme = booster("XP_BOOSTER_X2_30M");
-		boosterWithTheme.put("themeKey", "MIDNIGHT_NEON");
-		assertThat(error(call(admin, "POST", ITEMS, boosterWithTheme, 400))).isEqualTo("INVALID_SHOP_ITEM_CONFIG");
+		Map<String, Object> boosterWithFrame = booster("XP_BOOSTER_X2_30M");
+		boosterWithFrame.put("frameAssetKey", FRAME);
+		assertThat(error(call(admin, "POST", ITEMS, boosterWithFrame, 400))).isEqualTo("INVALID_SHOP_ITEM_CONFIG");
 	}
 
 	@Test
@@ -245,17 +238,6 @@ class AdminShopHttpTest {
 		assertThat(error(call(admin, "POST", ITEMS, body, 400))).isEqualTo("INVALID_AVAILABILITY_WINDOW");
 		body.put("availableUntil", "2026-10-03T00:00:00Z");
 		call(admin, "POST", ITEMS, body, 201);
-	}
-
-	@Test
-	void invalidThemeKey() throws Exception {
-		assertThat(error(call(admin, "POST", ITEMS, theme("THEME_RAINBOW", "RAINBOW"), 400))).isEqualTo("INVALID_THEME_KEY");
-		// DEFAULT is the app's built-in theme, never a ShopItem (shop.md §2.2)
-		assertThat(error(call(admin, "POST", ITEMS, theme("THEME_DEFAULT", "DEFAULT"), 400))).isEqualTo("INVALID_THEME_KEY");
-		create(theme("THEME_OCEAN", "MIDNIGHT_NEON"));
-		// one theme is sold by one item only
-		assertThat(error(call(admin, "POST", ITEMS, theme("THEME_OCEAN_2", "MIDNIGHT_NEON"), 400)))
-				.isEqualTo("INVALID_SHOP_ITEM_CONFIG");
 	}
 
 	@Test
@@ -310,19 +292,19 @@ class AdminShopHttpTest {
 
 	@Test
 	void publishedLocksIdentityAndRuntimeFields() throws Exception {
-		long themeId = create(theme("THEME_OCEAN", "MIDNIGHT_NEON"));
-		publish(themeId);
-		long v = version(themeId);
+		long frameId = create(frame("FRAME_OCEAN"));
+		publish(frameId);
+		long v = version(frameId);
 
-		JsonNode code = call(admin, "PATCH", ITEMS + "/" + themeId, Map.of("version", v, "code", "THEME_SEA"), 409);
+		JsonNode code = call(admin, "PATCH", ITEMS + "/" + frameId, Map.of("version", v, "code", "FRAME_SEA"), 409);
 		assertThat(error(code)).isEqualTo("FIELD_LOCKED");
 		assertThat(code.path("data").path("fields").get(0).asText()).isEqualTo("code");
-		assertThat(error(call(admin, "PATCH", ITEMS + "/" + themeId, Map.of("version", v, "type", "AVATAR_FRAME"), 409)))
+		assertThat(error(call(admin, "PATCH", ITEMS + "/" + frameId, Map.of("version", v, "type", "XP_BOOSTER"), 409)))
 				.isEqualTo("FIELD_LOCKED");
-		assertThat(error(call(admin, "PATCH", ITEMS + "/" + themeId, Map.of("version", v, "themeKey", "SUNSET_AMBER"), 409)))
+		assertThat(error(call(admin, "PATCH", ITEMS + "/" + frameId, Map.of("version", v, "frameAssetKey", FRAME + "x"), 409)))
 				.isEqualTo("FIELD_LOCKED");
 		// a locked field sent unchanged is fine (full-form save)
-		call(admin, "PATCH", ITEMS + "/" + themeId, Map.of("version", v, "code", "THEME_OCEAN", "name", "Ocean"), 200);
+		call(admin, "PATCH", ITEMS + "/" + frameId, Map.of("version", v, "code", "FRAME_OCEAN", "name", "Ocean"), 200);
 
 		long boosterId = create(booster("XP_BOOSTER_X2_30M"));
 		publish(boosterId);
@@ -335,13 +317,13 @@ class AdminShopHttpTest {
 
 	@Test
 	void draftAllowsTypeChangeAndPublishedAllowsMutableFields() throws Exception {
-		long id = create(theme("THEME_OCEAN", "MIDNIGHT_NEON"));
+		long id = create(frame("FRAME_OCEAN"));
 		Map<String, Object> toBooster = new HashMap<>(Map.of("version", 0, "type", "XP_BOOSTER",
 				"boostDurationMinutes", 30, "maxQuantity", 5));
-		toBooster.put("themeKey", null);
+		toBooster.put("frameAssetKey", null);
 		JsonNode changed = call(admin, "PATCH", ITEMS + "/" + id, toBooster, 200).path("data");
 		assertThat(changed.path("type").asText()).isEqualTo("XP_BOOSTER");
-		assertThat(changed.path("themeKey").isNull()).isTrue();
+		assertThat(changed.path("frameAssetKey").isNull()).isTrue();
 
 		publish(id);
 		long v = version(id);
@@ -438,18 +420,16 @@ class AdminShopHttpTest {
 
 	@Test
 	void itemTypesMetadata() throws Exception {
-		create(theme("THEME_OCEAN", "MIDNIGHT_NEON"));
 		JsonNode data = call(admin, "GET", "/api/admin/shop/item-types", null, 200).path("data");
 
 		assertThat(data.path("types").findValuesAsText("type"))
-				.containsExactly("THEME", "AVATAR_FRAME", "XP_BOOSTER", "STREAK_FREEZE");
-		JsonNode themeKey = data.path("types").get(0).path("fields").get(0);
-		assertThat(themeKey.path("name").asText()).isEqualTo("themeKey");
-		assertThat(themeKey.path("inputType").asText()).isEqualTo("SELECT");
-		assertThat(themeKey.path("options").toString()).contains("SUNSET_AMBER").doesNotContain("MIDNIGHT_NEON", "DEFAULT");
-		assertThat(themeKey.path("editableIn").toString()).isEqualTo("[\"DRAFT\"]");
+				.containsExactly("AVATAR_FRAME", "XP_BOOSTER", "STREAK_FREEZE");
+		JsonNode frameAsset = data.path("types").get(0).path("fields").get(0);
+		assertThat(frameAsset.path("name").asText()).isEqualTo("frameAssetKey");
+		assertThat(frameAsset.path("inputType").asText()).isEqualTo("IMAGE");
+		assertThat(frameAsset.path("editableIn").toString()).isEqualTo("[\"DRAFT\"]");
 
-		JsonNode xp = data.path("types").get(2);
+		JsonNode xp = data.path("types").get(1);
 		assertThat(xp.path("behavior").asText()).isEqualTo("ACTIVATE");
 		assertThat(xp.path("fixed").path("multiplier").asInt()).isEqualTo(2);
 		JsonNode duration = xp.path("fields").get(0);
@@ -458,7 +438,7 @@ class AdminShopHttpTest {
 		assertThat(duration.path("defaultValue").asInt()).isEqualTo(30);
 
 		// streak_freeze.md §6, PD-SF-03: passive, holds 1–5, default 2.
-		JsonNode freeze = data.path("types").get(3);
+		JsonNode freeze = data.path("types").get(2);
 		assertThat(freeze.path("behavior").asText()).isEqualTo("PASSIVE");
 		assertThat(freeze.path("stackable").asBoolean()).isTrue();
 		JsonNode held = freeze.path("fields").get(0);
@@ -516,12 +496,6 @@ class AdminShopHttpTest {
 		body.put("iconKey", ICON);
 		body.put("purchasable", true);
 		body.put("price", 100);
-		return body;
-	}
-
-	private Map<String, Object> theme(String code, String themeKey) {
-		Map<String, Object> body = base(code, "THEME");
-		body.put("themeKey", themeKey);
 		return body;
 	}
 

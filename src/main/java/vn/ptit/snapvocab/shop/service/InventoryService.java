@@ -31,7 +31,6 @@ import vn.ptit.snapvocab.shop.domain.dto.ItemConfig;
 import vn.ptit.snapvocab.shop.domain.dto.ShopEvents;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopErrorCode;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopItemType;
-import vn.ptit.snapvocab.shop.domain.enumeration.ThemeKey;
 import vn.ptit.snapvocab.shop.exception.ShopException;
 import vn.ptit.snapvocab.shop.repository.BoosterActivationRepository;
 import vn.ptit.snapvocab.shop.repository.UserItemRepository;
@@ -89,23 +88,20 @@ public class InventoryService {
 		return new InventoryDTO(now, active == null ? null : ShopMapper.toActiveBooster(active), items);
 	}
 
-	/** Equipped theme and frame for GET /api/users/me, so the app can apply them at start (shop.md §10.1). */
+	/** Equipped frame for GET /api/users/me, so the app can apply them at start (shop.md §10.1). */
 	@Transactional(readOnly = true)
 	public EquippedDTO getEquipped(Long userId) {
-		ThemeKey themeKey = null;
 		String frameUrl = null;
 		for (UserItem owned : userItemRepository.findAllByUserId(userId)) {
 			if (!Boolean.TRUE.equals(owned.getEquipped())) {
 				continue;
 			}
 			ItemConfig config = mapper.config(owned.getItem());
-			if (owned.getItemType() == ShopItemType.THEME) {
-				themeKey = config.themeKey();
-			} else if (owned.getItemType() == ShopItemType.AVATAR_FRAME) {
+			if (owned.getItemType() == ShopItemType.AVATAR_FRAME) {
 				frameUrl = config.frameUrl();
 			}
 		}
-		return new EquippedDTO(themeKey, frameUrl);
+		return new EquippedDTO(frameUrl);
 	}
 
 	@Transactional(readOnly = true)
@@ -226,7 +222,7 @@ public class InventoryService {
 			}
 		}
 		throw new ShopException(ShopErrorCode.INVALID_EQUIPMENT_SLOT, "Unknown equipment slot: " + slot,
-				Map.of("allowed", List.of(ShopItemType.THEME, ShopItemType.AVATAR_FRAME)));
+				Map.of("allowed", List.of(ShopItemType.AVATAR_FRAME)));
 	}
 
 	private static ShopException notOwned(Long itemId) {

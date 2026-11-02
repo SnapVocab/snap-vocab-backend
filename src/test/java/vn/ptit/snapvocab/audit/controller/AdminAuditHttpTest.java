@@ -130,7 +130,7 @@ class AdminAuditHttpTest {
 		assertThat(row.path("actor").path("email").asText()).isEqualTo(adminUser.getEmail());
 		assertThat(row.path("target").path("code").asText()).isEqualTo("FRAME_A");
 		assertThat(row.path("target").has("parents")).isFalse();
-		assertThat(row.path("changes").findValuesAsText("field")).contains("code", "price").doesNotContain("themeKey");
+		assertThat(row.path("changes").findValuesAsText("field")).contains("code", "price").doesNotContain("boostDurationMinutes");
 
 		long v = version(id);
 		patch(id, Map.of("version", v, "price", 950), 200); // S-02

@@ -22,14 +22,12 @@ import org.hibernate.type.SqlTypes;
 import vn.ptit.snapvocab.common.domain.BaseTimeEntity;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopItemStatus;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopItemType;
-import vn.ptit.snapvocab.shop.domain.enumeration.ThemeKey;
 
 @Entity
 @Table(
 		name = "shop_items",
 		uniqueConstraints = {
 				@UniqueConstraint(name = "uq_shop_items_code", columnNames = {"code"}),
-				@UniqueConstraint(name = "uq_shop_items_theme_key", columnNames = {"theme_key"}),
 				@UniqueConstraint(name = "uq_shop_items_id_type", columnNames = {"id", "type"})
 		},
 		indexes = {
@@ -86,11 +84,6 @@ public class ShopItem extends BaseTimeEntity {
 	@Column(name = "sort_order", nullable = false)
 	@Builder.Default
 	private Integer sortOrder = 0;
-
-	@Enumerated(EnumType.STRING)
-	@JdbcTypeCode(SqlTypes.VARCHAR)
-	@Column(name = "theme_key", length = 50)
-	private ThemeKey themeKey;
 
 	@Column(name = "frame_asset_key", length = 255)
 	private String frameAssetKey;
