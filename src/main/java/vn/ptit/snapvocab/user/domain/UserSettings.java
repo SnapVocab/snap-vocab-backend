@@ -44,7 +44,7 @@ public class UserSettings extends BaseTimeEntity {
 	@JoinColumn(name = "user_id")
 	private User user;
 
-	/** Words the learner aims to study each day. */
+	/** New words the learner may start each day; due reviews are never capped (learn_ui.md UI-LEARN-02). */
 	@Builder.Default
 	@Column(name = "daily_goal", nullable = false)
 	private Integer dailyGoal = 20;

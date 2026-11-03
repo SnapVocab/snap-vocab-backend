@@ -1,6 +1,7 @@
 package vn.ptit.snapvocab.progress.domain;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -21,8 +22,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 import vn.ptit.snapvocab.progress.domain.enumeration.LearningEventType;
 import vn.ptit.snapvocab.user.domain.User;
 
@@ -56,8 +55,8 @@ public class LearningEvent {
 	@Column(name = "learning_date", nullable = false)
 	private LocalDate learningDate;
 
-	@JdbcTypeCode(SqlTypes.JSON)
-	@Column(columnDefinition = "json")
+	@Convert(converter = JsonMapConverter.class)
+	@Column(columnDefinition = "longtext")
 	private Map<String, Object> metadata;
 
 	@Column(name = "created_at", nullable = false, updatable = false)

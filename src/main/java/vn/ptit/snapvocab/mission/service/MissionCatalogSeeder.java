@@ -1,11 +1,19 @@
 package vn.ptit.snapvocab.mission.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import vn.ptit.snapvocab.audit.domain.dto.AuditTarget;
+import vn.ptit.snapvocab.audit.domain.enumeration.AuditAction;
+import vn.ptit.snapvocab.audit.domain.enumeration.AuditTargetType;
+import vn.ptit.snapvocab.audit.service.AdminAuditService;
+import vn.ptit.snapvocab.audit.service.AuditDiff;
 import vn.ptit.snapvocab.mission.domain.MissionTemplate;
 import vn.ptit.snapvocab.mission.domain.enumeration.MissionCategory;
 import vn.ptit.snapvocab.mission.domain.enumeration.MissionEligibilityRule;
@@ -27,9 +35,16 @@ public class MissionCatalogSeeder implements ApplicationRunner {
 	private static final Logger LOG = LoggerFactory.getLogger(MissionCatalogSeeder.class);
 
 	private final MissionTemplateRepository templateRepository;
+	private final AdminAuditService audit;
+	private final ObjectMapper objectMapper;
+	private final TransactionTemplate transaction;
 
-	public MissionCatalogSeeder(MissionTemplateRepository templateRepository) {
+	public MissionCatalogSeeder(MissionTemplateRepository templateRepository, AdminAuditService audit,
+			ObjectMapper objectMapper, PlatformTransactionManager transactionManager) {
 		this.templateRepository = templateRepository;
+		this.audit = audit;
+		this.objectMapper = objectMapper;
+		this.transaction = new TransactionTemplate(transactionManager);
 	}
 
 	@Override
@@ -37,10 +52,17 @@ public class MissionCatalogSeeder implements ApplicationRunner {
 		seed(mvpCatalog());
 	}
 
+	/** Each new template and its "Hệ thống" audit row (actor null) commit together (admin_audit_log_backend.md §4.4.6). */
 	void seed(List<MissionTemplate> catalog) {
 		for (MissionTemplate template : catalog) {
 			if (templateRepository.findByCode(template.getCode()).isEmpty()) {
-				templateRepository.save(template);
+				transaction.executeWithoutResult(status -> {
+					MissionTemplate saved = templateRepository.save(template);
+					audit.record(AuditAction.MISSION_TEMPLATE_CREATED,
+							AuditTarget.of(AuditTargetType.MISSION_TEMPLATE, saved.getId(), saved.getName(), saved.getCode()),
+							AuditDiff.of(objectMapper, null, AdminMissionTemplateService.formOf(saved),
+									AdminMissionTemplateService.AUDIT_FIELDS), null, null, saved.getVersion());
+				});
 			}
 		}
 		List<MissionTemplate> active = templateRepository.findByActiveTrueOrderById();
@@ -52,7 +74,7 @@ public class MissionCatalogSeeder implements ApplicationRunner {
 		}
 	}
 
-	/** daily_mission.md §5.1; UI names of ADD_5_WORDS, FINISH_2_SHORT_QUIZZES, PERFECT_MINI_QUIZ per COPY-DM-01. */
+	/** daily_mission.md §5.1; UI names of ADD_5_WORDS, FINISH_2_SHORT_QUIZZES, PERFECT_MINI_QUIZ per COPY-DM-01; STUDY_5_CARDS, SCAN_SAVE_3_WORDS per PD-DM-07. */
 	static List<MissionTemplate> mvpCatalog() {
 		return List.of(
 				template("ADD_5_WORDS", "Góp Nhặt Từ Mới", "Thêm 5 từ mới có nghĩa", MissionCategory.VOCABULARY,
@@ -71,7 +93,28 @@ public class MissionCatalogSeeder implements ApplicationRunner {
 						MissionTriggerEvent.BOOSTER_USED, null, null, 1, 5, 10, MissionEligibilityRule.HAS_IDLE_XP_BOOSTER),
 				template("BUY_SHOP_ITEM", "Ghé Thăm Cửa Hàng", "Mua 1 vật phẩm trong Shop", MissionCategory.SHOP,
 						MissionTriggerEvent.SHOP_ITEM_PURCHASED, null, null, 1, 5, 10,
-						MissionEligibilityRule.HAS_PURCHASABLE_ITEM));
+						MissionEligibilityRule.HAS_PURCHASABLE_ITEM),
+				// New triggers: only an app that lists them in X-Mission-Triggers is handed these (PD-DM-13), so they ship on.
+				template("STUDY_5_CARDS", "Lật Thẻ Mỗi Ngày", "Học hoặc ôn 5 thẻ", MissionCategory.SRS,
+						MissionTriggerEvent.SRS_REVIEW_COMPLETED, null, null, 5, 15, 30, MissionEligibilityRule.NONE),
+				template("SCAN_SAVE_3_WORDS", "Săn Từ Qua Ảnh", "Lưu 3 từ từ ảnh bạn đã quét", MissionCategory.SCAN,
+						MissionTriggerEvent.SCAN_WORD_SAVED, null, null, 3, 10, 20, MissionEligibilityRule.NONE),
+				// Variants (PD-DM-12): a second template per slot so "not yesterday's" has something to pick. Coin
+				// never above the slot's other template, so the daily ceiling stays 75 Coin (PD-DM-02, PO 2026-10-22).
+				// ADD_3_WORDS uses a legacy trigger, so older apps would get it too, and there slots 1 and 3 still fall
+				// back to core: it would often land beside ADD_5_WORDS. Off until those apps are gone (Admin turns it on).
+				inactive(template("ADD_3_WORDS", "Thêm Vài Từ Mới", "Thêm 3 từ mới có nghĩa", MissionCategory.VOCABULARY,
+						MissionTriggerEvent.TOPIC_ITEM_CREATED, null, null, 3, 10, 15, MissionEligibilityRule.NONE)),
+				template("SCAN_SAVE_5_WORDS", "Thợ Săn Ảnh", "Lưu 5 từ từ ảnh bạn đã quét", MissionCategory.SCAN,
+						MissionTriggerEvent.SCAN_WORD_SAVED, null, null, 5, 10, 30, MissionEligibilityRule.NONE),
+				template("STUDY_10_CARDS", "Ôn Thẻ Chăm Chỉ", "Học hoặc ôn 10 thẻ", MissionCategory.SRS,
+						MissionTriggerEvent.SRS_REVIEW_COMPLETED, null, null, 10, 15, 40,
+						MissionEligibilityRule.HAS_STUDY_CARDS_FOR_TARGET));
+	}
+
+	private static MissionTemplate inactive(MissionTemplate template) {
+		template.setActive(false);
+		return template;
 	}
 
 	private static MissionTemplate template(String code, String name, String description, MissionCategory category,

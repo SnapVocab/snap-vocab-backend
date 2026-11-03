@@ -460,7 +460,7 @@ class QuizFlowIntegrationTest extends QuizIntegrationTestBase {
 		assertThat(codeOf(() -> quizService.complete(quizId))).isEqualTo(QuizErrorCode.QUIZ_NOT_FOUND);
 		assertThat(codeOf(() -> quizService.checkQuestion(q.getId(),
 				new CheckQuestionRequest(q.getCorrectOptionKey(), null), "x"))).isEqualTo(QuizErrorCode.QUIZ_NOT_FOUND);
-		assertThat(quizService.getHistory(0, 20).getData()).isEmpty();
+		assertThat(quizService.getHistory(0, 20, null, null).getData()).isEmpty();
 	}
 
 	@Test
@@ -469,12 +469,30 @@ class QuizFlowIntegrationTest extends QuizIntegrationTestBase {
 		Long older = create(topic, QuizMode.MCQ, QuizDirection.EN_VI, 5, "h1").quizId();
 		Long newer = create(topic, QuizMode.MATCHING, QuizDirection.EN_VI, 5, "h2").quizId();
 
-		var page = quizService.getHistory(0, 1);
+		var page = quizService.getHistory(0, 1, null, null);
 
 		assertThat(page.getData()).extracting(h -> h.quizId()).containsExactly(newer);
 		assertThat(page.getMeta().getTotal()).isEqualTo(2);
 		assertThat(page.getMeta().getPages()).isEqualTo(2);
-		assertThat(quizService.getHistory(1, 1).getData()).extracting(h -> h.quizId()).containsExactly(older);
+		assertThat(quizService.getHistory(1, 1, null, null).getData()).extracting(h -> h.quizId()).containsExactly(older);
+	}
+
+	@Test
+	void historyFiltersByModeAndStatusIncludingTotals() {
+		Topic topic = topicWithVocabulary("STANDARD", 6);
+		Long mcq = create(topic, QuizMode.MCQ, QuizDirection.EN_VI, 5, "f1").quizId();
+		Long matching = create(topic, QuizMode.MATCHING, QuizDirection.EN_VI, 5, "f2").quizId();
+		Long stale = create(topic, QuizMode.MCQ, QuizDirection.EN_VI, 5, "f3").quizId();
+		backdateCreation(stale, 30);
+
+		var mcqPage = quizService.getHistory(0, 20, QuizMode.MCQ, null);
+		assertThat(mcqPage.getData()).extracting(h -> h.quizId()).containsExactly(mcq, stale);
+		assertThat(mcqPage.getMeta().getTotal()).isEqualTo(2);
+		// Stale sessions are expired before filtering, so IN_PROGRESS means still resumable (D17).
+		assertThat(quizService.getHistory(0, 20, QuizMode.MCQ, QuizStatus.IN_PROGRESS).getData())
+				.extracting(h -> h.quizId()).containsExactly(mcq);
+		assertThat(quizService.getHistory(0, 20, null, QuizStatus.IN_PROGRESS).getData())
+				.extracting(h -> h.quizId()).containsExactly(matching, mcq);
 	}
 
 	@Test
@@ -588,7 +606,7 @@ class QuizFlowIntegrationTest extends QuizIntegrationTestBase {
 		Long fresh = create(topic, QuizMode.MCQ, QuizDirection.EN_VI, 5, "h-fresh").quizId();
 		backdateCreation(stale, 30);
 
-		Map<Long, QuizStatus> statuses = quizService.getHistory(0, 20).getData().stream()
+		Map<Long, QuizStatus> statuses = quizService.getHistory(0, 20, null, null).getData().stream()
 				.collect(java.util.stream.Collectors.toMap(h -> h.quizId(), h -> h.status()));
 
 		assertThat(statuses).containsEntry(stale, QuizStatus.EXPIRED).containsEntry(fresh, QuizStatus.IN_PROGRESS);

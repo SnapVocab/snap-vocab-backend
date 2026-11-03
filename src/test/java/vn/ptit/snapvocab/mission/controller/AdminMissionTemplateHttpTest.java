@@ -85,7 +85,7 @@ class AdminMissionTemplateHttpTest {
 	@AfterEach
 	void cleanUp() {
 		for (String table : List.of("user_daily_mission_claims", "user_daily_mission_progress_logs",
-				"user_daily_missions", "mission_templates", "shop_items")) {
+				"user_daily_missions", "mission_templates", "shop_items", "admin_audit_logs")) {
 			jdbc.update("DELETE FROM " + table);
 		}
 		jdbc.update("DELETE FROM users WHERE email LIKE 'dm-admin-it-%'");

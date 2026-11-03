@@ -1,6 +1,7 @@
 package vn.ptit.snapvocab.quiz.controller;
 
 import vn.ptit.snapvocab.common.util.FormatRestResponse;
+import vn.ptit.snapvocab.config.DataInitializer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -104,6 +105,9 @@ public class QuizHttpEndToEndTest {
 	private TestRestTemplate restTemplate;
 
 	@Autowired
+	private DataInitializer dataInitializer;
+
+	@Autowired
 	private JwtEncoder jwtEncoder;
 
 	@Autowired
@@ -184,6 +188,9 @@ public class QuizHttpEndToEndTest {
 
 	@BeforeEach
 	void setUpUser() {
+		// This cached context seeded DEFAULT_ENGLISH at startup, but any later test context with ddl-auto=create
+		// recreates the shared test schema; re-seed (idempotent) instead of depending on test class order.
+		dataInitializer.run();
 		learnerUser = userRepository.save(User.builder()
 				.email("learner-" + UUID.randomUUID() + "@snapvocab.local")
 				.password(TEST_PASSWORD_HASH)

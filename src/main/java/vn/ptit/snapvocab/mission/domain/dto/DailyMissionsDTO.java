@@ -16,14 +16,16 @@ public record DailyMissionsDTO(LocalDate missionDate, String timezone, Instant s
 			MissionTriggerEvent triggerEvent, int slot, int targetValue, int currentProgress, DailyMissionStatus status,
 			Reward reward, Instant completedAt, Instant claimedAt) {
 
-		public static Mission of(UserDailyMission m) {
+		public static Mission of(UserDailyMission m, String itemName) {
 			return new Mission(m.getId(), m.getCode(), m.getName(), m.getDescription(), m.getCategory(),
 					m.getTriggerEvent(), m.getSlot(), m.getTargetValue(), m.getCurrentProgress(), m.getStatus(),
-					new Reward(m.getRewardCoin(), m.getRewardXp(), m.getRewardItemCode(), m.getRewardItemFallbackCoin()),
+					new Reward(m.getRewardCoin(), m.getRewardXp(), m.getRewardItemCode(), itemName,
+							m.getRewardItemFallbackCoin()),
 					m.getCompletedAt(), m.getClaimedAt());
 		}
 	}
 
-	public record Reward(int coin, int xp, String itemCode, Integer itemFallbackCoin) {
+	/** {@code itemName} is the item's current name (editable after publish), for display; {@code itemCode} is the snapshot. */
+	public record Reward(int coin, int xp, String itemCode, String itemName, Integer itemFallbackCoin) {
 	}
 }

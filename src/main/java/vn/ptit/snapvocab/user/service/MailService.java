@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.time.Year;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
@@ -78,6 +79,17 @@ public class MailService {
 		helper.setSubject("SnapVocab - Reset your password");
 		helper.setText(html, true);
 
+		javaMailSender.send(message);
+	}
+
+	/** Plain-text alert to the operator (daily_mission.md §12); no template, nothing learner-facing. */
+	@Async
+	public void sendOpsAlert(String to, String subject, String text) {
+		SimpleMailMessage message = new SimpleMailMessage();
+		message.setFrom(from);
+		message.setTo(to);
+		message.setSubject(subject);
+		message.setText(text);
 		javaMailSender.send(message);
 	}
 }

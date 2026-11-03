@@ -3,6 +3,10 @@ package vn.ptit.snapvocab.study.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -47,6 +51,8 @@ import vn.ptit.snapvocab.vocab.repository.CollectionRepository;
 import vn.ptit.snapvocab.vocab.repository.TopicItemRepository;
 import vn.ptit.snapvocab.vocab.repository.TopicRepository;
 import vn.ptit.snapvocab.vocab.service.TopicService;
+import vn.ptit.snapvocab.xp.domain.ExperienceLog;
+import vn.ptit.snapvocab.xp.service.XpService;
 
 @ExtendWith(MockitoExtension.class)
 class StudyServiceTest {
@@ -65,6 +71,7 @@ class StudyServiceTest {
 	@Mock private TopicService topicService;
 	@Mock private MissionTracker missionTracker;
 	@Mock private ApplicationEventPublisher eventPublisher;
+	@Mock private XpService xpService;
 	@InjectMocks private StudyService service;
 	private Collection collection;
 	private TopicItem item;
@@ -87,6 +94,8 @@ class StudyServiceTest {
 		when(dailyProgressRepository.findForUpdate(7L, 3L, STUDY_DAY))
 				.thenReturn(Optional.of(new StudyDailyProgress()));
 		when(userSettingsService.get(7L)).thenReturn(new UserSettingsDTO(20, 20, null, true));
+		lenient().when(xpService.award(anyLong(), any(), anyInt(), anyString()))
+				.thenReturn(ExperienceLog.builder().amount(2).build());
 	}
 
 	@ParameterizedTest
@@ -142,7 +151,9 @@ class StudyServiceTest {
 	@Test
 	void rejectedReviewDoesNotRecordStudyActivity() {
 		when(collectionRepository.findById(3L)).thenReturn(Optional.of(collection));
-		when(dailyCardRepository.countByUserIdAndCollectionIdAndStudyDate(7L, 3L, STUDY_DAY)).thenReturn(20L);
+		// A new card when today's new-word quota (dailyGoal) is used up.
+		when(studyQueueRepository.countByUserIdAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(any(), any(), any()))
+				.thenReturn(20L);
 		try (MockedStatic<Economy> clock = Mockito.mockStatic(Economy.class, Mockito.CALLS_REAL_METHODS)) {
 			clock.when(Economy::now).thenReturn(REVIEWED_AT);
 			assertThatThrownBy(() -> service.submitCollectionRating(7L, 3L, 21L, Rating.GOOD))

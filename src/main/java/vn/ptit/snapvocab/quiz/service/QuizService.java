@@ -192,13 +192,13 @@ public class QuizService {
 	}
 
 	@Transactional
-	public PaginationObject<List<QuizHistoryItemDTO>> getHistory(int page, int size) {
+	public PaginationObject<List<QuizHistoryItemDTO>> getHistory(int page, int size, QuizMode mode, QuizStatus status) {
 		if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
 			throw new QuizException(QuizErrorCode.INVALID_REQUEST, "page >= 0 and 1 <= size <= " + MAX_PAGE_SIZE);
 		}
 		Long userId = currentUserId();
 		quizRepository.expireStale(userId, now().minus(SESSION_TTL));
-		Page<Quiz> result = quizRepository.findHistory(userId, PageRequest.of(page, size));
+		Page<Quiz> result = quizRepository.findHistory(userId, mode, status, PageRequest.of(page, size));
 		return PaginationObject.<List<QuizHistoryItemDTO>>builder()
 				.data(result.getContent().stream().map(QuizService::toHistoryItem).toList())
 				.meta(Meta.builder()

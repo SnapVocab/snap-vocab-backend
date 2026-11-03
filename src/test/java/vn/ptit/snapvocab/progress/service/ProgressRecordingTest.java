@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
@@ -36,6 +37,7 @@ class ProgressRecordingTest {
 	@Mock private TopicItemRepository itemRepository;
 	@Mock private QuizRepository quizRepository;
 	@Mock private MissionTracker missionTracker;
+	@Mock private StreakFreezeService streakFreezeService;
 	@InjectMocks private ProgressService service;
 	private User user;
 	private final Set<String> recorded = new HashSet<>();
@@ -51,6 +53,12 @@ class ProgressRecordingTest {
 			recorded.add(event.getSourceKey());
 			ReflectionTestUtils.setField(event, "id", (long) recorded.size());
 			return event;
+		});
+		// No Streak Freeze units: the chain is covered through the last study day.
+		when(streakFreezeService.settle(any(), any())).thenAnswer(call -> {
+			Instant last = user.getLastStudiedAt();
+			LocalDate covered = last == null ? null : LocalDate.ofInstant(last, ProgressService.ZONE);
+			return new StreakFreezeService.Settlement(0, false, covered, 0, null);
 		});
 	}
 

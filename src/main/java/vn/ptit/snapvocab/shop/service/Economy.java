@@ -11,6 +11,12 @@ import vn.ptit.snapvocab.common.exception.ResourceNotFoundException;
 /** Conventions shared by every economy mutation (shop.md §7.1). */
 public final class Economy {
 
+	/**
+	 * Approved Daily Mission Coin per learner per day (PD-DM-02, PO 2026-10-22). Same value as the admin's
+	 * MAX_COIN_PER_DAY; a catalog edit that pushes the ceiling past it needs a reason (admin_audit_log_backend.md §4.5.2).
+	 */
+	public static final int APPROVED_DAILY_COIN = 75;
+
 	private static final int MAX_KEY_LENGTH = 128;
 
 	private Economy() {

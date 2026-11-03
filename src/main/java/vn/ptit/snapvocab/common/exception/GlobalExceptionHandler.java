@@ -13,8 +13,12 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import vn.ptit.snapvocab.audit.exception.AuditException;
+import vn.ptit.snapvocab.badge.exception.BadgeException;
 import vn.ptit.snapvocab.common.dto.RestResponse;
 import vn.ptit.snapvocab.mission.exception.MissionException;
+import vn.ptit.snapvocab.notification.exception.NotificationException;
 import vn.ptit.snapvocab.quiz.exception.QuizException;
 import vn.ptit.snapvocab.scan.exception.ScanException;
 import vn.ptit.snapvocab.shop.exception.ShopException;
@@ -191,6 +195,32 @@ public class GlobalExceptionHandler {
 		return ResponseEntity.status(ex.getCode().getStatus()).body(response);
 	}
 
+	@ExceptionHandler(BadgeException.class)
+	public ResponseEntity<RestResponse<Object>> handleBadge(BadgeException ex) {
+
+		log.info("Badge request rejected with {}: {}", ex.getCode(), ex.getMessage());
+		RestResponse<Object> response = RestResponse.builder()
+				.statusCode(ex.getCode().getStatus().value())
+				.error(ex.getCode().name())
+				.data(ex.getDetails())
+				.build();
+
+		return ResponseEntity.status(ex.getCode().getStatus()).body(response);
+	}
+
+	@ExceptionHandler(AuditException.class)
+	public ResponseEntity<RestResponse<Object>> handleAudit(AuditException ex) {
+
+		log.info("Admin request rejected with {}: {}", ex.getCode(), ex.getMessage());
+		RestResponse<Object> response = RestResponse.builder()
+				.statusCode(ex.getCode().getStatus().value())
+				.error(ex.getCode().name())
+				.data(ex.getDetails())
+				.build();
+
+		return ResponseEntity.status(ex.getCode().getStatus()).body(response);
+	}
+
 	@ExceptionHandler(MissionException.class)
 	public ResponseEntity<RestResponse<Object>> handleMission(MissionException ex) {
 
@@ -206,6 +236,30 @@ public class GlobalExceptionHandler {
 				.build();
 
 		return ResponseEntity.status(ex.getStatus()).body(response);
+	}
+
+	@ExceptionHandler(NotificationException.class)
+	public ResponseEntity<RestResponse<Object>> handleNotification(NotificationException ex) {
+
+		log.info("Notification request rejected with {}: {}", ex.getCode(), ex.getMessage());
+		RestResponse<Object> response = RestResponse.builder()
+				.statusCode(ex.getCode().getStatus().value())
+				.error(ex.getCode().name())
+				.build();
+
+		return ResponseEntity.status(ex.getCode().getStatus()).body(response);
+	}
+
+	/** {@code ?size=abc} or {@code /notifications/abc/read}: a client error, not the 500 below. */
+	@ExceptionHandler(MethodArgumentTypeMismatchException.class)
+	public ResponseEntity<RestResponse<Object>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+
+		RestResponse<Object> response = RestResponse.builder()
+				.statusCode(400)
+				.error("Invalid parameter: " + ex.getName())
+				.build();
+
+		return ResponseEntity.badRequest().body(response);
 	}
 
 	/** Constraint races that survive service-level handling; never leak SQL to the client. */

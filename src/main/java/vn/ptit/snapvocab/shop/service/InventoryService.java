@@ -18,13 +18,16 @@ import org.springframework.transaction.support.TransactionTemplate;
 import vn.ptit.snapvocab.mission.domain.enumeration.MissionTriggerEvent;
 import vn.ptit.snapvocab.mission.service.MissionFacts;
 import vn.ptit.snapvocab.mission.service.MissionTracker;
+import vn.ptit.snapvocab.progress.service.StreakFreezeService;
 import vn.ptit.snapvocab.user.domain.User;
 import vn.ptit.snapvocab.user.repository.UserRepository;
 import vn.ptit.snapvocab.shop.domain.BoosterActivation;
 import vn.ptit.snapvocab.shop.domain.UserItem;
 import vn.ptit.snapvocab.shop.domain.dto.ActivationResultDTO;
 import vn.ptit.snapvocab.shop.domain.dto.EquipmentDTO;
+import vn.ptit.snapvocab.shop.domain.dto.EquippedDTO;
 import vn.ptit.snapvocab.shop.domain.dto.InventoryDTO;
+import vn.ptit.snapvocab.shop.domain.dto.ItemConfig;
 import vn.ptit.snapvocab.shop.domain.dto.ShopEvents;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopErrorCode;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopItemType;
@@ -45,12 +48,15 @@ public class InventoryService {
 	private final EntityManager entityManager;
 	private final TransactionTemplate transaction;
 	private final MissionTracker missionTracker;
+	private final StreakFreezeService streakFreezeService;
 
 	public InventoryService(UserRepository userRepository, UserItemRepository userItemRepository,
 			BoosterActivationRepository activationRepository, ShopMapper mapper,
 			ApplicationEventPublisher eventPublisher, EntityManager entityManager,
-			PlatformTransactionManager transactionManager, MissionTracker missionTracker) {
+			PlatformTransactionManager transactionManager, MissionTracker missionTracker,
+			StreakFreezeService streakFreezeService) {
 		this.missionTracker = missionTracker;
+		this.streakFreezeService = streakFreezeService;
 		this.userRepository = userRepository;
 		this.userItemRepository = userItemRepository;
 		this.activationRepository = activationRepository;
@@ -61,18 +67,50 @@ public class InventoryService {
 		this.transaction.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
 	}
 
-	/** Owned items; an empty booster stays hidden unless it is the one currently active (shop.md §4.2). */
+	/**
+	 * Owned items; an empty stackable stays hidden unless it is the booster currently active (shop.md §4.2).
+	 * Streak Freeze quantities already exclude units a pending settlement takes (streak_freeze.md §3.2).
+	 */
 	@Transactional(readOnly = true)
 	public InventoryDTO getInventory(Long userId) {
 		Instant now = Economy.now();
 		BoosterActivation active = findActive(userId, now);
 		Long activeItemId = active == null ? null : active.getShopItem().getId();
-		List<InventoryDTO.Item> items = userItemRepository.findAllByUserId(userId).stream()
-				.filter(ui -> ui.getQuantity() > 0 || Boolean.TRUE.equals(ui.getEquipped())
-						|| ui.getItem().getId().equals(activeItemId))
-				.map(mapper::toInventoryItem)
+		List<UserItem> owned = userItemRepository.findAllByUserId(userId);
+		Map<Long, Integer> freezeLeft = owned.stream().anyMatch(ui -> ui.getItemType() == ShopItemType.STREAK_FREEZE)
+				? streakFreezeService.unitsLeft(userRepository.findById(userId).orElseThrow(), owned,
+						StreakFreezeService.today())
+				: Map.of();
+		List<InventoryDTO.Item> items = owned.stream()
+				.map(ui -> mapper.toInventoryItem(ui, freezeLeft.getOrDefault(ui.getItem().getId(), ui.getQuantity())))
+				.filter(item -> item.quantity() > 0 || item.equipped() || item.itemId().equals(activeItemId))
 				.toList();
 		return new InventoryDTO(now, active == null ? null : ShopMapper.toActiveBooster(active), items);
+	}
+
+	/** Equipped avatar and card frames for GET /api/users/me, so the app can apply them at start (shop.md §10.1). */
+	@Transactional(readOnly = true)
+	public EquippedDTO getEquipped(Long userId) {
+		String frameUrl = null;
+		String cardFrameUrl = null;
+		for (UserItem owned : userItemRepository.findAllByUserId(userId)) {
+			if (!Boolean.TRUE.equals(owned.getEquipped())) {
+				continue;
+			}
+			ItemConfig config = mapper.config(owned.getItem());
+			if (owned.getItemType() == ShopItemType.AVATAR_FRAME) {
+				frameUrl = config.frameUrl();
+			} else if (owned.getItemType() == ShopItemType.CARD_FRAME) {
+				cardFrameUrl = config.frameUrl();
+			}
+		}
+		return new EquippedDTO(frameUrl, cardFrameUrl);
+	}
+
+	@Transactional(readOnly = true)
+	public InventoryDTO.ActiveBooster getActiveBooster(Long userId) {
+		BoosterActivation active = findActive(userId, Economy.now());
+		return active == null ? null : ShopMapper.toActiveBooster(active);
 	}
 
 	/** Naturally idempotent: equipping the equipped item is a no-op (shop.md §7.4). */
@@ -187,7 +225,7 @@ public class InventoryService {
 			}
 		}
 		throw new ShopException(ShopErrorCode.INVALID_EQUIPMENT_SLOT, "Unknown equipment slot: " + slot,
-				Map.of("allowed", List.of(ShopItemType.THEME, ShopItemType.AVATAR_FRAME)));
+				Map.of("allowed", List.of(ShopItemType.AVATAR_FRAME, ShopItemType.CARD_FRAME)));
 	}
 
 	private static ShopException notOwned(Long itemId) {

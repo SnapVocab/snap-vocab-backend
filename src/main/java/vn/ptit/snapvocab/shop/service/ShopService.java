@@ -38,6 +38,7 @@ import vn.ptit.snapvocab.common.exception.ResourceNotFoundException;
 import vn.ptit.snapvocab.mission.domain.enumeration.MissionTriggerEvent;
 import vn.ptit.snapvocab.mission.service.MissionFacts;
 import vn.ptit.snapvocab.mission.service.MissionTracker;
+import vn.ptit.snapvocab.progress.service.StreakFreezeService;
 
 @Service
 public class ShopService {
@@ -54,12 +55,15 @@ public class ShopService {
 	private final EntityManager entityManager;
 	private final TransactionTemplate transaction;
 	private final MissionTracker missionTracker;
+	private final StreakFreezeService streakFreezeService;
 
 	public ShopService(UserRepository userRepository, ShopItemRepository shopItemRepository,
 			UserItemRepository userItemRepository, CoinTransactionRepository ledger, WalletService walletService,
 			ShopMapper mapper, ApplicationEventPublisher eventPublisher, EntityManager entityManager,
-			PlatformTransactionManager transactionManager, MissionTracker missionTracker) {
+			PlatformTransactionManager transactionManager, MissionTracker missionTracker,
+			StreakFreezeService streakFreezeService) {
 		this.missionTracker = missionTracker;
+		this.streakFreezeService = streakFreezeService;
 		this.userRepository = userRepository;
 		this.shopItemRepository = shopItemRepository;
 		this.userItemRepository = userItemRepository;
@@ -75,17 +79,20 @@ public class ShopService {
 	@Transactional(readOnly = true)
 	public List<ShopItemDTO> getCatalog(Long userId, String type) {
 		ShopItemType typeFilter = parseType(type);
-		long coin = userRepository.findById(userId).map(User::getCoin)
+		User user = userRepository.findById(userId)
 				.orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
-		Map<Long, UserItem> owned = userItemRepository.findAllByUserId(userId).stream()
+		List<UserItem> ownedItems = userItemRepository.findAllByUserId(userId);
+		Map<Long, UserItem> owned = ownedItems.stream()
 				.collect(Collectors.toMap(ui -> ui.getItem().getId(), Function.identity()));
+		// A pending Streak Freeze settlement frees room before the next purchase (streak_freeze.md §3.2).
+		Map<Long, Integer> freezeLeft = streakFreezeService.unitsLeft(user, ownedItems, StreakFreezeService.today());
 		return shopItemRepository.findCatalog(Economy.now(), typeFilter).stream()
-				.map(item -> toDto(item, owned.get(item.getId()), coin))
+				.map(item -> toDto(item, owned.get(item.getId()), freezeLeft.get(item.getId()), user.getCoin()))
 				.toList();
 	}
 
-	private ShopItemDTO toDto(ShopItem item, UserItem owned, long coin) {
-		int quantity = owned == null ? 0 : owned.getQuantity();
+	private ShopItemDTO toDto(ShopItem item, UserItem owned, Integer unitsLeft, long coin) {
+		int quantity = unitsLeft != null ? unitsLeft : owned == null ? 0 : owned.getQuantity();
 		BlockReason block = ShopPurchasePolicy.blockReason(item, quantity, coin);
 		return new ShopItemDTO(item.getId(), item.getCode(), item.getType(), item.getName(), item.getDescription(),
 				mapper.iconUrl(item), item.getPrice(), item.getAvailableUntil(), mapper.config(item), quantity > 0,
@@ -138,6 +145,10 @@ public class ShopService {
 		}
 		if (item.getPrice() != expectedPrice) {
 			throw new ShopException(ShopErrorCode.PRICE_CHANGED, "Price changed", Map.of("currentPrice", item.getPrice()));
+		}
+		if (item.getType() == ShopItemType.STREAK_FREEZE) {
+			// Settle before the units held change, so a unit bought today never covers an earlier day (§3.3).
+			streakFreezeService.settle(user, StreakFreezeService.today());
 		}
 		UserItem owned = userItemRepository.findByUserIdAndItemId(userId, itemId).orElse(null);
 		BlockReason block = ShopPurchasePolicy.blockReason(item, owned == null ? 0 : owned.getQuantity(), user.getCoin());

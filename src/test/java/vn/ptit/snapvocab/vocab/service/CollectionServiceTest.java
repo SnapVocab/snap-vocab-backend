@@ -12,9 +12,12 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import vn.ptit.snapvocab.audit.service.AdminAuditService;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.security.access.AccessDeniedException;
@@ -54,6 +57,12 @@ class CollectionServiceTest {
 
 	@Mock
 	private Cache topicTreeCache;
+
+	@Mock
+	private AdminAuditService audit;
+
+	@Spy
+	private ObjectMapper objectMapper = new ObjectMapper();
 
 	@InjectMocks
 	private CollectionService collectionService;

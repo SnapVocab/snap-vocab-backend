@@ -19,4 +19,8 @@ public interface UserItemRepository extends JpaRepository<UserItem, Long> {
 	List<UserItem> findAllByUserId(@Param("userId") Long userId);
 
 	Optional<UserItem> findByUserIdAndItemTypeAndEquippedTrue(Long userId, ShopItemType itemType);
+
+	/** Oldest catalog item first: the order Streak Freeze units are consumed in (streak_freeze.md §3.2). */
+	@Query("SELECT ui FROM UserItem ui JOIN FETCH ui.item i WHERE ui.user.id = :userId AND ui.itemType = :type ORDER BY i.id")
+	List<UserItem> findAllByUserIdAndType(@Param("userId") Long userId, @Param("type") ShopItemType type);
 }

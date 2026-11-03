@@ -7,9 +7,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import vn.ptit.snapvocab.audit.service.AdminAuditService;
 import vn.ptit.snapvocab.badge.domain.Badge;
 import vn.ptit.snapvocab.badge.domain.dto.AdminBadgeDTO;
 import vn.ptit.snapvocab.badge.domain.enumeration.BadgeMetric;
@@ -22,7 +24,7 @@ class AdminBadgeServiceTest {
 
 	private final BadgeRepository badges = mock(BadgeRepository.class);
 	private final UserBadgeRepository earned = mock(UserBadgeRepository.class);
-	private final AdminBadgeService service = new AdminBadgeService(badges, earned);
+	private final AdminBadgeService service = new AdminBadgeService(badges, earned, new ObjectMapper(), mock(AdminAuditService.class));
 
 	@Test
 	void listIncludesInactiveRowsWithOneAggregateAndARealZeroForUnseenBadges() {
@@ -38,7 +40,7 @@ class AdminBadgeServiceTest {
 		assertThat(result).extracting(AdminBadgeDTO::id).containsExactly(1L, 2L);
 		assertThat(result).extracting(AdminBadgeDTO::isActive).containsExactly(false, true);
 		assertThat(result).extracting(AdminBadgeDTO::earnerCount).containsExactly(3L, 0L);
-		assertThat(result).allSatisfy(dto -> assertThat(dto.version()).isNull());
+		assertThat(result).allSatisfy(dto -> assertThat(dto.version()).isZero());
 		verify(badges).findAllByOrderBySortOrderAscIdAsc();
 		verify(earned).countEarnersByBadge();
 		verifyNoMoreInteractions(badges, earned);
@@ -62,7 +64,7 @@ class AdminBadgeServiceTest {
 		assertThat(result.name()).isEqualTo("Current name");
 		assertThat(result.isActive()).isFalse();
 		assertThat(result.earnerCount()).isEqualTo(7);
-		assertThat(result.version()).isNull();
+		assertThat(result.version()).isZero();
 		verify(badges).findById(1L);
 		verify(earned).countByBadgeId(1L);
 		verifyNoMoreInteractions(badges, earned);

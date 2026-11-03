@@ -10,7 +10,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -25,6 +25,13 @@ import org.springframework.data.domain.Sort;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vn.ptit.snapvocab.audit.domain.dto.AuditChange;
+import vn.ptit.snapvocab.audit.domain.dto.AuditTarget;
+import vn.ptit.snapvocab.audit.domain.enumeration.AuditAction;
+import vn.ptit.snapvocab.audit.domain.enumeration.AuditTargetType;
+import vn.ptit.snapvocab.audit.service.AdminAuditService;
+import vn.ptit.snapvocab.audit.service.AuditDiff;
+import vn.ptit.snapvocab.audit.service.AuditReason;
 import vn.ptit.snapvocab.common.dto.Meta;
 import vn.ptit.snapvocab.common.dto.PaginationObject;
 import vn.ptit.snapvocab.storage.domain.dto.PresignedUploadResponse;
@@ -39,7 +46,6 @@ import vn.ptit.snapvocab.shop.domain.dto.ShopItemTypeMetadataDTO.TypeSpec;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopErrorCode;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopItemStatus;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopItemType;
-import vn.ptit.snapvocab.shop.domain.enumeration.ThemeKey;
 import vn.ptit.snapvocab.shop.exception.ShopException;
 import vn.ptit.snapvocab.shop.repository.ShopItemRepository;
 
@@ -58,6 +64,10 @@ public class AdminShopService {
 	static final int MAX_QUANTITY_MIN = 1;
 	static final int MAX_QUANTITY_MAX = 10;
 	static final int MAX_QUANTITY_DEFAULT = 5;
+	// Streak Freeze holdings (streak_freeze.md PD-SF-03): more than a few and a long break still keeps the chain.
+	static final int FREEZE_MAX_QUANTITY_MIN = 1;
+	static final int FREEZE_MAX_QUANTITY_MAX = 5;
+	static final int FREEZE_MAX_QUANTITY_DEFAULT = 2;
 	static final int NAME_MAX = 100;
 	static final int DESCRIPTION_MAX = 500;
 	static final Pattern CODE = Pattern.compile("^[A-Z][A-Z0-9_]{2,63}$");
@@ -66,6 +76,13 @@ public class AdminShopService {
 	static final List<String> ASSET_FORMATS = List.of("png", "webp");
 	static final long ICON_MAX_BYTES = 200 * 1024;
 	static final long FRAME_MAX_BYTES = 300 * 1024;
+	static final long CARD_FRAME_MAX_BYTES = 500 * 1024;
+	/**
+	 * One window for every card frame (PD-CF-03): the app draws card content inside it. Relative to the asset, origin
+	 * top-left. Mirrored in SnapVocab card-frame.ts; change both together.
+	 */
+	static final Map<String, Object> CARD_FRAME_CONTRACT = Map.of("aspectRatio", "3:4", "designWidth", 1080,
+			"designHeight", 1440, "contentWindow", Map.of("x", 0.09, "y", 0.09, "width", 0.82, "height", 0.82));
 
 	private static final Set<ShopItemStatus> DRAFT_ONLY = EnumSet.of(ShopItemStatus.DRAFT);
 	private static final Set<ShopItemStatus> UNTIL_ARCHIVED = EnumSet.of(ShopItemStatus.DRAFT, ShopItemStatus.PUBLISHED);
@@ -74,24 +91,33 @@ public class AdminShopService {
 	/** shop.md §8.2 — statuses in which each form field may change. Drives FIELD_LOCKED and the form metadata. */
 	static final Map<String, Set<ShopItemStatus>> EDITABLE_IN = Map.ofEntries(
 			entry("code", DRAFT_ONLY), entry("type", DRAFT_ONLY),
-			entry("themeKey", DRAFT_ONLY), entry("frameAssetKey", DRAFT_ONLY), entry("boostDurationMinutes", DRAFT_ONLY),
+			entry("frameAssetKey", DRAFT_ONLY), entry("boostDurationMinutes", DRAFT_ONLY),
 			entry("name", ALWAYS), entry("description", ALWAYS), entry("iconKey", ALWAYS), entry("sortOrder", ALWAYS),
 			entry("price", UNTIL_ARCHIVED), entry("purchasable", UNTIL_ARCHIVED), entry("availableFrom", UNTIL_ARCHIVED),
 			entry("availableUntil", UNTIL_ARCHIVED), entry("maxQuantity", UNTIL_ARCHIVED));
 
-	/** Type-specific fields; a field owned by another type must be null. */
+	/** Type-specific fields; any field the type does not list must be null. */
 	private static final Map<ShopItemType, List<String>> TYPE_FIELDS = Map.of(
-			ShopItemType.THEME, List.of("themeKey"),
 			ShopItemType.AVATAR_FRAME, List.of("frameAssetKey"),
-			ShopItemType.XP_BOOSTER, List.of("boostDurationMinutes", "maxQuantity"));
+			ShopItemType.CARD_FRAME, List.of("frameAssetKey"),
+			ShopItemType.XP_BOOSTER, List.of("boostDurationMinutes", "maxQuantity"),
+			ShopItemType.STREAK_FREEZE, List.of("maxQuantity"));
 
 	private static final ShopItemForm NEW_ITEM = new ShopItemForm(null, null, null, null, null, false, null, null,
-			null, 0, null, null, null, null);
+			null, 0, null, null, null);
+
+	/** Audit "changes" of a create/update, in ShopItemForm order (admin_audit_log_backend.md §4.4.1). */
+	static final List<String> AUDIT_FIELDS = List.of("code", "type", "name", "description", "iconKey", "purchasable",
+			"price", "availableFrom", "availableUntil", "sortOrder", "frameAssetKey", "boostDurationMinutes",
+			"maxQuantity");
+	static final List<String> DELETE_FIELDS = List.of("name", "type", "price", "status");
 
 	private final ShopItemRepository repository;
 	private final StorageService storageService;
 	private final ShopMapper mapper;
 	private final ObjectMapper objectMapper;
+	private final AdminAuditService audit;
+	private final PriceGuardrail priceGuardrail;
 
 	// ---- queries ----
 
@@ -123,19 +149,13 @@ public class AdminShopService {
 
 	@Transactional(readOnly = true)
 	public ShopItemTypeMetadataDTO itemTypes() {
-		Set<ThemeKey> used = EnumSet.noneOf(ThemeKey.class);
-		used.addAll(repository.findUsedThemeKeys());
-		List<String> freeThemeKeys = Arrays.stream(ThemeKey.values())
-				.filter(k -> k != ThemeKey.DEFAULT && !used.contains(k))
-				.map(Enum::name)
-				.toList();
-
 		List<FieldSpec> common = List.of(
 				spec("code", InputType.TEXT).required(true).requiredToPublish(true).pattern(CODE.pattern()).build(),
 				spec("type", InputType.SELECT).required(true).requiredToPublish(true)
 						.options(Arrays.stream(ShopItemType.values()).map(Enum::name).toList()).build(),
 				spec("name", InputType.TEXT).required(true).requiredToPublish(true).min(1L).max((long) NAME_MAX).build(),
 				spec("description", InputType.TEXTAREA).max((long) DESCRIPTION_MAX).build(),
+				// requiredToPublish holds for XP_BOOSTER and STREAK_FREEZE; frames (EQUIP) may publish without an icon.
 				spec("iconKey", InputType.IMAGE).requiredToPublish(true).formats(ASSET_FORMATS).maxBytes(ICON_MAX_BYTES)
 						.dimensions("square, >= 256x256").build(),
 				spec("purchasable", InputType.BOOLEAN).required(true).requiredToPublish(true).defaultValue(false).build(),
@@ -145,14 +165,16 @@ public class AdminShopService {
 				spec("sortOrder", InputType.NUMBER).required(true).requiredToPublish(true).min(0L).defaultValue(0).build());
 
 		List<TypeSpec> types = List.of(
-				new TypeSpec(ShopItemType.THEME, ShopItemType.THEME.getBehavior(), ShopItemType.THEME.isStackable(),
-						Map.of(), List.of(spec("themeKey", InputType.SELECT).required(true).requiredToPublish(true)
-								.options(freeThemeKeys).build())),
 				new TypeSpec(ShopItemType.AVATAR_FRAME, ShopItemType.AVATAR_FRAME.getBehavior(),
 						ShopItemType.AVATAR_FRAME.isStackable(), Map.of(),
 						List.of(spec("frameAssetKey", InputType.IMAGE).required(true).requiredToPublish(true)
 								.formats(ASSET_FORMATS).maxBytes(FRAME_MAX_BYTES).dimensions("512x512, transparent")
 								.build())),
+				new TypeSpec(ShopItemType.CARD_FRAME, ShopItemType.CARD_FRAME.getBehavior(),
+						ShopItemType.CARD_FRAME.isStackable(), CARD_FRAME_CONTRACT,
+						List.of(spec("frameAssetKey", InputType.IMAGE).required(true).requiredToPublish(true)
+								.formats(ASSET_FORMATS).maxBytes(CARD_FRAME_MAX_BYTES)
+								.dimensions("1080x1440, transparent content window").build())),
 				new TypeSpec(ShopItemType.XP_BOOSTER, ShopItemType.XP_BOOSTER.getBehavior(),
 						ShopItemType.XP_BOOSTER.isStackable(),
 						Map.of("multiplier", ShopItemType.XP_BOOSTER_MULTIPLIER),
@@ -160,7 +182,12 @@ public class AdminShopService {
 										.min((long) DURATION_MIN).max((long) DURATION_MAX).defaultValue(DURATION_DEFAULT).build(),
 								spec("maxQuantity", InputType.NUMBER).required(true).requiredToPublish(true)
 										.min((long) MAX_QUANTITY_MIN).max((long) MAX_QUANTITY_MAX)
-										.defaultValue(MAX_QUANTITY_DEFAULT).build())));
+										.defaultValue(MAX_QUANTITY_DEFAULT).build())),
+				new TypeSpec(ShopItemType.STREAK_FREEZE, ShopItemType.STREAK_FREEZE.getBehavior(),
+						ShopItemType.STREAK_FREEZE.isStackable(), Map.of(),
+						List.of(spec("maxQuantity", InputType.NUMBER).required(true).requiredToPublish(true)
+								.min((long) FREEZE_MAX_QUANTITY_MIN).max((long) FREEZE_MAX_QUANTITY_MAX)
+								.defaultValue(FREEZE_MAX_QUANTITY_DEFAULT).build())));
 		return new ShopItemTypeMetadataDTO(common, types);
 	}
 
@@ -172,17 +199,26 @@ public class AdminShopService {
 
 	@Transactional
 	public AdminShopItemDTO create(JsonNode body) {
-		ShopItemForm form = merge(NEW_ITEM, body, false);
+		ObjectNode request = objectBody(body);
+		String reason = AuditReason.take(request);
+		ShopItemForm form = merge(NEW_ITEM, request, false);
 		validate(form, null, false);
+		String guardrail = guardrail(null, form);
+		String why = AuditReason.check(reason, guardrail != null, AuditReason.PRICE_OUT_OF_BAND, guardrail);
 		ShopItem item = ShopItem.builder().status(ShopItemStatus.DRAFT).build();
 		apply(form, item);
-		return toDto(save(item));
+		ShopItem saved = save(item);
+		audit.record(AuditAction.SHOP_ITEM_CREATED, target(saved), AuditDiff.of(objectMapper, null, form, AUDIT_FIELDS),
+				why, guardrail, saved.getVersion());
+		return toDto(saved);
 	}
 
 	@Transactional
 	public AdminShopItemDTO update(Long id, JsonNode body) {
 		ShopItem item = find(id);
-		JsonNode version = body == null ? null : body.get("version");
+		ObjectNode request = objectBody(body);
+		String reason = AuditReason.take(request);
+		JsonNode version = request.get("version");
 		if (version == null || !version.isIntegralNumber()) {
 			throw invalid("version", ShopErrorCode.VALIDATION_ERROR, "version is required");
 		}
@@ -191,7 +227,7 @@ public class AdminShopService {
 					Map.of("currentVersion", item.getVersion()));
 		}
 		ShopItemForm current = formOf(item);
-		ShopItemForm next = merge(current, body, true);
+		ShopItemForm next = merge(current, request, true);
 
 		ObjectNode before = objectMapper.valueToTree(current);
 		ObjectNode after = objectMapper.valueToTree(next);
@@ -206,28 +242,60 @@ public class AdminShopService {
 		}
 		// A published/archived item stays publishable: its icon cannot be dropped or pointed at a missing upload.
 		validate(next, item.getId(), item.getStatus() != ShopItemStatus.DRAFT);
+		List<AuditChange> changes = AuditDiff.of(objectMapper, current, next, AUDIT_FIELDS);
+		if (changes.isEmpty()) {
+			return toDto(item);
+		}
+		String guardrail = AuditDiff.touches(changes, "price", "purchasable") ? guardrail(item.getId(), next) : null;
+		String why = AuditReason.check(reason, guardrail != null, AuditReason.PRICE_OUT_OF_BAND, guardrail);
 		apply(next, item);
-		return toDto(save(item));
+		ShopItem saved = save(item);
+		audit.record(AuditAction.SHOP_ITEM_UPDATED, target(saved), changes, why, guardrail, saved.getVersion());
+		return toDto(saved);
 	}
 
+	/** The price starts to count for learners now, so the guardrail is always checked. */
 	@Transactional
-	public AdminShopItemDTO publish(Long id) {
+	public AdminShopItemDTO publish(Long id, String reason) {
 		ShopItem item = find(id);
 		requireStatus(item, ShopItemStatus.DRAFT, "publish");
-		validate(formOf(item), item.getId(), true);
+		ShopItemForm form = formOf(item);
+		validate(form, item.getId(), true);
+		// One live Streak Freeze item: maxQuantity is per item, so a second one would double what a learner can hold.
+		if (item.getType() == ShopItemType.STREAK_FREEZE
+				&& repository.existsByTypeAndStatusAndIdNot(ShopItemType.STREAK_FREEZE, ShopItemStatus.PUBLISHED, id)) {
+			throw invalid("type", ShopErrorCode.INVALID_SHOP_ITEM_CONFIG, "only one STREAK_FREEZE item can be PUBLISHED");
+		}
+		String guardrail = guardrail(item.getId(), form);
+		String why = AuditReason.check(reason, guardrail != null, AuditReason.PRICE_OUT_OF_BAND, guardrail);
 		item.setStatus(ShopItemStatus.PUBLISHED);
 		item.setPublishedAt(Economy.now());
-		return toDto(save(item));
+		ShopItem saved = save(item);
+		audit.record(AuditAction.SHOP_ITEM_PUBLISHED, target(saved),
+				List.of(AuditDiff.change(objectMapper, "status", ShopItemStatus.DRAFT, ShopItemStatus.PUBLISHED)),
+				why, guardrail, saved.getVersion());
+		return toDto(saved);
 	}
 
-	/** Stops sales for good; ownership, equip and activation of owned units are untouched (shop.md §4.1). */
+	/**
+	 * Stops sales for good; ownership, equip and activation of owned units are untouched (shop.md §4.1).
+	 * Always needs a reason (design.md §8.3).
+	 */
 	@Transactional
-	public AdminShopItemDTO archive(Long id) {
+	public AdminShopItemDTO archive(Long id, String reason) {
 		ShopItem item = find(id);
 		requireStatus(item, ShopItemStatus.PUBLISHED, "archive");
+		String why = AuditReason.check(reason, true, AuditReason.ARCHIVE, null);
+		List<AuditChange> changes = new ArrayList<>(
+				List.of(AuditDiff.change(objectMapper, "status", ShopItemStatus.PUBLISHED, ShopItemStatus.ARCHIVED)));
+		if (Boolean.TRUE.equals(item.getPurchasable())) {
+			changes.add(AuditDiff.change(objectMapper, "purchasable", true, false));
+		}
 		item.setStatus(ShopItemStatus.ARCHIVED);
 		item.setPurchasable(false);
-		return toDto(save(item));
+		ShopItem saved = save(item);
+		audit.record(AuditAction.SHOP_ITEM_ARCHIVED, target(saved), changes, why, null, saved.getVersion());
+		return toDto(saved);
 	}
 
 	/** Hard delete, DRAFT only: a draft was never sellable or grantable, so nobody can own it. */
@@ -239,12 +307,21 @@ public class AdminShopService {
 					"Only DRAFT items can be deleted; archive a " + item.getStatus() + " item instead",
 					Map.of("status", item.getStatus()));
 		}
+		AuditTarget target = target(item);
+		Map<String, Object> snapshot = new LinkedHashMap<>();
+		snapshot.put("name", item.getName());
+		snapshot.put("type", item.getType());
+		snapshot.put("price", item.getPrice());
+		snapshot.put("status", item.getStatus());
+		Long version = item.getVersion();
 		try {
 			repository.delete(item);
 			repository.flush();
 		} catch (ObjectOptimisticLockingFailureException e) {
 			throw concurrentModification(id);
 		}
+		audit.record(AuditAction.SHOP_ITEM_DELETED, target, AuditDiff.of(objectMapper, snapshot, null, DELETE_FIELDS),
+				null, null, version);
 	}
 
 	/** Presigned PUT for an icon/frame under {@code public/shop/} (shop.md §10.2, purpose SHOP_ASSET). */
@@ -288,7 +365,9 @@ public class AdminShopService {
 		if (f.description() != null && f.description().length() > DESCRIPTION_MAX) {
 			v.add(new Violation("description", ShopErrorCode.VALIDATION_ERROR, "at most " + DESCRIPTION_MAX + " characters"));
 		}
-		checkAsset(v, "iconKey", f.iconKey(), ICON_MAX_BYTES, publishing, publishing, ShopErrorCode.VALIDATION_ERROR);
+		// Frames draw their own artwork everywhere (avatar / mini card), so an icon is optional for them; checked if sent.
+		boolean iconRequired = publishing && (type == null || !type.isEquippable());
+		checkAsset(v, "iconKey", f.iconKey(), ICON_MAX_BYTES, iconRequired, publishing, ShopErrorCode.VALIDATION_ERROR);
 		if (f.purchasable() == null) {
 			v.add(new Violation("purchasable", ShopErrorCode.VALIDATION_ERROR, "required"));
 		}
@@ -305,7 +384,7 @@ public class AdminShopService {
 			v.add(new Violation("sortOrder", ShopErrorCode.VALIDATION_ERROR, "required, >= 0"));
 		}
 		if (type != null) {
-			validateTypeConfig(v, type, f, selfId, publishing);
+			validateTypeConfig(v, type, f, publishing);
 		}
 
 		if (!v.isEmpty()) {
@@ -314,41 +393,29 @@ public class AdminShopService {
 		}
 	}
 
-	private void validateTypeConfig(List<Violation> v, ShopItemType type, ShopItemForm f, long selfId,
-			boolean publishing) {
-		Map<String, Object> config = new HashMap<>();
-		config.put("themeKey", f.themeKey());
+	private void validateTypeConfig(List<Violation> v, ShopItemType type, ShopItemForm f, boolean publishing) {
+		Map<String, Object> config = new LinkedHashMap<>();
 		config.put("frameAssetKey", f.frameAssetKey());
 		config.put("boostDurationMinutes", f.boostDurationMinutes());
 		config.put("maxQuantity", f.maxQuantity());
-		TYPE_FIELDS.forEach((owner, fields) -> {
-			if (owner != type) {
-				fields.stream().filter(field -> config.get(field) != null).forEach(field -> v.add(new Violation(field,
-						ShopErrorCode.INVALID_SHOP_ITEM_CONFIG, "must be null for " + type)));
+		List<String> own = TYPE_FIELDS.get(type);
+		config.forEach((field, value) -> {
+			if (value != null && !own.contains(field)) {
+				v.add(new Violation(field, ShopErrorCode.INVALID_SHOP_ITEM_CONFIG, "must be null for " + type));
 			}
 		});
 
 		switch (type) {
-			case THEME -> {
-				if (f.themeKey() == null) {
-					v.add(new Violation("themeKey", ShopErrorCode.INVALID_SHOP_ITEM_CONFIG, "required for THEME"));
-					return;
-				}
-				ThemeKey key = parseEnum(ThemeKey.class, f.themeKey());
-				if (key == null || key == ThemeKey.DEFAULT) {
-					v.add(new Violation("themeKey", ShopErrorCode.INVALID_THEME_KEY,
-							"not a sellable theme of the registry"));
-				} else if (repository.existsByThemeKeyAndIdNot(key, selfId)) {
-					v.add(new Violation("themeKey", ShopErrorCode.INVALID_SHOP_ITEM_CONFIG,
-							"theme " + key + " is already sold by another item"));
-				}
-			}
 			case AVATAR_FRAME -> checkAsset(v, "frameAssetKey", f.frameAssetKey(), FRAME_MAX_BYTES, true, publishing,
+					ShopErrorCode.INVALID_SHOP_ITEM_CONFIG);
+			case CARD_FRAME -> checkAsset(v, "frameAssetKey", f.frameAssetKey(), CARD_FRAME_MAX_BYTES, true, publishing,
 					ShopErrorCode.INVALID_SHOP_ITEM_CONFIG);
 			case XP_BOOSTER -> {
 				checkRange(v, "boostDurationMinutes", f.boostDurationMinutes(), DURATION_MIN, DURATION_MAX);
 				checkRange(v, "maxQuantity", f.maxQuantity(), MAX_QUANTITY_MIN, MAX_QUANTITY_MAX);
 			}
+			case STREAK_FREEZE -> checkRange(v, "maxQuantity", f.maxQuantity(), FREEZE_MAX_QUANTITY_MIN,
+					FREEZE_MAX_QUANTITY_MAX);
 		}
 	}
 
@@ -386,6 +453,23 @@ public class AdminShopService {
 
 	// ---- helpers ----
 
+	/** A copy, so "reason" can be taken out before merge (which rejects unknown keys). */
+	private static ObjectNode objectBody(JsonNode body) {
+		if (body == null || !body.isObject()) {
+			throw invalid("body", ShopErrorCode.VALIDATION_ERROR, "JSON object required");
+		}
+		return ((ObjectNode) body).deepCopy();
+	}
+
+	/** Price guardrail on a validated form, before it is applied (a catalog query would flush a dirty item). */
+	private String guardrail(Long id, ShopItemForm f) {
+		return priceGuardrail.check(id, ShopItemType.valueOf(f.type()), f.purchasable(), f.price()).orElse(null);
+	}
+
+	private static AuditTarget target(ShopItem item) {
+		return AuditTarget.of(AuditTargetType.SHOP_ITEM, item.getId(), item.getName(), item.getCode());
+	}
+
 	/** Overlays the JSON body onto {@code base}; unknown or server-managed fields are rejected, never ignored. */
 	private ShopItemForm merge(ShopItemForm base, JsonNode body, boolean allowVersion) {
 		if (body == null || !body.isObject()) {
@@ -416,7 +500,7 @@ public class AdminShopService {
 	private static ShopItemForm formOf(ShopItem i) {
 		return new ShopItemForm(i.getCode(), i.getType().name(), i.getName(), i.getDescription(), i.getIconKey(),
 				i.getPurchasable(), i.getPrice(), i.getAvailableFrom(), i.getAvailableUntil(), i.getSortOrder(),
-				i.getThemeKey() == null ? null : i.getThemeKey().name(), i.getFrameAssetKey(),
+				i.getFrameAssetKey(),
 				i.getBoostDurationMinutes(), i.getMaxQuantity());
 	}
 
@@ -432,7 +516,6 @@ public class AdminShopService {
 		item.setAvailableFrom(f.availableFrom());
 		item.setAvailableUntil(f.availableUntil());
 		item.setSortOrder(f.sortOrder());
-		item.setThemeKey(f.themeKey() == null ? null : ThemeKey.valueOf(f.themeKey()));
 		item.setFrameAssetKey(f.frameAssetKey());
 		item.setBoostDurationMinutes(f.boostDurationMinutes());
 		item.setMaxQuantity(f.maxQuantity());
@@ -488,7 +571,7 @@ public class AdminShopService {
 		return new AdminShopItemDTO(i.getId(), i.getVersion(), i.getCode(), i.getType(), i.getType().getBehavior(),
 				i.getName(), i.getDescription(), i.getIconKey(), mapper.url(i.getIconKey()), i.getStatus(),
 				Boolean.TRUE.equals(i.getPurchasable()), i.getPrice(), i.getAvailableFrom(), i.getAvailableUntil(),
-				i.getSortOrder(), i.getThemeKey(), i.getFrameAssetKey(), mapper.url(i.getFrameAssetKey()),
+				i.getSortOrder(), i.getFrameAssetKey(), mapper.url(i.getFrameAssetKey()),
 				i.getBoostDurationMinutes(), i.getMaxQuantity(),
 				i.getType() == ShopItemType.XP_BOOSTER ? ShopItemType.XP_BOOSTER_MULTIPLIER : null,
 				i.getPublishedAt(), i.getCreatedAt(), i.getUpdatedAt());

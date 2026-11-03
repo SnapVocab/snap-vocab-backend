@@ -8,6 +8,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import vn.ptit.snapvocab.shop.domain.dto.EquippedDTO;
+import vn.ptit.snapvocab.shop.domain.dto.InventoryDTO;
 
 @Getter
 @Setter
@@ -51,5 +53,10 @@ public class UserDTO {
 	private Instant createdAt;
 
 	private Instant updatedAt;
+
+	/** Shop state for GET/PUT /api/users/me only (shop.md §10.1); null on other responses such as login. */
+	private EquippedDTO equipped;
+
+	private InventoryDTO.ActiveBooster activeBooster;
 }
 

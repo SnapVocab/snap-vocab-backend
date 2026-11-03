@@ -17,17 +17,17 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import vn.ptit.snapvocab.common.domain.BaseTimeEntity;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopItemStatus;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopItemType;
-import vn.ptit.snapvocab.shop.domain.enumeration.ThemeKey;
 
 @Entity
 @Table(
 		name = "shop_items",
 		uniqueConstraints = {
 				@UniqueConstraint(name = "uq_shop_items_code", columnNames = {"code"}),
-				@UniqueConstraint(name = "uq_shop_items_theme_key", columnNames = {"theme_key"}),
 				@UniqueConstraint(name = "uq_shop_items_id_type", columnNames = {"id", "type"})
 		},
 		indexes = {
@@ -48,7 +48,9 @@ public class ShopItem extends BaseTimeEntity {
 	@Column(nullable = false, unique = true, length = 64)
 	private String code;
 
+	// VARCHAR, not a MySQL ENUM: ddl-auto never adds an enum value, so a new type would fail to insert (shop.md §9).
 	@Enumerated(EnumType.STRING)
+	@JdbcTypeCode(SqlTypes.VARCHAR)
 	@Column(nullable = false, length = 30)
 	private ShopItemType type;
 
@@ -83,10 +85,6 @@ public class ShopItem extends BaseTimeEntity {
 	@Builder.Default
 	private Integer sortOrder = 0;
 
-	@Enumerated(EnumType.STRING)
-	@Column(name = "theme_key", length = 50)
-	private ThemeKey themeKey;
-
 	@Column(name = "frame_asset_key", length = 255)
 	private String frameAssetKey;
 
@@ -104,9 +102,9 @@ public class ShopItem extends BaseTimeEntity {
 	@Builder.Default
 	private Long version = 0L;
 
-	/** shop.md §2.3 defaults; publish validation normally guarantees the field is set. */
+	/** shop.md §2.3 / streak_freeze.md PD-SF-03 defaults; publish validation normally guarantees the field is set. */
 	public int maxQuantityOrDefault() {
-		return maxQuantity != null ? maxQuantity : 5;
+		return maxQuantity != null ? maxQuantity : type == ShopItemType.STREAK_FREEZE ? 2 : 5;
 	}
 
 	public int boostDurationMinutesOrDefault() {

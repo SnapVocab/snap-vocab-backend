@@ -49,6 +49,7 @@ class MissionMigrationScriptTest {
 			"user_daily_mission_progress_logs", "user_daily_mission_claims", "user_word_credits");
 	private static final Path SCRIPT = Path.of("migration/migration_daily_mission_v1.sql");
 	private static final Path CATALOG_TEMPLATE = Path.of("migration/migration_daily_mission_catalog_template.sql");
+	private static final Path TRIGGERS_SCRIPT = Path.of("migration/migration_daily_mission_triggers_v2.sql");
 
 	@Autowired
 	DataSource dataSource;
@@ -74,7 +75,11 @@ class MissionMigrationScriptTest {
 
 	@AfterEach
 	void dropScratchDatabase() throws SQLException {
-		scratchDb.getConnection().close();
+		// close() is suppressed: return the pooled connection ourselves, back on the test schema (Hikari keeps
+		// the catalog, and the scratch one is dropped below).
+		scratchDb.getConnection().setCatalog(entitySchema);
+		scratchDb.destroy();
+
 		new JdbcTemplate(dataSource).execute("DROP DATABASE IF EXISTS `" + scratch + "`");
 	}
 
@@ -89,6 +94,45 @@ class MissionMigrationScriptTest {
 			assertThat(constraints(info, scratch, table)).as(table + " UNIQUE/CHECK")
 					.isEqualTo(constraints(info, entitySchema, table));
 		}
+	}
+
+	/** A mission table from another schema version (the team's remote DB had UUID ids) stops the script untouched. */
+	@Test
+	void scriptRefusesAnIncompatibleExistingMissionTable() throws Exception {
+		scratch().execute("CREATE TABLE mission_templates (id BINARY(16) NOT NULL PRIMARY KEY, code VARCHAR(64)) ENGINE=InnoDB");
+
+		assertThatThrownBy(() -> run(read(SCRIPT))).isInstanceOf(SQLException.class)
+				.hasMessageContaining("DM_SCHEMA_CONFLICT").hasMessageContaining("mission_templates");
+		assertThat(new JdbcTemplate(dataSource).queryForObject("SELECT COUNT(*) FROM information_schema.TABLES "
+				+ "WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'user_daily_missions'", Integer.class, scratch)).isZero();
+	}
+
+	@Test
+	void triggersMigrationWidensADeployedSchemaAndIsIdempotent() throws Exception { // PD-DM-07
+		run(read(SCRIPT));
+		JdbcTemplate db = scratch();
+		String old = "('QUIZ_COMPLETED', 'LEARNING_ACTIVITY_RECORDED', 'TOPIC_ITEM_CREATED', 'SHOP_ITEM_PURCHASED', 'BOOSTER_USED')";
+		for (String table : List.of("mission_templates", "user_daily_missions")) { // the pre-SRS deployed CHECK
+			String chk = "chk_" + table + "_trigger_event_values"; // explicit names since master 2026-10-24
+			db.execute("ALTER TABLE " + table + " DROP CHECK " + chk);
+			db.execute("ALTER TABLE " + table + " ADD CONSTRAINT " + chk + " CHECK (trigger_event IN " + old + ")");
+		}
+		db.execute("ALTER TABLE mission_templates DROP CHECK chk_mission_templates_eligibility_rule_values");
+		db.execute("ALTER TABLE mission_templates ADD CONSTRAINT chk_mission_templates_eligibility_rule_values CHECK (eligibility_rule IN "
+				+ "('NONE', 'HAS_IDLE_XP_BOOSTER', 'HAS_PURCHASABLE_ITEM'))");
+		assertRejected(db, template("SRS", "'SRS'", "'SRS_REVIEW_COMPLETED'", "NULL", "NULL", 1, 1, "NULL", "NULL"));
+
+		run(read(TRIGGERS_SCRIPT));
+		run(read(TRIGGERS_SCRIPT));
+
+		JdbcTemplate info = new JdbcTemplate(dataSource);
+		for (String table : TABLES) {
+			assertThat(constraints(info, scratch, table)).as(table + " UNIQUE/CHECK")
+					.isEqualTo(constraints(info, entitySchema, table));
+		}
+		db.update(template("SRS", "'SRS'", "'SRS_REVIEW_COMPLETED'", "NULL", "NULL", 1, 1, "NULL", "NULL"));
+		db.update(template("SCAN", "'SCAN'", "'SCAN_WORD_SAVED'", "NULL", "NULL", 1, 1, "NULL", "NULL"));
+		db.update("UPDATE mission_templates SET eligibility_rule = 'HAS_STUDY_CARDS_FOR_TARGET' WHERE code = 'SRS'");
 	}
 
 	@Test
@@ -211,6 +255,8 @@ class MissionMigrationScriptTest {
 		Path client = mysqlClient();
 		assumeTrue(client != null, "mysql client required for full-schema migration rehearsal");
 		assertThat(mysql(client, read(SCRIPT))).startsWith("exit=0");
+		// Databases created before JsonMapConverter still have a json column; it must keep validating.
+		scratch().execute("ALTER TABLE learning_events MODIFY metadata JSON");
 		hibernateValidate(false);
 		scratch().execute("ALTER TABLE shop_items MODIFY purchasable INT NOT NULL");
 		assertThatThrownBy(() -> hibernateValidate(false)).hasStackTraceContaining("purchasable");

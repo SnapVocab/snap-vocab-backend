@@ -11,6 +11,8 @@ import vn.ptit.snapvocab.study.domain.StudyDailyCard;
 
 @Repository
 public interface StudyDailyCardRepository extends JpaRepository<StudyDailyCard, Long> {
+	long countByUserIdAndStudyDate(Long userId, LocalDate studyDate);
+
 	@Modifying(flushAutomatically = true)
 	@Query("DELETE FROM StudyDailyCard dailyCard WHERE dailyCard.topicItem.id = :topicItemId")
 	int deleteAllByTopicItemId(@Param("topicItemId") Long topicItemId);
