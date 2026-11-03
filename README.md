@@ -188,6 +188,19 @@ mysql
 CREATE INDEX idx_word_en ON word (word(191), lang_code(20));
 ```
 
+Then check that no English word came in without a meaning. The first import silently dropped
+everyday words such as "table" and "eat"; their entries were restored by
+`migration/migration_restore_missing_dictionary_words*.sql`, and the words no dictionary source
+covers were deleted. The query should return no rows:
+
+```sql
+SELECT w.id, w.word
+FROM words w
+WHERE w.lang_code = 'en'
+  AND NOT EXISTS (SELECT 1 FROM word_definitions wd WHERE wd.word_id = w.id)
+ORDER BY w.word;
+```
+
 ## API Endpoints
 
 ### Dictionary
