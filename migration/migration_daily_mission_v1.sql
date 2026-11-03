@@ -4,7 +4,7 @@
 -- Traceability:
 --   SS-13 Daily Mission: docs/decisions/daily_mission.md §7 (schema), §4.2 (catalog invariant), §7.7 (seed / SQL)
 --   Database Specification: docs/db/database.md §4
---   REL-DM-01 (Proposed, chưa được PO duyệt): migration có version cho production.
+--   REL-DM-01 (PO duyệt 2026-10-22): migration có version cho production.
 --
 -- Mục đích:
 --   1. Tạo 5 bảng: mission_templates, user_daily_missions, user_daily_mission_progress_logs,
@@ -22,7 +22,37 @@
 --   - Chưa áp vào production. Trước khi đổi production sang ddl-auto: validate phải kiểm tra toàn bộ schema hiện hữu
 --     (REL-DM-01); script này chỉ phủ 5 bảng mission.
 --   - Yêu cầu bảng users(id) đã tồn tại.
+--   - CREATE TABLE IF NOT EXISTS bỏ qua bảng đã có, kể cả bảng khác phiên bản (DB remote của nhóm từng có bảng mission
+--     id UUID). Bước kiểm tra đầu script dừng với DM_SCHEMA_CONFLICT trong trường hợp đó; không tự xóa hay sửa dữ liệu.
 -- ============================================================================
+
+DROP PROCEDURE IF EXISTS `dm_tmp_preflight`;
+
+DELIMITER //
+CREATE PROCEDURE `dm_tmp_preflight`()
+BEGIN
+    DECLARE conflict VARCHAR(255);
+    -- One column per table that only this schema version has, plus a BIGINT id.
+    SELECT GROUP_CONCAT(e.t ORDER BY e.t) INTO conflict
+      FROM (SELECT 'mission_templates' AS t, 'eligibility_rule' AS c
+            UNION ALL SELECT 'user_daily_missions', 'slot'
+            UNION ALL SELECT 'user_daily_mission_progress_logs', 'source_key'
+            UNION ALL SELECT 'user_daily_mission_claims', 'idempotency_key'
+            UNION ALL SELECT 'user_word_credits', 'word_hash') e
+      JOIN information_schema.TABLES tb ON tb.TABLE_SCHEMA = DATABASE() AND tb.TABLE_NAME = e.t
+     WHERE NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS c WHERE c.TABLE_SCHEMA = DATABASE()
+                          AND c.TABLE_NAME = e.t AND c.COLUMN_NAME = e.c)
+        OR NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS c WHERE c.TABLE_SCHEMA = DATABASE()
+                          AND c.TABLE_NAME = e.t AND c.COLUMN_NAME = 'id' AND c.DATA_TYPE = 'bigint');
+    IF conflict IS NOT NULL THEN
+        SET conflict = CONCAT('DM_SCHEMA_CONFLICT: existing tables differ from this schema: ', conflict);
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = conflict;
+    END IF;
+END//
+DELIMITER ;
+
+CALL `dm_tmp_preflight`();
+DROP PROCEDURE `dm_tmp_preflight`;
 
 CREATE TABLE IF NOT EXISTS `mission_templates` (
     `id` BIGINT NOT NULL AUTO_INCREMENT,
@@ -174,7 +204,10 @@ BEGIN
            COALESCE(SUM(`category` IN ('RETENTION', 'SHOP')), 0)
       INTO core_count, slot5_count
       FROM `mission_templates`
-     WHERE `is_active` = 1 AND `eligibility_rule` = 'NONE';
+     WHERE `is_active` = 1 AND `eligibility_rule` = 'NONE'
+       -- Only triggers every app can render (MissionTriggerEvent.LEGACY, PD-DM-13).
+       AND `trigger_event` IN ('QUIZ_COMPLETED', 'LEARNING_ACTIVITY_RECORDED', 'TOPIC_ITEM_CREATED',
+                               'SHOP_ITEM_PURCHASED', 'BOOSTER_USED');
     IF NOT (core_count >= 4 AND (slot5_count >= 1 OR core_count >= 5)) THEN
         SIGNAL SQLSTATE '45000'
             SET MESSAGE_TEXT = 'MISSION_POOL_INSUFFICIENT: active catalog violates daily_mission.md 4.2 invariant';

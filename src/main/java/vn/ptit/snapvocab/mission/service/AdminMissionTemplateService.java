@@ -18,6 +18,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vn.ptit.snapvocab.audit.domain.dto.AuditChange;
+import vn.ptit.snapvocab.audit.domain.dto.AuditTarget;
+import vn.ptit.snapvocab.audit.domain.enumeration.AuditAction;
+import vn.ptit.snapvocab.audit.domain.enumeration.AuditTargetType;
+import vn.ptit.snapvocab.audit.service.AdminAuditService;
+import vn.ptit.snapvocab.audit.service.AuditDiff;
+import vn.ptit.snapvocab.audit.service.AuditReason;
 import vn.ptit.snapvocab.mission.domain.MissionTemplate;
 import vn.ptit.snapvocab.mission.domain.dto.MissionTemplateDTO;
 import vn.ptit.snapvocab.mission.domain.enumeration.MissionCategory;
@@ -28,6 +35,7 @@ import vn.ptit.snapvocab.mission.exception.MissionException;
 import vn.ptit.snapvocab.mission.repository.MissionTemplateRepository;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopItemStatus;
 import vn.ptit.snapvocab.shop.repository.ShopItemRepository;
+import vn.ptit.snapvocab.shop.service.Economy;
 
 /**
  * Admin catalog management (daily_mission.md §8.3). Every write locks the whole catalog, applies the change and
@@ -50,9 +58,15 @@ public class AdminMissionTemplateService {
 	private static final Form NEW_TEMPLATE = new Form(null, null, null, null, null, null, null, null, null, null,
 			null, null, 1, MissionEligibilityRule.NONE, false);
 
+	/** Audit "changes", in Form order (admin_audit_log_backend.md §4.4.2). */
+	static final List<String> AUDIT_FIELDS = List.of("code", "name", "description", "category", "triggerEvent",
+			"minQuizAccuracyPercent", "quizRequestedCount", "targetValue", "rewardCoin", "rewardXp", "rewardItemCode",
+			"rewardItemFallbackCoin", "weight", "eligibilityRule", "isActive");
+
 	private final MissionTemplateRepository repository;
 	private final ShopItemRepository shopItemRepository;
 	private final ObjectMapper objectMapper;
+	private final AdminAuditService audit;
 
 	/** Editable state of a template; JSON names match {@link MissionTemplateDTO}. */
 	record Form(String code, String name, String description, MissionCategory category,
@@ -85,11 +99,16 @@ public class AdminMissionTemplateService {
 
 	// ---- commands ----
 
-	/** Always created inactive; activation is a separate PATCH. */
+	/** Always created inactive (so no reward guardrail); activation is a separate PATCH. */
 	@Transactional
 	public MissionTemplateDTO create(JsonNode body) {
 		List<MissionTemplate> catalog = repository.lockCatalog();
-		Form form = merge(NEW_TEMPLATE, body, CREATE_FIELDS);
+		if (body == null || !body.isObject()) {
+			throw invalid("body", "JSON object required");
+		}
+		ObjectNode request = body.deepCopy();
+		String reason = AuditReason.check(AuditReason.take(request), false, null, null);
+		Form form = merge(NEW_TEMPLATE, request, CREATE_FIELDS);
 		List<Violation> v = validate(form, true);
 		if (form.code() != null && catalog.stream().anyMatch(t -> t.getCode().equals(form.code()))) {
 			v.add(new Violation("code", MissionErrorCode.MISSION_TEMPLATE_CODE_EXISTS,
@@ -98,7 +117,10 @@ public class AdminMissionTemplateService {
 		throwIfAny(v);
 		MissionTemplate template = MissionTemplate.builder().code(form.code()).active(false).build();
 		apply(form, template);
-		return MissionTemplateDTO.of(repository.saveAndFlush(template));
+		MissionTemplate saved = repository.saveAndFlush(template);
+		audit.record(AuditAction.MISSION_TEMPLATE_CREATED, target(saved),
+				AuditDiff.of(objectMapper, null, formOf(saved), AUDIT_FIELDS), reason, null, saved.getVersion());
+		return MissionTemplateDTO.of(saved);
 	}
 
 	@Transactional
@@ -123,18 +145,53 @@ public class AdminMissionTemplateService {
 		}
 		ObjectNode patch = body.deepCopy();
 		patch.remove("version");
-		Form form = merge(formOf(template), patch, PATCH_FIELDS);
+		String reason = AuditReason.take(patch);
+		Form before = formOf(template);
+		Form form = merge(before, patch, PATCH_FIELDS);
 		List<Violation> v = validate(form, patch.has("rewardItemCode") || activating(template, form));
 		throwIfAny(v);
+		int[] rangeBefore = MissionTracker.dailyCoinRange(active(catalog));
 		apply(form, template);
 		template.setActive(form.isActive());
+		// Diffed on the stored values (apply trims), so a no-op PATCH leaves the entity clean: no save, no audit row.
+		List<AuditChange> changes = AuditDiff.of(objectMapper, before, formOf(template), AUDIT_FIELDS);
+		if (changes.isEmpty()) {
+			return MissionTemplateDTO.of(template);
+		}
 		requireInvariant(catalog);
+		String guardrail = rewardGuardrail(rangeBefore, MissionTracker.dailyCoinRange(active(catalog)));
+		String why = AuditReason.check(reason, guardrail != null, AuditReason.DAILY_REWARD_OVER_CAP, guardrail);
+		MissionTemplate saved;
 		try {
-			return MissionTemplateDTO.of(repository.saveAndFlush(template));
+			saved = repository.saveAndFlush(template);
 		} catch (ObjectOptimisticLockingFailureException e) {
 			throw new MissionException(MissionErrorCode.VERSION_CONFLICT, MissionErrorCode.VERSION_CONFLICT.getStatus(),
 					"Template " + id + " was modified concurrently; reload it", null);
 		}
+		AuditAction action = before.isActive().equals(saved.getActive()) ? AuditAction.MISSION_TEMPLATE_UPDATED
+				: saved.getActive() ? AuditAction.MISSION_TEMPLATE_ENABLED : AuditAction.MISSION_TEMPLATE_DISABLED;
+		audit.record(action, target(saved), changes, why, guardrail, saved.getVersion());
+		return MissionTemplateDTO.of(saved);
+	}
+
+	/**
+	 * design.md §7 on the daily Coin ceiling: only an edit that pushes the ceiling up past
+	 * {@link Economy#APPROVED_DAILY_COIN} needs a reason; editing text in a catalog already over it does not (§4.5.2).
+	 */
+	static String rewardGuardrail(int[] before, int[] after) {
+		if (after == null || after[1] <= Economy.APPROVED_DAILY_COIN || (before != null && after[1] <= before[1])) {
+			return null;
+		}
+		String range = after[0] == after[1] ? String.valueOf(after[1]) : after[0] + "–" + after[1];
+		return "Thưởng mỗi ngày lên %s Coin, vượt mức %d Coin/ngày đã duyệt.".formatted(range, Economy.APPROVED_DAILY_COIN);
+	}
+
+	private static List<MissionTemplate> active(List<MissionTemplate> catalog) {
+		return catalog.stream().filter(MissionTemplate::getActive).toList();
+	}
+
+	private static AuditTarget target(MissionTemplate t) {
+		return AuditTarget.of(AuditTargetType.MISSION_TEMPLATE, t.getId(), t.getName(), t.getCode());
 	}
 
 	// ---- validation ----
@@ -252,7 +309,7 @@ public class AdminMissionTemplateService {
 		}
 	}
 
-	private static Form formOf(MissionTemplate t) {
+	static Form formOf(MissionTemplate t) {
 		return new Form(t.getCode(), t.getName(), t.getDescription(), t.getCategory(), t.getTriggerEvent(),
 				t.getMinQuizAccuracyPercent(), t.getQuizRequestedCount(), t.getTargetValue(), t.getRewardCoin(),
 				t.getRewardXp(), t.getRewardItemCode(), t.getRewardItemFallbackCoin(), t.getWeight(),

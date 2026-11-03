@@ -21,6 +21,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import vn.ptit.snapvocab.user.domain.User;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopItemType;
 
@@ -55,6 +57,7 @@ public class UserItem {
 	private ShopItem item;
 
 	@Enumerated(EnumType.STRING)
+	@JdbcTypeCode(SqlTypes.VARCHAR)
 	@Column(name = "item_type", nullable = false, length = 30)
 	private ShopItemType itemType;
 

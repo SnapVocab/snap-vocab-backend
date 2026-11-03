@@ -22,18 +22,22 @@ public class ShopMapper {
 
 	public ItemConfig config(ShopItem item) {
 		return switch (item.getType()) {
-			case THEME -> new ItemConfig(item.getThemeKey(), null, null, null, null);
-			case AVATAR_FRAME -> new ItemConfig(null, url(item.getFrameAssetKey()), null, null, null);
-			case XP_BOOSTER -> new ItemConfig(null, null, ShopItemType.XP_BOOSTER_MULTIPLIER,
+			case AVATAR_FRAME, CARD_FRAME -> new ItemConfig(url(item.getFrameAssetKey()), null, null, null);
+			case XP_BOOSTER -> new ItemConfig(null, ShopItemType.XP_BOOSTER_MULTIPLIER,
 					item.boostDurationMinutesOrDefault(), item.maxQuantityOrDefault());
-			case STREAK_FREEZE -> new ItemConfig(null, null, null, null, item.maxQuantityOrDefault());
+			case STREAK_FREEZE -> new ItemConfig(null, null, null, item.maxQuantityOrDefault());
 		};
 	}
 
 	public InventoryDTO.Item toInventoryItem(UserItem owned) {
+		return toInventoryItem(owned, owned.getQuantity());
+	}
+
+	/** {@code quantity}: what the learner holds now, e.g. after a pending Streak Freeze settlement (streak_freeze.md §3.2). */
+	public InventoryDTO.Item toInventoryItem(UserItem owned, int quantity) {
 		ShopItem item = owned.getItem();
 		return new InventoryDTO.Item(item.getId(), item.getCode(), item.getType(), item.getStatus(), item.getName(),
-				iconUrl(item), owned.getQuantity(), Boolean.TRUE.equals(owned.getEquipped()), config(item));
+				iconUrl(item), quantity, Boolean.TRUE.equals(owned.getEquipped()), config(item));
 	}
 
 	public static InventoryDTO.ActiveBooster toActiveBooster(BoosterActivation activation) {

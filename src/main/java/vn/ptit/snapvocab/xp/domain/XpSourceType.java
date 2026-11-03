@@ -5,8 +5,6 @@ public enum XpSourceType {
 	QUIZ(true),
 	SAVE_WORD(false),
 	MISSION_REWARD(false),
-	DAILY_CHEST(false),
-	WEEKLY_CHEST(false),
 	ADMIN_ADJUSTMENT(false);
 
 	/** XP Booster only multiplies learning activity (shop.md S6). */

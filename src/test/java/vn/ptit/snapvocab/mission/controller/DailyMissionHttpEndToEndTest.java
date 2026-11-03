@@ -1,6 +1,8 @@
 package vn.ptit.snapvocab.mission.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -17,6 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.cache.CacheManager;
+import org.springframework.cache.concurrent.ConcurrentMapCache;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -66,6 +69,10 @@ class DailyMissionHttpEndToEndTest {
 
 	@BeforeEach
 	void setUp() {
+		// HAS_STUDY_CARDS_FOR_TARGET reads @Cacheable settings through StudyService.getToday.
+		when(cacheManager.getCache(anyString())).thenAnswer(call -> new ConcurrentMapCache(call.getArgument(0)));
+		// MissionCatalogSeeder already seeded the catalog at context start: each test brings its own.
+		cleanUp();
 		User user = userRepository.save(User.builder()
 				.email("dm-http-" + UUID.randomUUID() + "@snapvocab.local")
 				.password("a".repeat(60))
@@ -77,9 +84,12 @@ class DailyMissionHttpEndToEndTest {
 
 	@AfterEach
 	void cleanUp() {
-		for (String table : List.of("user_daily_mission_progress_logs", "user_daily_missions", "mission_templates")) {
+		for (String table : List.of("user_word_credits", "user_daily_mission_claims", "user_daily_mission_progress_logs",
+				"user_daily_missions", "mission_templates")) {
 			jdbc.update("DELETE FROM " + table);
 		}
+		// StudyService.getToday (HAS_STUDY_CARDS_FOR_TARGET) creates the learner's settings row.
+		jdbc.update("DELETE FROM user_settings WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'dm-http-%')");
 		jdbc.update("DELETE FROM users WHERE email LIKE 'dm-http-%'");
 	}
 
@@ -124,6 +134,39 @@ class DailyMissionHttpEndToEndTest {
 		ResponseEntity<String> missing = exchange(HttpMethod.POST, "/api/me/daily-missions/999999999/claim", "k2");
 		assertThat(missing.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
 		assertThat(json.readTree(missing.getBody()).path("error").asText()).isEqualTo("MISSION_NOT_FOUND");
+	}
+
+	@Test
+	void onlyTriggersTheAppListsAreHandedOut() throws Exception { // PD-DM-13
+		templateRepository.saveAll(vn.ptit.snapvocab.mission.service.MissionCatalogSeederAccess.mvpCatalog());
+
+		// No header: a build before PD-DM-13, which renders only the legacy triggers.
+		assertThat(codes(exchange(HttpMethod.GET, "/api/me/daily-missions", null)))
+				.doesNotContain("SCAN_SAVE_3_WORDS", "SCAN_SAVE_5_WORDS", "STUDY_5_CARDS", "STUDY_10_CARDS");
+
+		token = bearer(userRepository.save(User.builder().email("dm-http-" + UUID.randomUUID() + "@snapvocab.local")
+				.password("a".repeat(60)).firstName("Learner").activated(true).build()));
+		HttpHeaders headers = new HttpHeaders();
+		headers.setBearerAuth(token);
+		headers.set("X-Mission-Triggers", "QUIZ_COMPLETED,LEARNING_ACTIVITY_RECORDED,TOPIC_ITEM_CREATED,"
+				+ "SHOP_ITEM_PURCHASED,BOOSTER_USED, SRS_REVIEW_COMPLETED,SCAN_WORD_SAVED,SOME_FUTURE_TRIGGER");
+		List<String> codes = codes(rest.exchange("/api/me/daily-missions", HttpMethod.GET, new HttpEntity<>(headers),
+				String.class));
+		// A learner with no cards is not offered STUDY_10_CARDS (HAS_STUDY_CARDS_FOR_TARGET).
+		assertThat(codes.get(0)).isIn("SCAN_SAVE_3_WORDS", "SCAN_SAVE_5_WORDS");
+		assertThat(codes.get(2)).isEqualTo("STUDY_5_CARDS");
+
+		// Same learner, same day, an older app on another device: it is not sent what it would crash on.
+		JsonNode older = json.readTree(exchange(HttpMethod.GET, "/api/me/daily-missions", null).getBody());
+		assertThat(older.path("data").path("missions")).hasSize(3);
+	}
+
+	private List<String> codes(ResponseEntity<String> response) throws Exception {
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+		List<String> codes = new java.util.ArrayList<>();
+		json.readTree(response.getBody()).path("data").path("missions").forEach(m -> codes.add(m.path("code").asText()));
+		assertThat(codes).hasSize(5);
+		return codes;
 	}
 
 	private ResponseEntity<String> exchange(HttpMethod method, String url, String key) {

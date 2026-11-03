@@ -38,7 +38,6 @@ import vn.ptit.snapvocab.security.SecurityUtils;
 import vn.ptit.snapvocab.shop.domain.ShopItem;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopItemStatus;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopItemType;
-import vn.ptit.snapvocab.shop.domain.enumeration.ThemeKey;
 import vn.ptit.snapvocab.shop.repository.ShopItemRepository;
 import vn.ptit.snapvocab.support.LocalDatabaseGuard;
 
@@ -100,35 +99,34 @@ class ShopHttpEndToEndTest {
 
 	@Test
 	void fullLearnerFlow() throws Exception {
-		ShopItem theme = item(ShopItemType.THEME, 300, b -> b.themeKey(ThemeKey.MIDNIGHT_NEON));
+		ShopItem frame = item(ShopItemType.AVATAR_FRAME, 300, b -> b.frameAssetKey("public/shop/frame.png"));
 		ShopItem booster = item(ShopItemType.XP_BOOSTER, 100, b -> b.boostDurationMinutes(30).maxQuantity(5));
 
 		JsonNode catalog = call(HttpMethod.GET, "/api/shop/items", null, null, HttpStatus.OK);
 		assertThat(catalog.path("data")).hasSize(2);
-		assertThat(catalog.path("data").get(0).path("config").path("themeKey").asText()).isEqualTo("MIDNIGHT_NEON");
 
-		JsonNode missingKey = call(HttpMethod.POST, "/api/shop/items/" + theme.getId() + "/purchase",
+		JsonNode missingKey = call(HttpMethod.POST, "/api/shop/items/" + frame.getId() + "/purchase",
 				Map.of("expectedPrice", 300), null, HttpStatus.BAD_REQUEST);
 		assertThat(missingKey.path("error").asText()).isEqualTo("IDEMPOTENCY_KEY_REQUIRED");
 
-		JsonNode stale = call(HttpMethod.POST, "/api/shop/items/" + theme.getId() + "/purchase",
+		JsonNode stale = call(HttpMethod.POST, "/api/shop/items/" + frame.getId() + "/purchase",
 				Map.of("expectedPrice", 250), "k0", HttpStatus.CONFLICT);
 		assertThat(stale.path("error").asText()).isEqualTo("PRICE_CHANGED");
 		assertThat(stale.path("data").path("currentPrice").asLong()).isEqualTo(300);
 
-		JsonNode bought = call(HttpMethod.POST, "/api/shop/items/" + theme.getId() + "/purchase",
+		JsonNode bought = call(HttpMethod.POST, "/api/shop/items/" + frame.getId() + "/purchase",
 				Map.of("expectedPrice", 300), "k1", HttpStatus.OK);
 		assertThat(bought.path("data").path("coinBalance").asLong()).isEqualTo(700);
 		assertThat(bought.path("data").path("replayed").asBoolean()).isFalse();
-		JsonNode replay = call(HttpMethod.POST, "/api/shop/items/" + theme.getId() + "/purchase",
+		JsonNode replay = call(HttpMethod.POST, "/api/shop/items/" + frame.getId() + "/purchase",
 				Map.of("expectedPrice", 300), "k1", HttpStatus.OK);
 		assertThat(replay.path("data").path("replayed").asBoolean()).isTrue();
 		assertThat(replay.path("data").path("coinBalance").asLong()).isEqualTo(700);
 
-		JsonNode equipped = call(HttpMethod.PUT, "/api/me/equipment/THEME", Map.of("itemId", theme.getId()), null,
+		JsonNode equipped = call(HttpMethod.PUT, "/api/me/equipment/AVATAR_FRAME", Map.of("itemId", frame.getId()), null,
 				HttpStatus.OK);
 		assertThat(equipped.path("data").path("item").path("equipped").asBoolean()).isTrue();
-		JsonNode badSlot = call(HttpMethod.PUT, "/api/me/equipment/HAT", Map.of("itemId", theme.getId()), null,
+		JsonNode badSlot = call(HttpMethod.PUT, "/api/me/equipment/HAT", Map.of("itemId", frame.getId()), null,
 				HttpStatus.BAD_REQUEST);
 		assertThat(badSlot.path("error").asText()).isEqualTo("INVALID_EQUIPMENT_SLOT");
 
@@ -147,11 +145,14 @@ class ShopHttpEndToEndTest {
 		assertThat(inventory.path("data").path("serverNow").asText()).isNotBlank();
 		assertThat(inventory.path("data").path("items")).hasSize(2);
 
+		JsonNode me = call(HttpMethod.GET, "/api/users/me", null, null, HttpStatus.OK);
+		assertThat(me.path("data").path("activeBooster").path("itemId").asLong()).isEqualTo(booster.getId());
+
 		JsonNode wallet = call(HttpMethod.GET, "/api/me/wallet?size=10", null, null, HttpStatus.OK);
 		assertThat(wallet.path("data").path("balance").asLong()).isEqualTo(600);
 		assertThat(wallet.path("data").path("transactions")).hasSize(2);
 
-		call(HttpMethod.DELETE, "/api/me/equipment/THEME", null, null, HttpStatus.OK);
+		call(HttpMethod.DELETE, "/api/me/equipment/AVATAR_FRAME", null, null, HttpStatus.OK);
 	}
 
 	private JsonNode call(HttpMethod method, String url, Object body, String key, HttpStatus expected) throws Exception {

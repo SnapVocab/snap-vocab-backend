@@ -1,5 +1,6 @@
 package vn.ptit.snapvocab.study.repository;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -50,6 +51,62 @@ public interface StudyQueueRepository extends JpaRepository<FsrsRecord, Long> {
 			@Param("userId") Long userId,
 			@Param("topicIds") List<Long> topicIds,
 			Pageable pageable);
+
+	@Query("""
+			SELECT COUNT(fr) FROM FsrsRecord fr
+			WHERE fr.user.id = :userId
+			  AND fr.topicItem.topic.id IN :topicIds
+			  AND fr.due <= :now
+			  AND fr.state IN :states
+			""")
+	long countDue(
+			@Param("userId") Long userId,
+			@Param("topicIds") List<Long> topicIds,
+			@Param("now") LocalDateTime now,
+			@Param("states") List<CardState> states);
+
+	@Query("""
+			SELECT COUNT(fr) FROM FsrsRecord fr
+			WHERE fr.user.id = :userId AND fr.due <= :now AND fr.state IN :states
+			""")
+	long countDueAll(
+			@Param("userId") Long userId,
+			@Param("now") LocalDateTime now,
+			@Param("states") List<CardState> states);
+
+	@Query("""
+			SELECT COUNT(ti) FROM TopicItem ti
+			WHERE ti.topic.id IN :topicIds
+			  AND NOT EXISTS (
+				SELECT fr.id FROM FsrsRecord fr
+				WHERE fr.topicItem = ti AND fr.user.id = :userId
+			  )
+			""")
+	long countNewItems(@Param("userId") Long userId, @Param("topicIds") List<Long> topicIds);
+
+	/** A record is created by a card's first review, so this counts new words started in the window. */
+	long countByUserIdAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(Long userId, Instant from, Instant to);
+
+	interface StudiedCollection {
+		Long getCollectionId();
+
+		Long getDue();
+
+		LocalDateTime getLastReview();
+	}
+
+	@Query("""
+			SELECT fr.topicItem.topic.collection.id AS collectionId,
+			       SUM(CASE WHEN fr.due <= :now AND fr.state IN :states THEN 1 ELSE 0 END) AS due,
+			       MAX(fr.lastReview) AS lastReview
+			FROM FsrsRecord fr
+			WHERE fr.user.id = :userId
+			GROUP BY fr.topicItem.topic.collection.id
+			""")
+	List<StudiedCollection> findStudiedCollections(
+			@Param("userId") Long userId,
+			@Param("now") LocalDateTime now,
+			@Param("states") List<CardState> states);
 
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("""

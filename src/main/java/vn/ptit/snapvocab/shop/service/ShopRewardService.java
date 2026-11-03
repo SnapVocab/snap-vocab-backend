@@ -11,7 +11,9 @@ import vn.ptit.snapvocab.shop.domain.UserItem;
 import vn.ptit.snapvocab.shop.domain.enumeration.CoinSourceType;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopErrorCode;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopItemStatus;
+import vn.ptit.snapvocab.shop.domain.enumeration.ShopItemType;
 import vn.ptit.snapvocab.shop.exception.ShopException;
+import vn.ptit.snapvocab.progress.service.StreakFreezeService;
 import vn.ptit.snapvocab.shop.repository.ShopItemRepository;
 import vn.ptit.snapvocab.shop.repository.UserItemRepository;
 
@@ -23,6 +25,7 @@ public class ShopRewardService {
 	private final ShopItemRepository shopItemRepository;
 	private final UserItemRepository userItemRepository;
 	private final WalletService walletService;
+	private final StreakFreezeService streakFreezeService;
 
 	public record RewardGrant(int grantedQuantity, long fallbackCoin) {
 	}
@@ -45,6 +48,10 @@ public class ShopRewardService {
 		User user = Economy.lockUser(userRepository, userId);
 		ShopItem item = shopItemRepository.findByCode(itemCode)
 				.orElseThrow(() -> new ShopException(ShopErrorCode.SHOP_ITEM_NOT_FOUND, "Reward item " + itemCode + " not found"));
+		if (item.getType() == ShopItemType.STREAK_FREEZE) {
+			// Same rule as a purchase: settle before the units held change (streak_freeze.md §3.3).
+			streakFreezeService.settle(user, StreakFreezeService.today());
+		}
 		UserItem owned = userItemRepository.findByUserIdAndItemId(userId, item.getId()).orElse(null);
 		int current = owned == null ? 0 : owned.getQuantity();
 

@@ -1,6 +1,16 @@
 package vn.ptit.snapvocab.mission.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -8,13 +18,42 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 import vn.ptit.snapvocab.mission.domain.MissionTemplate;
 import vn.ptit.snapvocab.mission.domain.UserDailyMission;
 import vn.ptit.snapvocab.mission.domain.enumeration.DailyMissionStatus;
 import vn.ptit.snapvocab.mission.domain.enumeration.MissionCategory;
 import vn.ptit.snapvocab.mission.domain.enumeration.MissionEligibilityRule;
+import vn.ptit.snapvocab.mission.domain.enumeration.MissionTriggerEvent;
+import vn.ptit.snapvocab.user.service.MailService;
 
 class MissionTrackerTest {
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void poolAlertMailsAtMostOncePerHourAndOnlyWhenConfigured() {
+		MailService mail = mock(MailService.class);
+		ObjectProvider<MailService> mailProvider = mock(ObjectProvider.class);
+		when(mailProvider.getIfAvailable()).thenReturn(mail);
+		ObjectProvider<MeterRegistry> registry = mock(ObjectProvider.class);
+		when(registry.getIfAvailable(org.mockito.ArgumentMatchers.any())).thenReturn(new SimpleMeterRegistry());
+		LocalDate day = LocalDate.of(2026, 10, 22);
+
+		MissionTracker tracker = new MissionTracker(null, null, null, null, null, null, null, null, null, null,
+				registry, mailProvider, "ops@example.com");
+		long t0 = 1_000_000_000L;
+		tracker.alertOps(1L, day, t0);
+		tracker.alertOps(2L, day, t0 + MissionTracker.ALERT_INTERVAL_MS - 1);
+		verify(mail, times(1)).sendOpsAlert(eq("ops@example.com"), anyString(), anyString());
+		tracker.alertOps(3L, day, t0 + MissionTracker.ALERT_INTERVAL_MS);
+		verify(mail, times(2)).sendOpsAlert(eq("ops@example.com"), anyString(), anyString());
+
+		MailService silent = mock(MailService.class);
+		when(mailProvider.getIfAvailable()).thenReturn(silent);
+		new MissionTracker(null, null, null, null, null, null, null, null, null, null, registry, mailProvider, "")
+				.alertOps(1L, day, t0);
+		verify(silent, never()).sendOpsAlert(anyString(), anyString(), anyString());
+	}
 
 	@Test
 	void wordHashNormalizesCaseWhitespaceAndUnicodeComposition() {
@@ -44,16 +83,20 @@ class MissionTrackerTest {
 	void invariantNeedsFourCoreNonePlusASlotFiveOrAFifthCore() {
 		List<MissionTemplate> mvp = MissionCatalogSeeder.mvpCatalog();
 		assertThat(MissionTracker.satisfiesInvariant(mvp)).isTrue();
-		assertThat(MissionTracker.satisfiesInvariant(without(mvp, "KEEP_DAILY_STREAK"))).as("booster/shop are not NONE").isFalse();
-		assertThat(MissionTracker.satisfiesInvariant(without(mvp, "QUIZ_SCORE_80"))).isFalse();
-		List<MissionTemplate> fiveCore = new ArrayList<>(without(mvp, "KEEP_DAILY_STREAK"));
+		assertThat(MissionTracker.satisfiesInvariant(without(mvp, "KEEP_DAILY_STREAK", "ADD_3_WORDS")))
+				.as("booster/shop are not NONE").isFalse();
+		assertThat(MissionTracker.satisfiesInvariant(without(mvp, "QUIZ_SCORE_80", "ADD_3_WORDS"))).isFalse();
+		List<MissionTemplate> fiveCore = new ArrayList<>(without(mvp, "KEEP_DAILY_STREAK", "ADD_3_WORDS"));
+		// SCAN/SRS templates are active but use new triggers: an older app never sees them, so they do not count.
+		assertThat(fiveCore).extracting(MissionTemplate::getCode).contains("SCAN_SAVE_3_WORDS", "STUDY_5_CARDS");
 		fiveCore.add(template("EXTRA", MissionCategory.SCAN, MissionEligibilityRule.NONE));
 		assertThat(MissionTracker.satisfiesInvariant(fiveCore)).isTrue();
 	}
 
 	@Test
 	void choiceFillsSlotsByCategoryWithCoreFallbackAndDistinctTemplates() {
-		List<MissionTemplate> mvp = without(MissionCatalogSeeder.mvpCatalog(), "USE_XP_BOOSTER", "BUY_SHOP_ITEM");
+		List<MissionTemplate> mvp = legacy(without(MissionCatalogSeeder.mvpCatalog(), "USE_XP_BOOSTER", "BUY_SHOP_ITEM",
+				"ADD_3_WORDS"));
 		for (int i = 0; i < 50; i++) {
 			List<MissionTemplate> chosen = MissionTracker.choose(mvp, Set.of());
 			assertThat(chosen).hasSize(5).doesNotHaveDuplicates();
@@ -66,8 +109,40 @@ class MissionTrackerTest {
 	}
 
 	@Test
+	void ownSlotsPickBeforeFallbackSoSlotsOneAndThreeKeepTheirTemplates() { // PD-DM-07
+		List<MissionTemplate> catalog = MissionCatalogSeeder.mvpCatalog();
+		catalog.forEach(t -> t.setActive(true));
+		// STUDY_10_CARDS is gated (HAS_STUDY_CARDS_FOR_TARGET): a learner short of cards is handed the rest.
+		List<MissionTemplate> mvp = without(catalog, "USE_XP_BOOSTER", "BUY_SHOP_ITEM", "STUDY_10_CARDS");
+		for (int i = 0; i < 50; i++) {
+			List<MissionTemplate> chosen = MissionTracker.choose(mvp, Set.of());
+			assertThat(chosen).extracting(MissionTemplate::getCode).doesNotHaveDuplicates()
+					.satisfies(codes -> {
+						assertThat(codes.get(0)).isIn("SCAN_SAVE_3_WORDS", "SCAN_SAVE_5_WORDS");
+						assertThat(codes.get(1)).isIn("ADD_5_WORDS", "ADD_3_WORDS");
+						assertThat(codes.get(2)).isEqualTo("STUDY_5_CARDS");
+						assertThat(codes.get(4)).isEqualTo("KEEP_DAILY_STREAK");
+					});
+			// Every learning slot has its own template now: one quiz a day instead of three.
+			assertThat(chosen).filteredOn(t -> t.getCategory() == MissionCategory.QUIZ).hasSize(1);
+		}
+	}
+
+	@Test
+	void variantsRotateAwayFromYesterdaysTemplateInEverySlot() { // PD-DM-12
+		List<MissionTemplate> catalog = MissionCatalogSeeder.mvpCatalog();
+		catalog.forEach(t -> t.setActive(true));
+		List<MissionTemplate> eligible = without(catalog, "USE_XP_BOOSTER", "BUY_SHOP_ITEM");
+		List<MissionTemplate> chosen = MissionTracker.choose(eligible,
+				Set.of("SCAN_SAVE_3_WORDS", "ADD_5_WORDS", "STUDY_5_CARDS", "QUIZ_SCORE_80", "FINISH_2_SHORT_QUIZZES"));
+		assertThat(chosen).extracting(MissionTemplate::getCode).containsExactly("SCAN_SAVE_5_WORDS", "ADD_3_WORDS",
+				"STUDY_10_CARDS", "PERFECT_MINI_QUIZ", "KEEP_DAILY_STREAK");
+	}
+
+	@Test
 	void softPreferenceFallsBackToYesterdaysTemplateWhenNothingElseFits() {
-		List<MissionTemplate> mvp = without(MissionCatalogSeeder.mvpCatalog(), "USE_XP_BOOSTER", "BUY_SHOP_ITEM");
+		List<MissionTemplate> mvp = without(MissionCatalogSeeder.mvpCatalog(), "USE_XP_BOOSTER", "BUY_SHOP_ITEM",
+				"ADD_3_WORDS");
 		List<MissionTemplate> chosen = MissionTracker.choose(mvp, Set.of("KEEP_DAILY_STREAK", "ADD_5_WORDS"));
 		assertThat(chosen).extracting(MissionTemplate::getCode).contains("KEEP_DAILY_STREAK", "ADD_5_WORDS");
 	}
@@ -89,12 +164,19 @@ class MissionTrackerTest {
 		assertThat(perfect.getCompletedAt()).isEqualTo(at.plusSeconds(1));
 	}
 
+	/** The active part of {@code catalog} minus {@code codes}: what choose and the invariant are handed. */
 	private static List<MissionTemplate> without(List<MissionTemplate> catalog, String... codes) {
 		Set<String> drop = Set.of(codes);
-		return catalog.stream().filter(t -> !drop.contains(t.getCode())).toList();
+		return catalog.stream().filter(MissionTemplate::getActive).filter(t -> !drop.contains(t.getCode())).toList();
 	}
 
 	private static MissionTemplate template(String code, MissionCategory category, MissionEligibilityRule rule) {
-		return MissionTemplate.builder().code(code).category(category).eligibilityRule(rule).active(true).build();
+		return MissionTemplate.builder().code(code).category(category).eligibilityRule(rule)
+				.triggerEvent(MissionTriggerEvent.TOPIC_ITEM_CREATED).active(true).build();
+	}
+
+	/** Only the templates an app without X-Mission-Triggers renders (PD-DM-13). */
+	private static List<MissionTemplate> legacy(List<MissionTemplate> catalog) {
+		return catalog.stream().filter(t -> MissionTriggerEvent.LEGACY.contains(t.getTriggerEvent())).toList();
 	}
 }

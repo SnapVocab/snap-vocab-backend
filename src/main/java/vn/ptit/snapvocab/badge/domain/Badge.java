@@ -9,6 +9,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -70,4 +71,11 @@ public class Badge extends BaseTimeEntity {
 	@ColumnDefault("true")
 	@Builder.Default
 	private Boolean active = true;
+
+	/** Admin optimistic lock (badges.md §8.4, P2); column added by migration_badges_v2.sql. */
+	@Version
+	@Column(nullable = false)
+	@ColumnDefault("0")
+	@Builder.Default
+	private Long version = 0L;
 }

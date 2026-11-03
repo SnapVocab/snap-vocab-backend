@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.when;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -38,6 +39,7 @@ import vn.ptit.snapvocab.user.repository.UserRepository;
 import vn.ptit.snapvocab.storage.service.StorageService;
 import vn.ptit.snapvocab.shop.domain.ShopItem;
 import vn.ptit.snapvocab.shop.domain.dto.ActivationResultDTO;
+import vn.ptit.snapvocab.shop.domain.dto.EquippedDTO;
 import vn.ptit.snapvocab.shop.domain.dto.InventoryDTO;
 import vn.ptit.snapvocab.shop.domain.dto.PurchaseResultDTO;
 import vn.ptit.snapvocab.shop.domain.dto.ShopEvents;
@@ -47,7 +49,6 @@ import vn.ptit.snapvocab.shop.domain.enumeration.CoinSourceType;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopErrorCode;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopItemStatus;
 import vn.ptit.snapvocab.shop.domain.enumeration.ShopItemType;
-import vn.ptit.snapvocab.shop.domain.enumeration.ThemeKey;
 import vn.ptit.snapvocab.shop.exception.ShopException;
 import vn.ptit.snapvocab.shop.repository.ShopItemRepository;
 import vn.ptit.snapvocab.shop.repository.UserItemRepository;
@@ -56,12 +57,13 @@ import vn.ptit.snapvocab.xp.domain.ExperienceLog;
 import vn.ptit.snapvocab.xp.domain.XpSourceType;
 import vn.ptit.snapvocab.xp.service.XpService;
 import vn.ptit.snapvocab.mission.service.MissionTracker;
+import vn.ptit.snapvocab.progress.service.StreakFreezeService;
 
 /** Shop / Inventory / Booster / Wallet / XP against LOCAL MySQL (real locks, constraints and generated columns). */
 @LocalMySqlJpaTest
 @RecordApplicationEvents
 @Import({ ShopService.class, InventoryService.class, WalletService.class, ShopRewardService.class, ShopMapper.class,
-		XpService.class, MissionTracker.class })
+		StreakFreezeService.class, XpService.class, MissionTracker.class })
 class ShopIntegrationTest {
 
 	@MockitoBean
@@ -93,8 +95,8 @@ class ShopIntegrationTest {
 	@AfterEach
 	void cleanUp() {
 		JdbcTemplate jdbc = jdbc();
-		for (String table : List.of("experience_logs", "booster_activations", "coin_transactions", "user_items",
-				"shop_items")) {
+		for (String table : List.of("streak_freeze_days", "experience_logs", "booster_activations", "coin_transactions",
+				"user_items", "shop_items")) {
 			jdbc.update("DELETE FROM " + table);
 		}
 		jdbc.update("DELETE FROM users WHERE email LIKE 'shop-it-%'");
@@ -319,7 +321,7 @@ class ShopIntegrationTest {
 	void catalog() {
 		User user = newUser(150);
 		ShopItem owned = save(base(ShopItemType.AVATAR_FRAME, 100).frameAssetKey("f").sortOrder(2));
-		ShopItem expensive = save(base(ShopItemType.THEME, 500).themeKey(ThemeKey.FOREST_MINT).sortOrder(1));
+		ShopItem expensive = save(base(ShopItemType.AVATAR_FRAME, 500).frameAssetKey("g").sortOrder(1));
 		ShopItem booster = save(base(ShopItemType.XP_BOOSTER, 100).boostDurationMinutes(30).maxQuantity(5).sortOrder(3));
 		save(base(ShopItemType.AVATAR_FRAME, 100).frameAssetKey("f").status(ShopItemStatus.DRAFT));
 		save(base(ShopItemType.AVATAR_FRAME, 100).frameAssetKey("f").purchasable(false));
@@ -330,48 +332,75 @@ class ShopIntegrationTest {
 		assertThat(items).extracting(ShopItemDTO::itemId)
 				.containsExactly(expensive.getId(), owned.getId(), booster.getId());
 		assertThat(items.get(0).blockReason()).isEqualTo(ShopItemDTO.BlockReason.INSUFFICIENT_COINS);
-		assertThat(items.get(0).config().themeKey()).isEqualTo(ThemeKey.FOREST_MINT);
 		assertThat(items.get(1).owned()).isTrue();
 		assertThat(items.get(1).blockReason()).isEqualTo(ShopItemDTO.BlockReason.ALREADY_OWNED);
 		assertThat(items.get(2).canPurchase()).isFalse(); // 50 coin left
 		assertThat(items.get(2).config().multiplier()).isEqualTo(2);
-		assertThat(shopService.getCatalog(user.getId(), "THEME")).singleElement()
-				.satisfies(i -> assertThat(i.itemId()).isEqualTo(expensive.getId()));
+		assertThat(shopService.getCatalog(user.getId(), "XP_BOOSTER")).singleElement()
+				.satisfies(i -> assertThat(i.itemId()).isEqualTo(booster.getId()));
 		assertShopError(() -> shopService.getCatalog(user.getId(), "GEMS"), ShopErrorCode.VALIDATION_ERROR);
 	}
 
 	// --- Equip ----------------------------------------------------------------------------------
 
 	@Test
-	@DisplayName("18,19,23: equip theme; equipping B unequips A; re-equip is a no-op")
-	void equipThemes() {
+	@DisplayName("18,19,23: equip frame; equipping B unequips A; re-equip is a no-op")
+	void equipFrames() {
 		User user = newUser(1000);
-		ShopItem a = theme(ThemeKey.MIDNIGHT_NEON);
-		ShopItem b = theme(ThemeKey.SUNSET_AMBER);
+		ShopItem a = frame(100);
+		ShopItem b = frame(100);
 		shopService.purchase(user.getId(), a.getId(), 100L, "a");
 		shopService.purchase(user.getId(), b.getId(), 100L, "b");
 
-		assertThat(inventoryService.equip(user.getId(), "THEME", a.getId()).item().equipped()).isTrue();
-		inventoryService.equip(user.getId(), "THEME", b.getId());
-		inventoryService.equip(user.getId(), "THEME", b.getId());
+		assertThat(inventoryService.equip(user.getId(), "AVATAR_FRAME", a.getId()).item().equipped()).isTrue();
+		inventoryService.equip(user.getId(), "AVATAR_FRAME", b.getId());
+		inventoryService.equip(user.getId(), "AVATAR_FRAME", b.getId());
 
 		assertThat(equipped(user, a)).isFalse();
 		assertThat(equipped(user, b)).isTrue();
+		when(storageService.createDownloadUrl("public/shop/frame.png")).thenReturn("https://cdn/frame.png");
+		assertThat(inventoryService.getEquipped(user.getId()).avatarFrameUrl()).isEqualTo("https://cdn/frame.png");
 	}
 
 	@Test
 	@DisplayName("20,21: cannot equip unowned items, boosters, or the wrong slot")
 	void equipRejections() {
 		User user = newUser(1000);
-		ShopItem theme = theme(ThemeKey.MIDNIGHT_NEON);
+		ShopItem frame = frame(100);
 		ShopItem booster = booster(100, 5);
 		shopService.purchase(user.getId(), booster.getId(), 100L, "a");
 
-		assertShopError(() -> inventoryService.equip(user.getId(), "THEME", theme.getId()), ShopErrorCode.ITEM_NOT_OWNED);
+		assertShopError(() -> inventoryService.equip(user.getId(), "AVATAR_FRAME", frame.getId()), ShopErrorCode.ITEM_NOT_OWNED);
 		assertShopError(() -> inventoryService.equip(user.getId(), "XP_BOOSTER", booster.getId()),
 				ShopErrorCode.INVALID_EQUIPMENT_SLOT);
-		assertShopError(() -> inventoryService.equip(user.getId(), "THEME", booster.getId()),
+		assertShopError(() -> inventoryService.equip(user.getId(), "AVATAR_FRAME", booster.getId()),
 				ShopErrorCode.ITEM_NOT_EQUIPPABLE);
+	}
+
+	@Test
+	@DisplayName("card frame: its own slot next to the avatar frame, both on /api/users/me")
+	void cardFrameHasItsOwnSlot() {
+		User user = newUser(1000);
+		ShopItem avatar = frame(100);
+		ShopItem card = save(base(ShopItemType.CARD_FRAME, 500).frameAssetKey("public/shop/card.png"));
+		shopService.purchase(user.getId(), avatar.getId(), 100L, "a");
+		shopService.purchase(user.getId(), card.getId(), 500L, "c");
+		assertShopError(() -> shopService.purchase(user.getId(), card.getId(), 500L, "c2"), ShopErrorCode.ITEM_ALREADY_OWNED);
+
+		inventoryService.equip(user.getId(), "AVATAR_FRAME", avatar.getId());
+		inventoryService.equip(user.getId(), "CARD_FRAME", card.getId());
+		assertShopError(() -> inventoryService.equip(user.getId(), "AVATAR_FRAME", card.getId()),
+				ShopErrorCode.ITEM_NOT_EQUIPPABLE);
+		when(storageService.createDownloadUrl("public/shop/frame.png")).thenReturn("https://cdn/frame.png");
+		when(storageService.createDownloadUrl("public/shop/card.png")).thenReturn("https://cdn/card.png");
+		assertThat(inventoryService.getEquipped(user.getId()))
+				.extracting(EquippedDTO::avatarFrameUrl, EquippedDTO::cardFrameUrl)
+				.containsExactly("https://cdn/frame.png", "https://cdn/card.png");
+
+		inventoryService.unequip(user.getId(), "CARD_FRAME");
+		assertThat(equipped(user, card)).isFalse();
+		assertThat(equipped(user, avatar)).isTrue();
+		assertThat(inventoryService.getEquipped(user.getId()).cardFrameUrl()).isNull();
 	}
 
 	@Test
@@ -391,8 +420,8 @@ class ShopIntegrationTest {
 	@DisplayName("24: the DB itself rejects two equipped items in one slot")
 	void dbEnforcesOneEquippedPerSlot() {
 		User user = newUser(1000);
-		ShopItem a = theme(ThemeKey.MIDNIGHT_NEON);
-		ShopItem b = theme(ThemeKey.SUNSET_AMBER);
+		ShopItem a = frame(100);
+		ShopItem b = frame(100);
 		shopService.purchase(user.getId(), a.getId(), 100L, "a");
 		shopService.purchase(user.getId(), b.getId(), 100L, "b");
 
@@ -522,17 +551,17 @@ class ShopIntegrationTest {
 	}
 
 	@Test
-	@DisplayName("33,34: Mission and Chest XP are never boosted")
+	@DisplayName("33,34: Mission, Save word and Admin XP are never boosted")
 	void unboostedSources() {
 		User user = activeBoosterUser();
 
-		for (XpSourceType source : List.of(XpSourceType.MISSION_REWARD, XpSourceType.DAILY_CHEST,
-				XpSourceType.WEEKLY_CHEST, XpSourceType.SAVE_WORD, XpSourceType.ADMIN_ADJUSTMENT)) {
+		for (XpSourceType source : List.of(XpSourceType.MISSION_REWARD, XpSourceType.SAVE_WORD,
+				XpSourceType.ADMIN_ADJUSTMENT)) {
 			ExperienceLog log = xpService.award(user.getId(), source, 10, "src:" + source);
 			assertThat(log.getBonusAmount()).as(source.name()).isZero();
 			assertThat(log.getBoosterActivationId()).as(source.name()).isNull();
 		}
-		assertThat(exp(user)).isEqualTo(50);
+		assertThat(exp(user)).isEqualTo(30);
 	}
 
 	@Test
@@ -588,7 +617,7 @@ class ShopIntegrationTest {
 		var duplicate = tx.execute(s -> rewardService.grantShopItemReward(user.getId(), frame.getCode(), 1, 50,
 				CoinSourceType.MISSION_REWARD, "mission:2"));
 		var partial = tx.execute(s -> rewardService.grantShopItemReward(user.getId(), booster.getCode(), 5, 20,
-				CoinSourceType.WEEKLY_CHEST, "chest:1"));
+				CoinSourceType.MISSION_REWARD, "mission:4"));
 
 		assertThat(granted.grantedQuantity()).isEqualTo(1);
 		assertThat(duplicate.grantedQuantity()).isZero();
@@ -676,10 +705,6 @@ class ShopIntegrationTest {
 
 	private ShopItem frame(long price) {
 		return save(base(ShopItemType.AVATAR_FRAME, price).frameAssetKey("public/shop/frame.png"));
-	}
-
-	private ShopItem theme(ThemeKey key) {
-		return save(base(ShopItemType.THEME, 100).themeKey(key));
 	}
 
 	private ShopItem booster(long price, int max) {

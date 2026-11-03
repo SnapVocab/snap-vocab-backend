@@ -24,13 +24,19 @@ class ProgressServiceTest {
 	}
 
 	@Test
-	void missedDaysAndNewLearnersHaveABaselineOfOne() {
-		assertThat(ProgressService.currentStreak(4, TODAY, TODAY)).isEqualTo(4);
-		assertThat(ProgressService.currentStreak(4, TODAY.minusDays(1), TODAY)).isEqualTo(4);
-		assertThat(ProgressService.currentStreak(4, TODAY.minusDays(2), TODAY)).isEqualTo(1);
-		assertThat(ProgressService.currentStreak(0, null, TODAY)).isEqualTo(1);
-		assertThat(ProgressService.currentStreak(0, TODAY, TODAY)).isEqualTo(1);
-		assertThat(ProgressService.currentStreak(4, TODAY.plusDays(1), TODAY)).isEqualTo(1);
+	void storedStreakIsBrokenAfterAMissedDay() {
+		// Without a Streak Freeze unit: live only if the learner studied today or yesterday.
+		assertThat(StreakFreezeService.settle(4, TODAY, null, 0, TODAY).streak(4, TODAY)).isEqualTo(4);
+		assertThat(StreakFreezeService.settle(4, TODAY.minusDays(1), null, 0, TODAY).streak(4, TODAY)).isEqualTo(4);
+		assertThat(StreakFreezeService.settle(4, TODAY.minusDays(2), null, 0, TODAY).streak(4, TODAY)).isZero();
+		assertThat(StreakFreezeService.settle(0, null, null, 0, TODAY).streak(0, TODAY)).isZero();
+	}
+
+	@Test
+	void missedDaysAndNewLearnersShowABaselineOfOne() {
+		assertThat(StreakFreezeService.settle(4, TODAY.minusDays(1), null, 0, TODAY).shownStreak(4, TODAY)).isEqualTo(4);
+		assertThat(StreakFreezeService.settle(4, TODAY.minusDays(2), null, 0, TODAY).shownStreak(4, TODAY)).isEqualTo(1);
+		assertThat(StreakFreezeService.settle(0, null, null, 0, TODAY).shownStreak(0, TODAY)).isEqualTo(1);
 	}
 
 	@Test

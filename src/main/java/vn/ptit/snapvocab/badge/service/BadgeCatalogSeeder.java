@@ -38,11 +38,11 @@ public class BadgeCatalogSeeder implements ApplicationRunner {
 	static List<Badge> mvpCatalog() {
 		return List.of(
 				badge(10, "STREAK_7", BadgeMetric.LONGEST_STREAK_DAYS, 7, "Một Tuần Bền Bỉ",
-						"Hoàn thành ít nhất 1 quiz mỗi ngày, 7 ngày liên tiếp", "flame"),
+						"Học (quiz, ôn thẻ hoặc lưu từ đã quét) 7 ngày trong một chuỗi không đứt", "flame"),
 				badge(11, "STREAK_30", BadgeMetric.LONGEST_STREAK_DAYS, 30, "Tháng Không Nghỉ",
-						"Hoàn thành ít nhất 1 quiz mỗi ngày, 30 ngày liên tiếp", "flame"),
+						"Học (quiz, ôn thẻ hoặc lưu từ đã quét) 30 ngày trong một chuỗi không đứt", "flame"),
 				badge(12, "STREAK_100", BadgeMetric.LONGEST_STREAK_DAYS, 100, "Trăm Ngày Kiên Trì",
-						"Hoàn thành ít nhất 1 quiz mỗi ngày, 100 ngày liên tiếp", "flame"),
+						"Học (quiz, ôn thẻ hoặc lưu từ đã quét) 100 ngày trong một chuỗi không đứt", "flame"),
 				badge(20, "QUIZ_1", BadgeMetric.QUIZ_COMPLETED, 1, "Bài Quiz Đầu Tiên", "Hoàn thành 1 quiz",
 						"clipboard-check"),
 				badge(21, "QUIZ_10", BadgeMetric.QUIZ_COMPLETED, 10, "Quen Tay Quiz", "Hoàn thành 10 quiz",

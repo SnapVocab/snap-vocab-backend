@@ -38,6 +38,7 @@ import vn.ptit.snapvocab.vocab.repository.TemplateRepository;
 import vn.ptit.snapvocab.vocab.repository.TopicItemRepository;
 import vn.ptit.snapvocab.vocab.repository.TopicRepository;
 import vn.ptit.snapvocab.user.repository.UserRepository;
+import vn.ptit.snapvocab.progress.service.StreakFreezeService;
 import vn.ptit.snapvocab.quiz.service.QuizContentResolver;
 import vn.ptit.snapvocab.quiz.service.QuizGenerator;
 import vn.ptit.snapvocab.quiz.service.QuizService;
@@ -51,7 +52,8 @@ import vn.ptit.snapvocab.mission.service.MissionTracker;
 
 @LocalMySqlJpaTest
 @Import({ DataInitializer.class, SemanticBindingMigration.class, QuizService.class, QuizContentResolver.class,
-		QuizGenerator.class, XpService.class, MissionTracker.class, QuizIntegrationTestBase.Beans.class })
+		QuizGenerator.class, XpService.class, MissionTracker.class, StreakFreezeService.class,
+		QuizIntegrationTestBase.Beans.class })
 public abstract class QuizIntegrationTestBase {
 
 	@TestConfiguration

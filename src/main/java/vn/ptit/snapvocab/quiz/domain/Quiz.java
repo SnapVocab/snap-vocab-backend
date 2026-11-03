@@ -34,7 +34,10 @@ import vn.ptit.snapvocab.quiz.domain.enumeration.QuizStatus;
 @Entity
 @Table(name = "quizzes", uniqueConstraints = @UniqueConstraint(name = "uk_quiz_user_create_key", columnNames = {
 		"user_id",
-		"create_idempotency_key" }), indexes = @Index(name = "idx_quiz_user_created", columnList = "user_id, created_at"))
+		"create_idempotency_key" }), indexes = {
+		@Index(name = "idx_quiz_user_created", columnList = "user_id, created_at"),
+		// Covers the per-user completed/perfect counts (badge sync, Admin refill estimate): index-only, no row reads.
+		@Index(name = "idx_quiz_user_status", columnList = "user_id, status, correct_count, total_units") })
 @Getter
 @Setter
 @NoArgsConstructor

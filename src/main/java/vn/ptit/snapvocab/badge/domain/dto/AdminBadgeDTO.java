@@ -6,7 +6,7 @@ import java.time.Instant;
 import vn.ptit.snapvocab.badge.domain.Badge;
 import vn.ptit.snapvocab.badge.domain.enumeration.BadgeMetric;
 
-/** Read-only Admin catalog (badges.md §8.4, P1). Version stays null until the P2 schema migration. */
+/** Admin catalog (badges.md §8.4). {@code version} is the optimistic lock every PATCH must send back (P2). */
 @JsonInclude(JsonInclude.Include.ALWAYS)
 public record AdminBadgeDTO(Long id, String code, String name, String description, BadgeMetric metric,
 		Integer threshold, String iconKey, Integer sortOrder, @JsonProperty("isActive") Boolean isActive,
@@ -15,6 +15,6 @@ public record AdminBadgeDTO(Long id, String code, String name, String descriptio
 	public static AdminBadgeDTO of(Badge badge, long earnerCount) {
 		return new AdminBadgeDTO(badge.getId(), badge.getCode(), badge.getName(), badge.getDescription(),
 				badge.getMetric(), badge.getThreshold(), badge.getIconKey(), badge.getSortOrder(), badge.getActive(),
-				null, earnerCount, badge.getCreatedAt(), badge.getUpdatedAt());
+				badge.getVersion(), earnerCount, badge.getCreatedAt(), badge.getUpdatedAt());
 	}
 }

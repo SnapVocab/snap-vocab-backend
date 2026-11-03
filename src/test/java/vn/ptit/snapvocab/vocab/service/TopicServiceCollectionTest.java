@@ -17,9 +17,12 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import vn.ptit.snapvocab.audit.service.AdminAuditService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -84,6 +87,12 @@ class TopicServiceCollectionTest {
 
 	@Mock
 	private SchemaMapper schemaMapper;
+
+	@Mock
+	private AdminAuditService audit;
+
+	@Spy
+	private ObjectMapper objectMapper = new ObjectMapper();
 
 	@InjectMocks
 	private TopicService topicService;

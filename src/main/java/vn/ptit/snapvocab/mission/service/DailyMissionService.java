@@ -3,6 +3,7 @@ package vn.ptit.snapvocab.mission.service;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -18,10 +19,13 @@ import vn.ptit.snapvocab.mission.domain.dto.DailyMissionsDTO;
 import vn.ptit.snapvocab.mission.domain.dto.MissionClaimResultDTO;
 import vn.ptit.snapvocab.mission.domain.enumeration.DailyMissionStatus;
 import vn.ptit.snapvocab.mission.domain.enumeration.MissionErrorCode;
+import vn.ptit.snapvocab.mission.domain.enumeration.MissionTriggerEvent;
 import vn.ptit.snapvocab.mission.exception.MissionException;
 import vn.ptit.snapvocab.mission.repository.UserDailyMissionClaimRepository;
 import vn.ptit.snapvocab.mission.repository.UserDailyMissionRepository;
+import vn.ptit.snapvocab.shop.domain.ShopItem;
 import vn.ptit.snapvocab.shop.domain.enumeration.CoinSourceType;
+import vn.ptit.snapvocab.shop.repository.ShopItemRepository;
 import vn.ptit.snapvocab.shop.service.Economy;
 import vn.ptit.snapvocab.shop.service.ShopRewardService;
 import vn.ptit.snapvocab.shop.service.ShopRewardService.RewardGrant;
@@ -44,13 +48,14 @@ public class DailyMissionService {
 	private final WalletService walletService;
 	private final XpService xpService;
 	private final ShopRewardService rewardService;
+	private final ShopItemRepository shopItemRepository;
 	private final EntityManager entityManager;
 	private final TransactionTemplate transaction;
 
 	public DailyMissionService(UserRepository userRepository, UserDailyMissionRepository missionRepository,
 			UserDailyMissionClaimRepository claimRepository, MissionTracker tracker, WalletService walletService,
-			XpService xpService, ShopRewardService rewardService, EntityManager entityManager,
-			PlatformTransactionManager transactionManager) {
+			XpService xpService, ShopRewardService rewardService, ShopItemRepository shopItemRepository,
+			EntityManager entityManager, PlatformTransactionManager transactionManager) {
 		this.userRepository = userRepository;
 		this.missionRepository = missionRepository;
 		this.claimRepository = claimRepository;
@@ -58,12 +63,17 @@ public class DailyMissionService {
 		this.walletService = walletService;
 		this.xpService = xpService;
 		this.rewardService = rewardService;
+		this.shopItemRepository = shopItemRepository;
 		this.entityManager = entityManager;
 		this.transaction = new TransactionTemplate(transactionManager);
 		this.transaction.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
 	}
 
-	/** Today's five missions, assigning them first if this is the day's first trigger. Never writes progress. */
+	/**
+	 * Today's five missions, assigning them first if this is the day's first trigger. Never writes progress.
+	 * A mission the calling app cannot render is left out: the day's set may have been assigned from a newer app on
+	 * another device, and builds before PD-DM-13 crash on an unknown trigger.
+	 */
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public DailyMissionsDTO getToday(Long userId) {
 		Economy.lockUser(userRepository, userId);
@@ -72,11 +82,18 @@ public class DailyMissionService {
 		if (tracker.ensureAssigned(userId, today, now) == MissionTracker.Assignment.POOL_INSUFFICIENT) {
 			throw new MissionException(MissionErrorCode.MISSION_POOL_INSUFFICIENT, "Daily missions are unavailable");
 		}
+		Set<MissionTriggerEvent> renderable = MissionTracker.clientTriggers();
 		return new DailyMissionsDTO(today, MissionTracker.ZONE.getId(), now,
 				today.plusDays(1).atStartOfDay(MissionTracker.ZONE).toInstant(),
 				missionRepository.findByUserIdAndMissionDateOrderBySlot(userId, today).stream()
-						.map(DailyMissionsDTO.Mission::of)
+						.filter(m -> renderable.contains(m.getTriggerEvent()))
+						.map(m -> DailyMissionsDTO.Mission.of(m, itemName(m.getRewardItemCode())))
 						.toList());
+	}
+
+	/** What the learner reads for a reward item; null without one. One lookup per item mission (at most five). */
+	private String itemName(String itemCode) {
+		return itemCode == null ? null : shopItemRepository.findByCode(itemCode).map(ShopItem::getName).orElse(null);
 	}
 
 	/**
@@ -148,9 +165,10 @@ public class DailyMissionService {
 		return result(mission, claim, user, false);
 	}
 
-	private static MissionClaimResultDTO result(UserDailyMission mission, UserDailyMissionClaim claim, User user,
+	private MissionClaimResultDTO result(UserDailyMission mission, UserDailyMissionClaim claim, User user,
 			boolean replayed) {
-		return new MissionClaimResultDTO(mission.getId(), mission.getStatus(), MissionClaimResultDTO.Granted.of(claim),
-				user.getCoin(), user.getExp(), replayed);
+		return new MissionClaimResultDTO(mission.getId(), mission.getStatus(),
+				MissionClaimResultDTO.Granted.of(claim, itemName(claim.getRewardItemCode())), user.getCoin(), user.getExp(),
+				replayed);
 	}
 }

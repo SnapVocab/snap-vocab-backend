@@ -10,6 +10,7 @@ import vn.ptit.snapvocab.user.domain.dto.user.UserDTO;
 import vn.ptit.snapvocab.user.domain.mapper.UserMapper;
 import vn.ptit.snapvocab.user.repository.UserRepository;
 import vn.ptit.snapvocab.security.SecurityUtils;
+import vn.ptit.snapvocab.shop.service.InventoryService;
 import vn.ptit.snapvocab.common.exception.ResourceNotFoundException;
 
 @Service
@@ -19,6 +20,7 @@ public class UserService {
 	private final UserRepository userRepository;
 	private final UserMapper userMapper;
 	private final AvatarUrlService avatarUrlService;
+	private final InventoryService inventoryService;
 
 	public Optional<User> getCurrentUser() {
 		return SecurityUtils.getCurrentUserLogin()
@@ -41,10 +43,12 @@ public class UserService {
 		return toDto(userRepository.save(user));
 	}
 
-	/** Maps a user for the API, replacing the stored avatar key with a temporary URL. */
+	/** Maps a user for the API, replacing the stored avatar key with a temporary URL and adding Shop equipment. */
 	public UserDTO toDto(User user) {
 		UserDTO dto = userMapper.toDto(user);
 		dto.setAvatarUrl(avatarUrlService.resolve(user.getAvatarUrl()));
+		dto.setEquipped(inventoryService.getEquipped(user.getId()));
+		dto.setActiveBooster(inventoryService.getActiveBooster(user.getId()));
 		return dto;
 	}
 
