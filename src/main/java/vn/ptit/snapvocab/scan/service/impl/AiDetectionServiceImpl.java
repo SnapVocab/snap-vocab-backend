@@ -23,6 +23,7 @@ import vn.ptit.snapvocab.scan.domain.dto.scan.AiErrorResponseDTO;
 import vn.ptit.snapvocab.scan.domain.dto.scan.ScanImage;
 import vn.ptit.snapvocab.scan.domain.enumeration.ScanErrorCode;
 import vn.ptit.snapvocab.scan.service.AiDetectionService;
+import vn.ptit.snapvocab.scan.service.ScanImageDownscaler;
 import vn.ptit.snapvocab.scan.exception.ScanException;
 
 /**
@@ -42,7 +43,8 @@ public class AiDetectionServiceImpl implements AiDetectionService {
 	private final AiServiceProperties properties;
 
 	@Override
-	public AiDetectResponseDTO detect(ScanImage image, String requestId) {
+	public AiDetectResponseDTO detect(ScanImage original, String requestId) {
+		ScanImage image = ScanImageDownscaler.fit(original, properties.getMaxInputPx());
 		MultipartBodyBuilder body = new MultipartBodyBuilder();
 		// Set the part type explicitly: inferring it from the filename yields
 		// application/octet-stream for names without an extension, which the AI
@@ -82,8 +84,9 @@ public class AiDetectionServiceImpl implements AiDetectionService {
 		if (response == null || response.detections() == null) {
 			throw new ScanException(ScanErrorCode.AI_ERROR, "Empty AI response for request " + requestId);
 		}
-		log.info("scan request_id={} model={} objects={} ai_time_ms={}",
-				requestId, response.modelVersion(), response.detections().size(), response.processingTimeMs());
+		log.info("scan request_id={} model={} objects={} ai_time_ms={} sent_bytes={} original_bytes={}",
+				requestId, response.modelVersion(), response.detections().size(), response.processingTimeMs(),
+				image.bytes().length, original.bytes().length);
 		return response;
 	}
 
