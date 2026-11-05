@@ -16,5 +16,11 @@ public class AiServiceProperties {
 
 	/** Rejected before calling the AI service; keep equal to its MAX_UPLOAD_MB. */
 	private int maxUploadMb = 10;
+
+	/**
+	 * Photos are shrunk to this long edge before being sent; keep equal to the AI
+	 * service's MAX_INPUT_SIZE, which discards anything larger. 0 = send as is.
+	 */
+	private int maxInputPx = 1400;
 }
 

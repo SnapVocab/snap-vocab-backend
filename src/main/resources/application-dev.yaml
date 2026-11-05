@@ -58,7 +58,8 @@ minio:
   bucket: snapvocab
 
 ai-service:
-  base-url: http://localhost:8000
+  # Local AI-service by default; set AI_SERVICE_URL to use a remote one (e.g. a RunPod pod).
+  base-url: ${AI_SERVICE_URL:http://localhost:8000}
   connect-timeout-ms: 5000
   # Default pipeline (<OD> + self-grounding) takes ~35-45s per image on CPU.
   # Enabling tiled OD / base vocabulary on CPU needs minutes: raise via env then.
