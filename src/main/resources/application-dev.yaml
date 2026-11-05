@@ -2,6 +2,10 @@ server:
   port: 8080
 
 spring:
+  # Optional local overrides (e.g. AI_SERVICE_URL / AI_SERVICE_TOKEN) from a git-ignored
+  # .env next to the pom; real environment variables still win over it.
+  config:
+    import: optional:file:.env[.properties]
   datasource:
     url: jdbc:mariadb://140.245.123.111:3306/snapvocab
     username: thanh
