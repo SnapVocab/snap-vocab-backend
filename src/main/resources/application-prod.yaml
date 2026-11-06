@@ -2,6 +2,9 @@ server:
   port: 8080
 
 spring:
+  config:
+    import: optional:file:./.env[.properties]
+
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}
@@ -61,8 +64,8 @@ minio:
 ai-service:
   base-url: ${AI_SERVICE_URL}
   connect-timeout-ms: 5000
-  # BF-06: worker -> AI timeout defaults to 60s (GPU).
-  read-timeout-ms: ${AI_SERVICE_READ_TIMEOUT_MS:60000}
+  # Keep the same timeout as dev; override for the deployed GPU through environment.
+  read-timeout-ms: ${AI_SERVICE_READ_TIMEOUT_MS:120000}
   service-token: ${AI_SERVICE_TOKEN:}
   # Only for a RunPod Serverless endpoint: a Restricted key limited to that endpoint.
   api-key: ${RUNPOD_API_KEY:}

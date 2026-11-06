@@ -18,6 +18,8 @@ import vn.ptit.snapvocab.dictionary.domain.dto.TranslationLookupDTO;
 public interface LookupResultMapper {
 
     @Mapping(target = "exists", constant = "true")
+    @Mapping(target = "wordId", source = "id")
+    @Mapping(target = "inMyVocabulary", ignore = true)
     @Mapping(target = "langCode", constant = "vi")
     @Mapping(target = "langName", constant = "Tiếng Việt")
     @Mapping(target = "pronunciations", source = "pronunciations")
