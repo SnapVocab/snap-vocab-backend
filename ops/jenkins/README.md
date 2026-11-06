@@ -47,8 +47,11 @@ image agent va Compose override. Khi cai lai, copy Dockerfile vao
 export `DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)` truoc khi chay Compose.
 
 `.env.prod` lay DB, mail, JWT, MinIO, AI tu `application-dev.yaml` theo yeu cau.
-Redis dung `127.0.0.1:6379`, database 0, khong password. AI chua chay;
-`AI_SERVICE_URL=http://localhost:8000` chi la cau hinh cho khi bo sung service.
+Redis dung `127.0.0.1:6379`, database 0, khong password.
+AI dung Runpod: dat `AI_SERVICE_URL`, `AI_SERVICE_TOKEN` va
+`AI_SERVICE_READ_TIMEOUT_MS` trong `/opt/snapvocab/.env.prod` giong `.env`
+backend local. Khong dung URL localhost cu. File `.env` local khong duoc tu dong
+copy len server; can cap nhat env server va tao lai container khi doi gia tri.
 
 ## Luong pipeline
 

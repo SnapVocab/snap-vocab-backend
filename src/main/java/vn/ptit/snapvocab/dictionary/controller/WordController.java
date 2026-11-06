@@ -6,6 +6,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -24,6 +26,23 @@ import vn.ptit.snapvocab.dictionary.service.WordService;
 public class WordController {
 
 	private final WordService wordService;
+
+	@GetMapping("/my")
+	public ResponseEntity<PaginationObject<List<WordSuggestDTO>>> getMyWords(Pageable pageable) {
+		return ResponseEntity.ok(wordService.getMyWords(pageable));
+	}
+
+	@PutMapping("/my/{wordId}")
+	public ResponseEntity<Void> addMyWord(@PathVariable Long wordId) {
+		wordService.addMyWord(wordId);
+		return ResponseEntity.noContent().build();
+	}
+
+	@DeleteMapping("/my/{wordId}")
+	public ResponseEntity<Void> removeMyWord(@PathVariable Long wordId) {
+		wordService.removeMyWord(wordId);
+		return ResponseEntity.noContent().build();
+	}
 
 	@GetMapping("/lookup")
 	public ResponseEntity<LookupResultDTO> getWord(@RequestParam(required = true) String q) {

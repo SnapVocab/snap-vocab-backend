@@ -39,6 +39,16 @@ class ScanResultAssemblerTest {
 	}
 
 	@Test
+	void scanIncludesDictionaryWordIdAndPersonalVocabularyStatus() {
+		LookupResultDTO saved = LookupResultDTO.builder()
+				.wordId(12L).word("mug").exists(true).inMyVocabulary(true).build();
+		when(wordService.getWordsByEnglish(any())).thenReturn(List.of(saved));
+		ScanItemDTO item = single(detection("coffee mug", "mug", "HIGH"));
+		assertThat(item.getWord().getWordId()).isEqualTo(12L);
+		assertThat(item.getWord().isInMyVocabulary()).isTrue();
+	}
+
+	@Test
 	void multiWordLabelFallsBackToHeadword() {
 		when(wordService.getWordsByEnglish(any())).thenReturn(List.of(word("mug")));
 
