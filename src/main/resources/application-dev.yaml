@@ -2,6 +2,9 @@ server:
   port: 8080
 
 spring:
+  config:
+    import: optional:file:./.env[.properties]
+
   datasource:
     url: jdbc:mariadb://140.245.123.111:3306/snapvocab
     username: thanh
@@ -58,10 +61,10 @@ minio:
   bucket: snapvocab
 
 ai-service:
-  base-url: http://localhost:8000
+  # Use the same Runpod AI service as prod, configured in .env or process environment.
+  base-url: ${AI_SERVICE_URL}
   connect-timeout-ms: 5000
-  # Default pipeline (<OD> + self-grounding) takes ~35-45s per image on CPU.
-  # Enabling tiled OD / base vocabulary on CPU needs minutes: raise via env then.
+  # Allow time for inference; override for the deployed GPU through .env.
   read-timeout-ms: ${AI_SERVICE_READ_TIMEOUT_MS:120000}
   service-token: ${AI_SERVICE_TOKEN:}
   max-upload-mb: 10

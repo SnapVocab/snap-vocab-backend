@@ -15,6 +15,10 @@ import lombok.Setter;
 @Builder
 public class LookupResultDTO {
 
+    private Long wordId;
+
+    private boolean inMyVocabulary;
+
     private boolean exists;
 
     private String word;

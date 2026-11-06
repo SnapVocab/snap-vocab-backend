@@ -7,10 +7,17 @@ Telecommunications Institute of Technology).
 - **Backend**: this repo
 - **AI service**: [snap-vocab-ai](https://github.com/SnapVocab/snap-vocab-ai)
 
-The AI service is developed and deployed from its own repository. For local development,
-clone it separately and follow its README to start FastAPI on port 8000. The backend
-continues to call `POST /api/v1/detect` over HTTP; configure `ai-service.base-url`
-for the active Spring profile and use matching service tokens on both services.
+The AI service is developed and deployed from its own repository. Both `dev` and `prod`
+use `AI_SERVICE_URL`, `AI_SERVICE_TOKEN`, and `AI_SERVICE_READ_TIMEOUT_MS` from the
+backend's `.env` or process environment to call the Runpod AI service. Run Maven/IDE
+from the backend repository root so Spring can load `.env` automatically. Process
+environment variables take precedence. The backend calls `POST /api/v1/detect`;
+set the base URL (including `https://`, without the detect path) and use matching
+`AI_SERVICE_TOKEN` (backend) and `SERVICE_TOKEN` (AI service).
+
+Docker Compose loads `.env` via `env_file`; the Jenkins production Compose instead
+loads `/opt/snapvocab/.env.prod`. Set the same three AI variables in that server file
+when deploying; the local `.env` is not copied to the production server.
 
 ## Overview
 
@@ -186,6 +193,19 @@ Import the English-Vietnamese dictionary data:
 mysql
 -u root -p snapvocab < dictionary.sql
 CREATE INDEX idx_word_en ON word (word(191), lang_code(20));
+```
+
+Then check that no English word came in without a meaning. The first import silently dropped
+everyday words such as "table" and "eat"; their entries were restored by
+`migration/migration_restore_missing_dictionary_words*.sql`, and the words no dictionary source
+covers were deleted. The query should return no rows:
+
+```sql
+SELECT w.id, w.word
+FROM words w
+WHERE w.lang_code = 'en'
+  AND NOT EXISTS (SELECT 1 FROM word_definitions wd WHERE wd.word_id = w.id)
+ORDER BY w.word;
 ```
 
 ## API Endpoints
