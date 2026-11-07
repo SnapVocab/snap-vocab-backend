@@ -1,6 +1,6 @@
 package vn.ptit.snapvocab.study.exception;
 
-/** The learner already started today's allowance of new words ({@code dailyGoal}); reviews are never blocked. */
+/** This collection's allowance of new introductions or reviews has been used up for the study day. */
 public class StudyQuotaExceededException extends RuntimeException {
 	public StudyQuotaExceededException() {
 		super("DAILY_QUOTA_REACHED");

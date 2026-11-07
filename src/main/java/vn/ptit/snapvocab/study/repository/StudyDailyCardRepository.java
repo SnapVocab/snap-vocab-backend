@@ -11,11 +11,29 @@ import vn.ptit.snapvocab.study.domain.StudyDailyCard;
 
 @Repository
 public interface StudyDailyCardRepository extends JpaRepository<StudyDailyCard, Long> {
+    interface ReviewUsage {
+        Long getCollectionId();
+        Long getReviewCount();
+    }
+
+    /** New introductions consume only the new quota; intraday repetitions never consume it twice. */
+    @Query("""
+            SELECT d.collection.id AS collectionId, COUNT(d) AS reviewCount
+            FROM StudyDailyCard d JOIN FsrsRecord fr ON fr.topicItem = d.topicItem AND fr.user = d.user
+            WHERE d.user.id = :userId AND d.studyDate = :day AND d.collection.id IN :collectionIds
+              AND fr.createdAt < :dayStart
+            GROUP BY d.collection.id
+            """)
+    List<ReviewUsage> reviewUsage(Long userId, List<Long> collectionIds, LocalDate day, java.time.Instant dayStart);
 	long countByUserIdAndStudyDate(Long userId, LocalDate studyDate);
 
 	@Modifying(flushAutomatically = true)
 	@Query("DELETE FROM StudyDailyCard dailyCard WHERE dailyCard.topicItem.id = :topicItemId")
 	int deleteAllByTopicItemId(@Param("topicItemId") Long topicItemId);
+
+    @Modifying(flushAutomatically = true)
+    @Query("DELETE FROM StudyDailyCard d WHERE d.collection.id = :collectionId")
+    int deleteAllByCollectionId(Long collectionId);
 
 	long countByUserIdAndCollectionIdAndStudyDate(Long userId, Long collectionId, LocalDate studyDate);
 

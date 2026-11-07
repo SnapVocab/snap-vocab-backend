@@ -11,6 +11,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestParam;
+import vn.ptit.snapvocab.study.service.CollectionStudyPlanner;
+import vn.ptit.snapvocab.study.domain.dto.StudyCountsDTO;
+import vn.ptit.snapvocab.vocab.domain.enumeration.CollectionType;
 import vn.ptit.snapvocab.security.SecurityUtils;
 import vn.ptit.snapvocab.study.domain.dto.ReviewResultDTO;
 import vn.ptit.snapvocab.study.domain.dto.StudyCollectionDTO;
@@ -25,6 +29,12 @@ import vn.ptit.snapvocab.study.service.StudyService;
 @RequestMapping("/api/study")
 public class TodayStudyController {
 	private final StudyService studyService;
+    private final CollectionStudyPlanner planner;
+
+    @GetMapping("/counts")
+    public ResponseEntity<List<StudyCountsDTO>> counts(@RequestParam(required = false) CollectionType type) {
+        return ResponseEntity.ok(planner.allCounts(currentUserId(), type));
+    }
 
 	@GetMapping("/today")
 	public ResponseEntity<StudyTodayDTO> getToday() {

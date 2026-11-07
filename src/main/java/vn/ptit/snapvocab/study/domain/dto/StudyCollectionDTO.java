@@ -11,6 +11,7 @@ public record StudyCollectionDTO(
 		CollectionType type,
 		long wordCount,
 		long dueCount,
+        long newCount,
 		LocalDateTime lastStudiedAt
 ) {
 }
