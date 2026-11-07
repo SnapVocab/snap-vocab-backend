@@ -49,6 +49,8 @@ pipeline {
                     docker pull mysql:8.0
                     docker pull maven:3.9-eclipse-temurin-17
                     docker pull curlimages/curl:latest
+                    docker run --rm -i --env-file "$DEPLOY_DIR/.env.prod" \
+                      --entrypoint sh curlimages/curl:latest -eu < ops/jenkins/check-ai-config.sh
                 '''
             }
         }
