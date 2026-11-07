@@ -40,9 +40,7 @@ import vn.ptit.snapvocab.study.repository.StudyDailyCardRepository;
 import vn.ptit.snapvocab.study.repository.StudyDailyProgressRepository;
 import vn.ptit.snapvocab.study.repository.StudyQueueRepository;
 import vn.ptit.snapvocab.user.domain.User;
-import vn.ptit.snapvocab.user.domain.dto.user.UserSettingsDTO;
 import vn.ptit.snapvocab.user.repository.UserRepository;
-import vn.ptit.snapvocab.user.service.UserSettingsService;
 import vn.ptit.snapvocab.vocab.domain.Collection;
 import vn.ptit.snapvocab.vocab.domain.FsrsRecord;
 import vn.ptit.snapvocab.vocab.domain.Topic;
@@ -67,7 +65,8 @@ class StudyServiceTest {
 	@Mock private TopicItemRepository topicItemRepository;
 	@Mock private CollectionRepository collectionRepository;
 	@Mock private UserRepository userRepository;
-	@Mock private UserSettingsService userSettingsService;
+    @Mock private CollectionStudyPlanner collectionPlanner;
+    @Mock private vn.ptit.snapvocab.study.repository.CollectionStudySettingsRepository collectionSettingsRepository;
 	@Mock private TopicService topicService;
 	@Mock private MissionTracker missionTracker;
 	@Mock private ApplicationEventPublisher eventPublisher;
@@ -93,7 +92,8 @@ class StudyServiceTest {
 		when(topicItemRepository.findById(21L)).thenReturn(Optional.of(item));
 		when(dailyProgressRepository.findForUpdate(7L, 3L, STUDY_DAY))
 				.thenReturn(Optional.of(new StudyDailyProgress()));
-		when(userSettingsService.get(7L)).thenReturn(new UserSettingsDTO(20, 20, null, true));
+        when(collectionPlanner.snapshot(any(), any(), any())).thenReturn(new CollectionStudyPlanner.Snapshot(
+                java.util.Map.of(3L, new CollectionStudyPlanner.Budget(20, 200, 0, 0)), java.util.Map.of(), java.util.Map.of()));
 		lenient().when(xpService.award(anyLong(), any(), anyInt(), anyString()))
 				.thenReturn(ExperienceLog.builder().amount(2).build());
 	}
@@ -151,9 +151,9 @@ class StudyServiceTest {
 	@Test
 	void rejectedReviewDoesNotRecordStudyActivity() {
 		when(collectionRepository.findById(3L)).thenReturn(Optional.of(collection));
-		// A new card when today's new-word quota (dailyGoal) is used up.
-		when(studyQueueRepository.countByUserIdAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(any(), any(), any()))
-				.thenReturn(20L);
+		// A new card when the collection's new-word quota is used up.
+        when(collectionPlanner.snapshot(any(), any(), any())).thenReturn(new CollectionStudyPlanner.Snapshot(
+                java.util.Map.of(3L, new CollectionStudyPlanner.Budget(20, 200, 20, 0)), java.util.Map.of(), java.util.Map.of()));
 		try (MockedStatic<Economy> clock = Mockito.mockStatic(Economy.class, Mockito.CALLS_REAL_METHODS)) {
 			clock.when(Economy::now).thenReturn(REVIEWED_AT);
 			assertThatThrownBy(() -> service.submitCollectionRating(7L, 3L, 21L, Rating.GOOD))
@@ -162,4 +162,38 @@ class StudyServiceTest {
 		verify(eventPublisher, never()).publishEvent(any(SrsReviewCompletedEvent.class));
 		verify(studyQueueRepository, never()).save(any());
 	}
+
+    @Test
+    void staleQueueCannotRateAnUnseenReviewAfterCollectionReviewLimitIsReached() {
+        when(collectionRepository.findById(3L)).thenReturn(Optional.of(collection));
+        when(collectionPlanner.snapshot(any(), any(), any())).thenReturn(new CollectionStudyPlanner.Snapshot(
+                java.util.Map.of(3L, new CollectionStudyPlanner.Budget(20, 200, 0, 200)), java.util.Map.of(), java.util.Map.of()));
+        var record = FsrsRecord.builder().topicItem(item).state(vn.ptit.snapvocab.vocab.domain.enumeration.CardState.REVIEW)
+                .stability(5F).difficulty(5F).due(java.time.LocalDateTime.ofInstant(REVIEWED_AT.minusSeconds(86400), java.time.ZoneOffset.UTC))
+                .lastReview(java.time.LocalDateTime.ofInstant(REVIEWED_AT.minusSeconds(86400), java.time.ZoneOffset.UTC)).build();
+        when(studyQueueRepository.findForUpdate(7L, 21L)).thenReturn(Optional.of(record));
+        try (MockedStatic<Economy> clock = Mockito.mockStatic(Economy.class, Mockito.CALLS_REAL_METHODS)) {
+            clock.when(Economy::now).thenReturn(REVIEWED_AT);
+            assertThatThrownBy(() -> service.submitCollectionRating(7L, 3L, 21L, Rating.GOOD))
+                    .isInstanceOf(StudyQuotaExceededException.class);
+        }
+        verify(studyQueueRepository, never()).save(any());
+    }
+
+    @Test
+    void intradayLearningContinuesEvenWhenBothDailyLimitsAreUsedUp() {
+        when(collectionRepository.findById(3L)).thenReturn(Optional.of(collection));
+        when(collectionPlanner.snapshot(any(), any(), any())).thenReturn(new CollectionStudyPlanner.Snapshot(
+                java.util.Map.of(3L, new CollectionStudyPlanner.Budget(20, 200, 20, 200)), java.util.Map.of(), java.util.Map.of()));
+        var record = FsrsRecord.builder().topicItem(item).state(vn.ptit.snapvocab.vocab.domain.enumeration.CardState.LEARNING)
+                .stability(1F).difficulty(5F).step(0)
+                .due(java.time.LocalDateTime.ofInstant(REVIEWED_AT.minusSeconds(60), java.time.ZoneOffset.UTC))
+                .lastReview(java.time.LocalDateTime.ofInstant(REVIEWED_AT.minusSeconds(120), java.time.ZoneOffset.UTC)).build();
+        when(studyQueueRepository.findForUpdate(7L, 21L)).thenReturn(Optional.of(record));
+        try (MockedStatic<Economy> clock = Mockito.mockStatic(Economy.class, Mockito.CALLS_REAL_METHODS)) {
+            clock.when(Economy::now).thenReturn(REVIEWED_AT);
+            service.submitCollectionRating(7L, 3L, 21L, Rating.GOOD);
+        }
+        verify(studyQueueRepository).save(any());
+    }
 }

@@ -45,6 +45,39 @@ public class AiDetectionServiceImpl implements AiDetectionService {
 	@Override
 	public AiDetectResponseDTO detect(ScanImage original, String requestId) {
 		ScanImage image = ScanImageDownscaler.fit(original, properties.getMaxInputPx());
+		AiDetectResponseDTO response = sendWithRetries(image, requestId);
+		log.info("scan request_id={} model={} objects={} ai_time_ms={} sent_bytes={} original_bytes={}",
+				requestId, response.modelVersion(), response.detections().size(), response.processingTimeMs(),
+				image.bytes().length, original.bytes().length);
+		return response;
+	}
+
+	/**
+	 * A scaled-to-zero endpoint can fail a request while its worker is still booting,
+	 * so "not there yet" is retried; anything the AI service itself decided is final.
+	 */
+	private AiDetectResponseDTO sendWithRetries(ScanImage image, String requestId) {
+		for (int attempt = 0;; attempt++) {
+			try {
+				return send(image, requestId);
+			} catch (ScanException e) {
+				boolean notThereYet = e.getCode() == ScanErrorCode.AI_UNAVAILABLE
+						|| e.getCode() == ScanErrorCode.AI_TIMEOUT;
+				if (!notThereYet || attempt >= properties.getColdStartRetries()) {
+					throw e;
+				}
+				log.warn("Scan {} attempt {} failed with {}, retrying", requestId, attempt + 1, e.getCode());
+				try {
+					Thread.sleep(properties.getRetryDelayMs());
+				} catch (InterruptedException interrupted) {
+					Thread.currentThread().interrupt();
+					throw e;
+				}
+			}
+		}
+	}
+
+	private AiDetectResponseDTO send(ScanImage image, String requestId) {
 		MultipartBodyBuilder body = new MultipartBodyBuilder();
 		// Set the part type explicitly: inferring it from the filename yields
 		// application/octet-stream for names without an extension, which the AI
@@ -62,6 +95,9 @@ public class AiDetectionServiceImpl implements AiDetectionService {
 						h.set("X-Request-Id", requestId);
 						if (StringUtils.hasText(properties.getServiceToken())) {
 							h.set("X-Service-Token", properties.getServiceToken());
+						}
+						if (StringUtils.hasText(properties.getApiKey())) {
+							h.setBearerAuth(properties.getApiKey());
 						}
 					})
 					.body(body.build())
@@ -84,9 +120,6 @@ public class AiDetectionServiceImpl implements AiDetectionService {
 		if (response == null || response.detections() == null) {
 			throw new ScanException(ScanErrorCode.AI_ERROR, "Empty AI response for request " + requestId);
 		}
-		log.info("scan request_id={} model={} objects={} ai_time_ms={} sent_bytes={} original_bytes={}",
-				requestId, response.modelVersion(), response.detections().size(), response.processingTimeMs(),
-				image.bytes().length, original.bytes().length);
 		return response;
 	}
 
@@ -100,7 +133,7 @@ public class AiDetectionServiceImpl implements AiDetectionService {
 		ScanErrorCode code;
 		if ("INVALID_IMAGE".equals(aiCode)) {
 			code = ScanErrorCode.INVALID_IMAGE;
-		} else if ("MODEL_NOT_READY".equals(aiCode) || status.value() == 503) {
+		} else if ("MODEL_NOT_READY".equals(aiCode) || status.value() == 503 || isGatewayError(status, detail)) {
 			code = ScanErrorCode.AI_UNAVAILABLE;
 		} else {
 			// MODEL_ERROR, or our own fault: INVALID_REQUEST (malformed call) and
@@ -108,6 +141,14 @@ public class AiDetectionServiceImpl implements AiDetectionService {
 			code = ScanErrorCode.AI_ERROR;
 		}
 		return new ScanException(code, message);
+	}
+
+	/**
+	 * Not the AI service's JSON shape, so something in front of it answered (e.g. RunPod's
+	 * "no workers available"). A rejected key stays AI_ERROR: retrying cannot fix it.
+	 */
+	private boolean isGatewayError(HttpStatusCode status, AiErrorResponseDTO.Detail detail) {
+		return detail == null && status.value() != 401 && status.value() != 403;
 	}
 
 	private AiErrorResponseDTO.Detail readError(ClientHttpResponse res) {

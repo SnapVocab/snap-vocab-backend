@@ -51,20 +51,20 @@ class UserSettingsServiceTest {
 		UserSettingsDTO settings = service.get(USER_ID);
 
 		assertThat(settings).isEqualTo(
-				new UserSettingsDTO(20, 20, null, true));
+				new UserSettingsDTO(null, true));
 		verify(userSettingsRepository).save(any());
 	}
 
 	@Test
 	void updateChangesOnlyTheFieldsSent() {
 		UserSettings settings = stored();
-		settings.setDailyGoal(50);
+		settings.setSrsReminderAt(LocalTime.of(7, 0));
 
 		UserSettingsDTO updated = service.update(USER_ID,
-				new UpdateUserSettingsRequest(null, 40, null, null, null));
+				new UpdateUserSettingsRequest(null, null, false));
 
-		assertThat(updated.dailyGoal()).isEqualTo(50);
-		assertThat(updated.studySessionCardLimit()).isEqualTo(40);
+		assertThat(updated.srsReminderAt()).isEqualTo(LocalTime.of(7, 0));
+		assertThat(updated.pushEnabled()).isFalse();
 	}
 
 	@Test
@@ -72,11 +72,9 @@ class UserSettingsServiceTest {
 		stored();
 
 		UserSettingsDTO updated = service.update(USER_ID, new UpdateUserSettingsRequest(
-				30, null, LocalTime.of(20, 30), null, false));
+				LocalTime.of(20, 30), null, false));
 
 		assertThat(updated.srsReminderAt()).isEqualTo(LocalTime.of(20, 30));
-		assertThat(updated.dailyGoal()).isEqualTo(30);
-		assertThat(updated.studySessionCardLimit()).isEqualTo(20);
 		assertThat(updated.pushEnabled()).isFalse();
 	}
 
@@ -87,10 +85,10 @@ class UserSettingsServiceTest {
 
 		// A null time means "unchanged", so switching the reminder off needs the flag.
 		assertThat(service.update(USER_ID,
-				new UpdateUserSettingsRequest(null, null, null, null, null)).srsReminderAt())
+				new UpdateUserSettingsRequest(null, null, null)).srsReminderAt())
 				.isEqualTo(LocalTime.of(7, 0));
 		assertThat(service.update(USER_ID,
-				new UpdateUserSettingsRequest(null, null, null, true, null)).srsReminderAt())
+				new UpdateUserSettingsRequest(null, true, null)).srsReminderAt())
 				.isNull();
 	}
 }

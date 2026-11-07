@@ -83,6 +83,18 @@ class AiDetectionServiceImplTest {
 	}
 
 	@Test
+	void detectSendsApiKeyAsBearerTokenWhenConfigured() {
+		properties.setApiKey("rp_key");
+		expectDetect()
+				.andExpect(header("Authorization", "Bearer rp_key"))
+				.andRespond(withSuccess(OK_BODY, MediaType.APPLICATION_JSON));
+
+		service.detect(image(), "req-1");
+
+		server.verify();
+	}
+
+	@Test
 	void invalidImageFromAiIsInvalidImage() {
 		respondError(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "INVALID_IMAGE");
 		assertCode(ScanErrorCode.INVALID_IMAGE);
@@ -135,6 +147,50 @@ class AiDetectionServiceImplTest {
 			throw new ConnectException("Connection refused");
 		});
 		assertCode(ScanErrorCode.AI_UNAVAILABLE);
+	}
+
+	@Test
+	void gatewayErrorIsAiUnavailable() {
+		expectDetect().andRespond(withStatus(HttpStatus.BAD_REQUEST)
+				.contentType(MediaType.APPLICATION_JSON).body("{\"error\":\"no workers available\"}"));
+		assertCode(ScanErrorCode.AI_UNAVAILABLE);
+	}
+
+	@Test
+	void rejectedApiKeyIsAiError() {
+		expectDetect().andRespond(withStatus(HttpStatus.UNAUTHORIZED));
+		assertCode(ScanErrorCode.AI_ERROR);
+	}
+
+	@Test
+	void retriesWhileTheWorkerIsBooting() {
+		properties.setColdStartRetries(2);
+		properties.setRetryDelayMs(0);
+		expectDetect().andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
+		expectDetect().andRespond(request -> {
+			throw new SocketTimeoutException("Read timed out");
+		});
+		expectDetect().andRespond(withSuccess(OK_BODY, MediaType.APPLICATION_JSON));
+
+		assertThat(service.detect(image(), "req-1").modelVersion()).isEqualTo("Florence-2-base/od+self");
+		server.verify();
+	}
+
+	@Test
+	void givesUpAfterTheConfiguredRetries() {
+		properties.setColdStartRetries(1);
+		properties.setRetryDelayMs(0);
+		expectDetect().andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
+		expectDetect().andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
+		assertCode(ScanErrorCode.AI_UNAVAILABLE);
+	}
+
+	@Test
+	void doesNotRetryWhatTheAiServiceDecided() {
+		properties.setColdStartRetries(2);
+		properties.setRetryDelayMs(0);
+		respondError(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "INVALID_IMAGE");
+		assertCode(ScanErrorCode.INVALID_IMAGE);
 	}
 
 	private void respondError(HttpStatus status, String code) {

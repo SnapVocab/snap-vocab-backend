@@ -35,6 +35,7 @@ import vn.ptit.snapvocab.vocab.repository.TemplateRepository;
  * <ul>
  * <li>{@code main.translation} → {@code NATIVE_TRANSLATION}</li>
  * <li>{@code examples.content} → {@code EXAMPLE_SENTENCE}</li>
+ * <li>Existing visible {@code main.phonetic} fields → {@code PHONETIC}, in place</li>
  * </ul>
  * Group/attribute names are used here only to locate the configuration once;
  * runtime Quiz
@@ -145,6 +146,26 @@ public class SemanticBindingMigration {
 		for (Template template : templateRepository.findBySchemaId(schema.getId())) {
 			if (!SYSTEM_TEMPLATE_CODES.contains(template.getCode())) {
 				continue;
+			}
+			// Upgrade the existing phonetic field in place so the role is included
+			// in client DTOs, without adding a duplicate field or changing its layout.
+			SchemaAttribute phonetic = uniqueAttribute(groups, "main", "phonetic");
+			boolean hasPhoneticRole = template.getElements().stream()
+					.map(TemplateElement::getField).filter(Objects::nonNull)
+					.anyMatch(f -> f.getSemanticRole() == SemanticRole.PHONETIC);
+			if (phonetic != null && !hasPhoneticRole) {
+				List<TemplateField> phoneticFields = template.getElements().stream()
+						.map(TemplateElement::getField).filter(Objects::nonNull)
+						.filter(f -> !f.isHidden() && f.getSemanticRole() == null
+								&& Objects.equals(f.getSchemaAttribute().getId(), phonetic.getId()))
+						.toList();
+				if (!phoneticFields.isEmpty()) {
+					planned++;
+					if (apply) {
+						phoneticFields.forEach(f -> f.setSemanticRole(SemanticRole.PHONETIC));
+						added++;
+					}
+				}
 			}
 			for (Map.Entry<Binding, SchemaAttribute> t : targets.entrySet()) {
 				SemanticRole role = t.getKey().role();

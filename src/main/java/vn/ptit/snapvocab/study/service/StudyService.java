@@ -23,6 +23,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 import vn.ptit.snapvocab.common.exception.ResourceNotFoundException;
 import vn.ptit.snapvocab.mission.domain.enumeration.MissionTriggerEvent;
 import vn.ptit.snapvocab.mission.service.MissionFacts;
@@ -44,7 +45,6 @@ import vn.ptit.snapvocab.study.repository.StudyDailyProgressRepository;
 import vn.ptit.snapvocab.study.repository.StudyQueueRepository;
 import vn.ptit.snapvocab.user.domain.User;
 import vn.ptit.snapvocab.user.repository.UserRepository;
-import vn.ptit.snapvocab.user.service.UserSettingsService;
 import vn.ptit.snapvocab.vocab.domain.Collection;
 import vn.ptit.snapvocab.vocab.domain.FsrsRecord;
 import vn.ptit.snapvocab.vocab.domain.Topic;
@@ -65,10 +65,8 @@ public class StudyService {
 
 	/** specs.md M4 done criteria: review = 2 XP; an active XP Booster doubles it (shop.md S6). */
 	static final int XP_PER_REVIEW = 2;
-	/** learn_ui.md UI-LEARN-06: more cards due than this many sessions pauses new words. */
-	public static final int BACKLOG_SESSIONS = 3;
-	/** learn_ui.md UI-LEARN-10: no study for this many days makes the next session a gentle one. */
-	static final int RETURNING_AFTER_DAYS = 3;
+	/** Transport batch size only. Daily budgets belong to each collection. */
+	static final int STUDY_QUEUE_BATCH_SIZE = 20;
 	private static final ZoneOffset FSRS_ZONE = ZoneOffset.UTC;
 	// The app currently targets Vietnam. Keep study-day calculation independent from the server zone.
 	private static final ZoneId STUDY_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
@@ -78,11 +76,12 @@ public class StudyService {
 	private final StudyQueueRepository studyQueueRepository;
 	private final StudyDailyProgressRepository dailyProgressRepository;
 	private final StudyDailyCardRepository dailyCardRepository;
+    private final CollectionStudyPlanner collectionPlanner;
+    private final vn.ptit.snapvocab.study.repository.CollectionStudySettingsRepository collectionSettingsRepository;
 	private final TopicRepository topicRepository;
 	private final TopicItemRepository topicItemRepository;
 	private final CollectionRepository collectionRepository;
 	private final UserRepository userRepository;
-	private final UserSettingsService userSettingsService;
 	private final TopicService topicService;
 	private final XpService xpService;
 	private final MissionTracker missionTracker;
@@ -91,40 +90,54 @@ public class StudyService {
 
 	@Transactional
 	public StudyQueueDTO getQueue(Long userId, Long rootTopicId) {
-		getAccessibleTopic(userId, rootTopicId);
-		return buildQueue(userId, topicRepository.findDescendantIdsIncludingSelf(rootTopicId));
+        Topic topic = getAccessibleTopic(userId, rootTopicId);
+        return buildQueue(userId, Map.of(topic.getCollection().getId(),
+                topicRepository.findDescendantIdsIncludingSelf(rootTopicId)));
 	}
 
 	@Transactional
 	public StudyQueueDTO getCollectionQueue(Long userId, Long collectionId) {
 		getAccessibleCollection(userId, collectionId);
-		return buildQueue(userId, topicRepository.findIdsByCollectionId(collectionId));
+        return buildQueue(userId, Map.of(collectionId, topicRepository.findIdsByCollectionId(collectionId)));
 	}
 
 	/** The Learn tab's session: every collection in the learner's library (learn_ui.md UI-LEARN-03). */
 	@Transactional
 	public StudyQueueDTO getTodayQueue(Long userId) {
-		return buildQueue(userId, libraryTopicIds(userId));
+        Map<Long, List<Long>> scopes = new LinkedHashMap<>();
+        for (Collection collection : activeLibraryCollections(userId)) {
+            scopes.put(collection.getId(), topicRepository.findIdsByCollectionId(collection.getId()));
+        }
+        return buildQueue(userId, scopes);
 	}
 
-	@Transactional
-	public StudyTodayDTO getToday(Long userId) {
-		List<Long> topicIds = libraryTopicIds(userId);
-		if (topicIds.isEmpty()) {
-			Plan plan = plan(userId, 0);
-			return new StudyTodayDTO(0, 0, 0, plan.studiedToday(), plan.newPerDay(), false, false, 0, 0);
-		}
-		long due = studyQueueRepository.countDue(userId, topicIds, nowUtc(), REVIEWABLE_STATES);
-		Plan plan = plan(userId, due);
-		int duePart = (int) Math.min(due, plan.limit());
-		int newPart = (int) Math.min(studyQueueRepository.countNewItems(userId, topicIds), plan.newSlots(duePart));
-		LocalDateTime endOfTomorrow = LocalDate.now(STUDY_ZONE).plusDays(2).atStartOfDay(STUDY_ZONE)
-				.withZoneSameInstant(FSRS_ZONE).toLocalDateTime();
-		return new StudyTodayDTO(due, newPart, duePart + newPart, plan.studiedToday(), plan.newPerDay(),
-				plan.backlog(), plan.returning(),
-				studyQueueRepository.countDue(userId, topicIds, endOfTomorrow, REVIEWABLE_STATES),
-				topicItemRepository.countByTopicIdIn(topicIds));
-	}
+	@Transactional(readOnly = true)
+    public StudyTodayDTO getToday(Long userId) {
+        List<Collection> collections = activeLibraryCollections(userId);
+        List<Long> collectionIds = collections.stream().map(Collection::getId).toList();
+        var snapshot = collectionPlanner.snapshot(userId, collectionIds, Instant.now());
+        long due = 0;
+        int fresh = 0;
+        int newPerDay = 0;
+        long words = 0;
+        for (Long id : collectionIds) {
+            var totals = snapshot.collections().getOrDefault(id, CollectionStudyPlanner.Totals.EMPTY);
+            var budget = snapshot.budgets().get(id);
+            var counts = budget.counts(id, null, totals);
+            due += counts.getDueCount();
+            fresh = Math.toIntExact(Math.min(Integer.MAX_VALUE, (long) fresh + counts.newCount()));
+            newPerDay = Math.toIntExact(Math.min(Integer.MAX_VALUE, (long) newPerDay + budget.newLimit()));
+            words += totals.words();
+        }
+        int limit = STUDY_QUEUE_BATCH_SIZE;
+        List<Long> topicIds = collectionIds.isEmpty() ? List.of() : topicRepository.findIdsByCollectionIdIn(collectionIds);
+        LocalDateTime endOfTomorrow = LocalDate.now(STUDY_ZONE).plusDays(2).atStartOfDay(STUDY_ZONE)
+                .withZoneSameInstant(FSRS_ZONE).toLocalDateTime();
+        long tomorrow = topicIds.isEmpty() ? 0 : studyQueueRepository.countDue(userId, topicIds, endOfTomorrow, REVIEWABLE_STATES);
+        return new StudyTodayDTO(due, fresh, (int) Math.min(limit, due + fresh),
+                (int) dailyCardRepository.countByUserIdAndStudyDate(userId, LocalDate.now(STUDY_ZONE)),
+                newPerDay, false, false, tomorrow, words);
+    }
 
 	/** "Bộ từ của bạn": most due first, then most recently studied (learn_ui.md §8.2 D). */
 	@Transactional(readOnly = true)
@@ -132,7 +145,7 @@ public class StudyService {
 		Map<Long, StudyQueueRepository.StudiedCollection> studied = studyQueueRepository
 				.findStudiedCollections(userId, nowUtc(), REVIEWABLE_STATES).stream()
 				.collect(Collectors.toMap(StudyQueueRepository.StudiedCollection::getCollectionId, Function.identity()));
-		List<Collection> collections = libraryCollections(userId, studied.keySet());
+		List<Collection> collections = activeLibraryCollections(userId);
 		if (collections.isEmpty()) {
 			return List.of();
 		}
@@ -140,12 +153,16 @@ public class StudyService {
 				.countByCollectionIds(collections.stream().map(Collection::getId).toList()).stream()
 				.collect(Collectors.toMap(TopicItemRepository.CollectionWordCount::getCollectionId,
 						TopicItemRepository.CollectionWordCount::getTotal));
+        var snapshot = collectionPlanner.snapshot(userId, collections.stream().map(Collection::getId).toList(), Instant.now());
 		return collections.stream()
 				.map(collection -> {
 					StudyQueueRepository.StudiedCollection stats = studied.get(collection.getId());
 					return new StudyCollectionDTO(collection.getId(), collection.getName(), collection.getTranslation(),
 							collection.getType(), wordCounts.getOrDefault(collection.getId(), 0L),
-							stats == null || stats.getDue() == null ? 0 : stats.getDue(),
+							snapshot.budgets().get(collection.getId()).counts(collection.getId(), null,
+                                    snapshot.collections().getOrDefault(collection.getId(), CollectionStudyPlanner.Totals.EMPTY)).getDueCount(),
+                            snapshot.budgets().get(collection.getId()).counts(collection.getId(), null,
+                                    snapshot.collections().getOrDefault(collection.getId(), CollectionStudyPlanner.Totals.EMPTY)).newCount(),
 							stats == null ? null : stats.getLastReview());
 				})
 				.sorted(Comparator.comparingLong(StudyCollectionDTO::dueCount).reversed()
@@ -154,68 +171,66 @@ public class StudyService {
 				.toList();
 	}
 
-	private StudyQueueDTO buildQueue(Long userId, List<Long> topicIds) {
-		if (topicIds.isEmpty()) {
-			return new StudyQueueDTO(userSettingsService.getStudySessionCardLimit(userId), List.of());
-		}
-		LocalDateTime now = nowUtc();
-		Plan plan = plan(userId, studyQueueRepository.countDue(userId, topicIds, now, REVIEWABLE_STATES));
-		List<FsrsRecord> dueRecords = studyQueueRepository.findDueRecords(userId, topicIds, now,
-				REVIEWABLE_STATES, PageRequest.of(0, plan.limit()));
-		List<TopicItem> newItems = findNewItems(userId, topicIds, plan.newSlots(dueRecords.size()));
+    private StudyQueueDTO buildQueue(Long userId, Map<Long, List<Long>> scopes) {
+        int limit = STUDY_QUEUE_BATCH_SIZE;
+        Instant instant = Instant.now();
+        LocalDateTime now = LocalDateTime.ofInstant(instant, FSRS_ZONE);
+        LocalDateTime dayStart = LocalDate.now(STUDY_ZONE).atStartOfDay(STUDY_ZONE)
+                .withZoneSameInstant(FSRS_ZONE).toLocalDateTime();
+        var snapshot = collectionPlanner.snapshot(userId, new ArrayList<>(scopes.keySet()), instant);
+        List<FsrsRecord> dueRecords = new ArrayList<>();
+        List<TopicItem> newItems = new ArrayList<>();
+        for (var scope : scopes.entrySet()) {
+            if (scope.getValue().isEmpty()) continue;
+            var budget = snapshot.budgets().get(scope.getKey());
+            dueRecords.addAll(studyQueueRepository.findIntradayLearning(userId, scope.getValue(), now,
+                    dayStart, CollectionStudyPlanner.LEARNING_STATES, PageRequest.of(0, limit)));
+            if (budget.reviewRemaining() > 0) {
+                dueRecords.addAll(studyQueueRepository.findQuotaReviews(userId, scope.getValue(), now, dayStart,
+                        REVIEWABLE_STATES, CollectionStudyPlanner.LEARNING_STATES,
+                        PageRequest.of(0, Math.min(limit, budget.reviewRemaining()))));
+            }
+            newItems.addAll(findNewItems(userId, scope.getValue(), Math.min(limit, budget.newRemaining())));
+        }
+        dueRecords = dueRecords.stream().sorted(Comparator
+                .comparingInt((FsrsRecord r) -> intradayLearning(r, dayStart) ? 0 : 1)
+                .thenComparing(FsrsRecord::getDue).thenComparing(r -> r.getTopicItem().getId()))
+                .limit(limit).toList();
+        newItems = newItems.stream().sorted(Comparator.comparing(TopicItem::getId))
+                .limit(Math.max(0, limit - dueRecords.size())).toList();
+        List<Long> itemIds = new ArrayList<>();
+        dueRecords.forEach(record -> itemIds.add(record.getTopicItem().getId()));
+        newItems.forEach(item -> itemIds.add(item.getId()));
+        if (itemIds.isEmpty()) return new StudyQueueDTO(limit, List.of());
+        Map<Long, TopicItemData> dataById = topicService.getTopicItemsByIds(itemIds).stream()
+                .collect(Collectors.toMap(TopicItemData::getTopicItemId, Function.identity()));
+        List<StudyCardDTO> cards = new ArrayList<>();
+        for (FsrsRecord record : dueRecords) {
+            Topic topic = record.getTopicItem().getTopic();
+            cards.add(new StudyCardDTO(dataById.get(record.getTopicItem().getId()), topic.getId(),
+                    topic.getCollection().getName(), record.getState(), record.getDue()));
+        }
+        for (TopicItem item : newItems) {
+            cards.add(new StudyCardDTO(dataById.get(item.getId()), item.getTopic().getId(),
+                    item.getTopic().getCollection().getName(), CardState.NEW, null));
+        }
+        return new StudyQueueDTO(limit, cards);
+    }
 
-		List<Long> itemIds = new ArrayList<>();
-		dueRecords.forEach(record -> itemIds.add(record.getTopicItem().getId()));
-		newItems.forEach(item -> itemIds.add(item.getId()));
-		Map<Long, TopicItemData> dataById = topicService.getTopicItemsByIds(itemIds).stream()
-				.collect(Collectors.toMap(TopicItemData::getTopicItemId, Function.identity()));
-		List<StudyCardDTO> cards = new ArrayList<>();
-		for (FsrsRecord record : dueRecords) {
-			Topic topic = record.getTopicItem().getTopic();
-			cards.add(new StudyCardDTO(dataById.get(record.getTopicItem().getId()), topic.getId(),
-					topic.getCollection().getName(), record.getState(), record.getDue()));
-		}
-		for (TopicItem item : newItems) {
-			cards.add(new StudyCardDTO(dataById.get(item.getId()), item.getTopic().getId(),
-					item.getTopic().getCollection().getName(), CardState.NEW, null));
-		}
-		return new StudyQueueDTO(plan.limit(), cards);
-	}
+    private static boolean intradayLearning(FsrsRecord record, LocalDateTime dayStart) {
+        return record != null && CollectionStudyPlanner.LEARNING_STATES.contains(record.getState())
+                && record.getLastReview() != null && !record.getLastReview().isBefore(dayStart);
+    }
 
-	/**
-	 * Today's rules (learn_ui.md §4.1, UI-LEARN-02/06/10): due cards are never capped, only chunked into
-	 * sessions; new words are limited per learner per day ({@code dailyGoal}); a backlog pauses them; the first
-	 * session after a break is half size and, when anything is due, reviews only.
-	 */
-	private Plan plan(Long userId, long dueInScope) {
-		int sessionLimit = userSettingsService.getStudySessionCardLimit(userId);
-		int newPerDay = userSettingsService.get(userId).dailyGoal();
-		LocalDate today = LocalDate.now(STUDY_ZONE);
-		int studiedToday = (int) dailyCardRepository.countByUserIdAndStudyDate(userId, today);
-		Instant lastStudiedAt = userRepository.findById(userId).map(User::getLastStudiedAt).orElse(null);
-		boolean returning = studiedToday == 0 && lastStudiedAt != null
-				&& !LocalDate.ofInstant(lastStudiedAt, STUDY_ZONE).isAfter(today.minusDays(RETURNING_AFTER_DAYS));
-		boolean backlog = studyQueueRepository.countDueAll(userId, nowUtc(), REVIEWABLE_STATES)
-				> (long) BACKLOG_SESSIONS * sessionLimit;
-		int newRemaining = Math.max(0, newPerDay - newWordsStarted(userId, today));
-		boolean newPaused = backlog || (returning && dueInScope > 0);
-		return new Plan(returning ? Math.max(1, sessionLimit / 2) : sessionLimit, newPaused ? 0 : newRemaining,
-				newPerDay, studiedToday, backlog, returning);
-	}
+    private List<Collection> activeLibraryCollections(Long userId) {
+        Set<Long> ids = studyQueueRepository.findStudiedCollections(userId, nowUtc(), REVIEWABLE_STATES)
+                .stream().map(StudyQueueRepository.StudiedCollection::getCollectionId)
+                .collect(Collectors.toCollection(java.util.HashSet::new));
+        ids.addAll(collectionSettingsRepository.findCollectionIdsByUserId(userId));
+        return libraryCollections(userId, ids);
+    }
 
-	private record Plan(int limit, int newRemaining, int newPerDay, int studiedToday, boolean backlog,
-			boolean returning) {
-		int newSlots(int dueCards) {
-			return Math.min(newRemaining, Math.max(0, limit - dueCards));
-		}
-	}
-
-	private int newWordsStarted(Long userId, LocalDate day) {
-		return (int) studyQueueRepository.countByUserIdAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(userId,
-				day.atStartOfDay(STUDY_ZONE).toInstant(), day.plusDays(1).atStartOfDay(STUDY_ZONE).toInstant());
-	}
-
-	/** Own collections plus system collections with at least one reviewed card. */
+	/** Own collections plus system collections already studied or personally configured. */
 	private List<Collection> libraryCollections(Long userId, Set<Long> studiedIds) {
 		Map<Long, Collection> byId = new LinkedHashMap<>();
 		collectionRepository.findByOwnerId(userId).forEach(collection -> byId.put(collection.getId(), collection));
@@ -223,13 +238,6 @@ public class StudyService {
 				.filter(collection -> collection.getType() == CollectionType.SYSTEM)
 				.forEach(collection -> byId.putIfAbsent(collection.getId(), collection));
 		return new ArrayList<>(byId.values());
-	}
-
-	private List<Long> libraryTopicIds(Long userId) {
-		Set<Long> studiedIds = studyQueueRepository.findStudiedCollections(userId, nowUtc(), REVIEWABLE_STATES)
-				.stream().map(StudyQueueRepository.StudiedCollection::getCollectionId).collect(Collectors.toSet());
-		List<Long> collectionIds = libraryCollections(userId, studiedIds).stream().map(Collection::getId).toList();
-		return collectionIds.isEmpty() ? List.of() : topicRepository.findIdsByCollectionIdIn(collectionIds);
 	}
 
 	private static LocalDateTime nowUtc() {
@@ -246,7 +254,7 @@ public class StudyService {
 		return studyQueueRepository.findNewItems(userId, topicIds, PageRequest.of(0, limit));
 	}
 
-	@Transactional
+	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public ReviewResultDTO submitRating(Long userId, Long rootTopicId, Long topicItemId, Rating rating) {
 		Topic root = getAccessibleTopic(userId, rootTopicId);
 		List<Long> topicIds = topicRepository.findDescendantIdsIncludingSelf(root.getId());
@@ -257,7 +265,7 @@ public class StudyService {
 		return review(userId, root.getCollection(), item, rating);
 	}
 
-	@Transactional
+	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public ReviewResultDTO submitCollectionRating(Long userId, Long collectionId, Long topicItemId,
 			Rating rating) {
 		Collection collection = getAccessibleCollection(userId, collectionId);
@@ -269,7 +277,7 @@ public class StudyService {
 	}
 
 	/** Review from the Learn tab's session, where cards come from any collection in the library. */
-	@Transactional
+	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public ReviewResultDTO submitTodayRating(Long userId, Long topicItemId, Rating rating) {
 		TopicItem item = getItem(topicItemId);
 		Collection collection = item.getTopic().getCollection();
@@ -278,6 +286,8 @@ public class StudyService {
 	}
 
 	private ReviewResultDTO review(Long userId, Collection collection, TopicItem item, Rating rating) {
+		// READ_COMMITTED ensures the quota query sees the previous writer after waiting for this lock,
+		// even when collection access was checked before the lock (MariaDB defaults to REPEATABLE_READ).
 		// Keep the same writer lock order as quizzes, progress and mission rewards.
 		Economy.lockUser(userRepository, userId);
 		Instant reviewedAt = Economy.now();
@@ -291,10 +301,15 @@ public class StudyService {
 				userId, collection.getId(), today, item.getId());
 		FsrsRecord record = studyQueueRepository.findForUpdate(userId, item.getId()).orElse(null);
 		Card previousCard = record == null ? newCard(item.getId()) : toFsrsCard(record);
-		// Counted under the user lock, so parallel first reviews in different collections cannot overshoot.
-		if (record == null && newWordsStarted(userId, today) >= userSettingsService.get(userId).dailyGoal()) {
-			throw new StudyQuotaExceededException();
-		}
+        var budget = collectionPlanner.snapshot(userId, List.of(collection.getId()), reviewedAt)
+                .budgets().get(collection.getId());
+        LocalDateTime dayStart = today.atStartOfDay(STUDY_ZONE).withZoneSameInstant(FSRS_ZONE).toLocalDateTime();
+        if (record == null && budget.newRemaining() == 0) {
+            throw new StudyQuotaExceededException();
+        }
+        if (record != null && !alreadyCounted && !intradayLearning(record, dayStart) && budget.reviewRemaining() == 0) {
+            throw new StudyQuotaExceededException();
+        }
 		boolean wasMastered = isMastered(record);
 		Card nextCard = scheduler.reviewCard(previousCard, rating, reviewedAt).card();
 

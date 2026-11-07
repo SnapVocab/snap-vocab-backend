@@ -67,4 +67,8 @@ ai-service:
   # Allow time for inference; override for the deployed GPU through .env.
   read-timeout-ms: ${AI_SERVICE_READ_TIMEOUT_MS:120000}
   service-token: ${AI_SERVICE_TOKEN:}
+  # Only for a RunPod Serverless endpoint: a Restricted key limited to that endpoint.
+  api-key: ${RUNPOD_API_KEY:}
+  # Extra attempts while a Serverless worker boots. Keep read-timeout-ms above RunPod's 2 min "no worker" limit then.
+  cold-start-retries: ${AI_SERVICE_COLD_START_RETRIES:0}
   max-upload-mb: 10

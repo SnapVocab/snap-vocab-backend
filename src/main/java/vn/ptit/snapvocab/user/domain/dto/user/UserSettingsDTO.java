@@ -9,8 +9,6 @@ import java.time.LocalTime;
  *                      when off
  */
 public record UserSettingsDTO(
-		Integer dailyGoal,
-		Integer studySessionCardLimit,
 		LocalTime srsReminderAt,
 		boolean pushEnabled) {
 }

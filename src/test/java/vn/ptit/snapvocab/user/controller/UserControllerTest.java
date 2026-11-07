@@ -86,14 +86,14 @@ class UserControllerTest {
 	void getSettingsUsesTheUserId() throws Exception {
 		when(userService.getCurrentUserId()).thenReturn(Optional.of(USER_ID));
 		when(userSettingsService.get(USER_ID)).thenReturn(
-				new UserSettingsDTO(20, 20, LocalTime.of(20, 0), true));
+				new UserSettingsDTO(LocalTime.of(20, 0), true));
 
 		mockMvc.perform(get("/api/users/me/settings"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.uiLanguage").doesNotExist())
 				.andExpect(jsonPath("$.theme").doesNotExist())
-				.andExpect(jsonPath("$.dailyGoal").value(20))
-				.andExpect(jsonPath("$.studySessionCardLimit").value(20))
+				.andExpect(jsonPath("$.dailyGoal").doesNotExist())
+				.andExpect(jsonPath("$.studySessionCardLimit").doesNotExist())
 				.andExpect(jsonPath("$.pushEnabled").value(true));
 	}
 
@@ -101,12 +101,13 @@ class UserControllerTest {
 	void putSettingsPassesThePartialUpdateThrough() throws Exception {
 		when(userService.getCurrentUserId()).thenReturn(Optional.of(USER_ID));
 		when(userSettingsService.update(eq(USER_ID), any())).thenReturn(
-				new UserSettingsDTO(30, 20, null, false));
+				new UserSettingsDTO(null, false));
 
 		mockMvc.perform(put("/api/users/me/settings").contentType(MediaType.APPLICATION_JSON)
-						.content("{\"dailyGoal\":30,\"srsReminderCleared\":true}"))
+						.content("{\"pushEnabled\":false,\"srsReminderCleared\":true}"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.dailyGoal").value(30))
+				.andExpect(jsonPath("$.pushEnabled").value(false))
+				.andExpect(jsonPath("$.dailyGoal").doesNotExist())
 				.andExpect(jsonPath("$.theme").doesNotExist())
 				.andExpect(jsonPath("$.uiLanguage").doesNotExist());
 
@@ -116,25 +117,27 @@ class UserControllerTest {
 	}
 
 	@Test
-	void legacyDevicePreferencesAreIgnored() throws Exception {
+	void removedGlobalLimitsAndDevicePreferencesAreIgnored() throws Exception {
 		when(userService.getCurrentUserId()).thenReturn(Optional.of(USER_ID));
 		when(userSettingsService.update(eq(USER_ID), any())).thenReturn(
-				new UserSettingsDTO(30, 20, null, true));
+				new UserSettingsDTO(null, true));
 		mockMvc.perform(put("/api/users/me/settings").contentType(MediaType.APPLICATION_JSON)
-						.content("{\"uiLanguage\":\"fr\",\"theme\":\"DARK\",\"dailyGoal\":30}"))
+						.content("{\"uiLanguage\":\"fr\",\"theme\":\"DARK\",\"dailyGoal\":30,\"studySessionCardLimit\":500,\"pushEnabled\":true}"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.uiLanguage").doesNotExist())
+				.andExpect(jsonPath("$.dailyGoal").doesNotExist())
+				.andExpect(jsonPath("$.studySessionCardLimit").doesNotExist())
 				.andExpect(jsonPath("$.theme").doesNotExist());
 
 		ArgumentCaptor<UpdateUserSettingsRequest> request = ArgumentCaptor.forClass(UpdateUserSettingsRequest.class);
 		verify(userSettingsService).update(eq(USER_ID), request.capture());
-		org.assertj.core.api.Assertions.assertThat(request.getValue().dailyGoal()).isEqualTo(30);
+		org.assertj.core.api.Assertions.assertThat(request.getValue().pushEnabled()).isTrue();
 	}
 
 	@Test
-	void settingsRejectAnOutOfRangeDailyGoal() throws Exception {
+	void settingsRejectInvalidReminderTime() throws Exception {
 		mockMvc.perform(put("/api/users/me/settings").contentType(MediaType.APPLICATION_JSON)
-						.content("{\"dailyGoal\":0}"))
+						.content("{\"srsReminderAt\":\"25:00\"}"))
 				.andExpect(status().isBadRequest());
 
 		verifyNoInteractions(userSettingsService);

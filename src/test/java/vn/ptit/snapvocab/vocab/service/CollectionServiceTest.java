@@ -45,6 +45,11 @@ class CollectionServiceTest {
 
 	@Mock
 	private CollectionRepository collectionRepository;
+    @Mock
+    private vn.ptit.snapvocab.study.repository.CollectionStudySettingsRepository collectionStudySettingsRepository;
+    @Mock private vn.ptit.snapvocab.study.repository.StudyDailyCardRepository studyDailyCardRepository;
+    @Mock private vn.ptit.snapvocab.study.repository.StudyDailyProgressRepository studyDailyProgressRepository;
+    @Mock private vn.ptit.snapvocab.study.repository.StudyQueueRepository studyQueueRepository;
 
 	@Mock
 	private UserRepository userRepository;
@@ -295,6 +300,10 @@ class CollectionServiceTest {
 
 		collectionService.deleteCollection(20L, 1L);
 
+		verify(collectionStudySettingsRepository).deleteByCollectionId(20L);
+        verify(studyDailyCardRepository).deleteAllByCollectionId(20L);
+        verify(studyDailyProgressRepository).deleteAllByCollectionId(20L);
+        verify(studyQueueRepository).deleteAllByCollectionId(20L);
 		verify(collectionRepository).delete(user1Col);
 		verify(userCollectionsCache).evict("1");
 		verify(userCollectionsCache).evict(1L);

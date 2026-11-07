@@ -74,14 +74,14 @@ public class ScanRequestSweeper {
 
 	/** Longest a job can legitimately stay PROCESSING. */
 	Duration maxRunTime() {
-		return Duration.ofMillis(aiServiceProperties.getReadTimeoutMs())
+		return Duration.ofMillis(aiServiceProperties.maxDetectTimeMs())
 				.plusSeconds(scanProperties.getStaleMarginSeconds());
 	}
 
 	/** Longest a job can legitimately stay PENDING: every job ahead of it runs to the timeout. */
 	Duration maxQueueWait() {
 		int rounds = (int) Math.ceil((double) scanProperties.getQueueCapacity() / Math.max(1, scanProperties.getWorkers()));
-		return Duration.ofMillis(aiServiceProperties.getReadTimeoutMs()).multipliedBy(rounds)
+		return Duration.ofMillis(aiServiceProperties.maxDetectTimeMs()).multipliedBy(rounds)
 				.plusSeconds(scanProperties.getStaleMarginSeconds());
 	}
 
