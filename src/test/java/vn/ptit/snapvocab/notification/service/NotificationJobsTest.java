@@ -297,8 +297,8 @@ class NotificationJobsTest {
 				firstName);
 		long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 		userIds.add(id);
-		jdbc.update("INSERT INTO user_settings (user_id, daily_goal, study_session_card_limit, "
-				+ "srs_reminder_at, push_enabled, created_at, updated_at) VALUES (?, 20, 20, ?, ?, NOW(6), NOW(6))",
+		jdbc.update("INSERT INTO user_settings (user_id, "
+				+ "srs_reminder_at, push_enabled, created_at, updated_at) VALUES (?, ?, ?, NOW(6), NOW(6))",
 				id, reminderAt, pushEnabled);
 		return id;
 	}

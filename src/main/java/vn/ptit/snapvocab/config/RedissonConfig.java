@@ -52,7 +52,6 @@ public class RedissonConfig {
 			RedissonClient redissonClient
 	) {
 		Map<String, CacheConfig> cacheConfigs = new HashMap<>();
-		cacheConfigs.put("user-study-session-limit", new CacheConfig(30 * 60 * 1000L, 0));
 
 		RedissonSpringCacheManager cacheManager = new RedissonSpringCacheManager(
 				redissonClient,
