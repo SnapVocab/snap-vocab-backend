@@ -27,9 +27,7 @@ import vn.ptit.snapvocab.study.domain.dto.StudyTodayDTO;
 import vn.ptit.snapvocab.study.exception.StudyQuotaExceededException;
 import vn.ptit.snapvocab.support.LocalDatabaseGuard;
 import vn.ptit.snapvocab.user.domain.User;
-import vn.ptit.snapvocab.user.domain.dto.user.UpdateUserSettingsRequest;
 import vn.ptit.snapvocab.user.repository.UserRepository;
-import vn.ptit.snapvocab.user.service.UserSettingsService;
 import vn.ptit.snapvocab.vocab.domain.Collection;
 import vn.ptit.snapvocab.vocab.domain.Topic;
 import vn.ptit.snapvocab.vocab.domain.TopicItem;
@@ -40,13 +38,13 @@ import vn.ptit.snapvocab.vocab.repository.TopicItemRepository;
 import vn.ptit.snapvocab.vocab.repository.TopicRepository;
 
 /**
- * learn_ui.md §4.1: one session across the library, new words limited per learner per day, due reviews never
- * capped, backlog and a break pause new words.
+ * Daily new/review limits are independent and shared by a collection's topic tree.
+ * Home counts the available daily plan; session size only controls the next batch.
  */
 @SpringBootTest
 @ActiveProfiles("test")
 @ContextConfiguration(initializers = LocalDatabaseGuard.class)
-@Transactional
+@Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
 class StudyTodayTest {
 
 	@MockitoBean
@@ -58,8 +56,8 @@ class StudyTodayTest {
 
 	@Autowired
 	StudyService studyService;
-	@Autowired
-	UserSettingsService userSettingsService;
+    @Autowired
+    CollectionStudySettingsService collectionSettings;
 	@Autowired
 	UserRepository userRepository;
 	@Autowired
@@ -77,16 +75,18 @@ class StudyTodayTest {
 
 	@BeforeEach
 	void noCaching() {
-		// A fresh cache per lookup: settings changes are seen at once, as the real @CacheEvict would do.
+		// A fresh cache per lookup keeps the integration fixture independent from cached topic data.
 		when(cacheManager.getCache(anyString())).thenAnswer(call -> new ConcurrentMapCache(call.getArgument(0)));
 	}
 
 	@Test
-	void newWordsAreLimitedPerLearnerAcrossCollectionsWhileReviewsAreNot() {
-		User user = learner(2, 20);
+	void newWordsAreLimitedPerCollectionWhileIntradayLearningIsNotCapped() {
+		User user = learner();
 		Collection own = collection(user, "own");
 		Collection started = collection(null, "started system");
 		Collection untouched = collection(null, "untouched system");
+        collectionSettings.update(user.getId(), own.getId(), new vn.ptit.snapvocab.study.domain.dto.UpdateCollectionStudySettingsRequest(1, 200));
+        collectionSettings.update(user.getId(), started.getId(), new vn.ptit.snapvocab.study.domain.dto.UpdateCollectionStudySettingsRequest(1, 200));
 		TopicItem own1 = item(own);
 		item(own);
 		TopicItem sys1 = item(started);
@@ -95,7 +95,7 @@ class StudyTodayTest {
 
 		studyService.submitTodayRating(user.getId(), own1.getId(), Rating.GOOD);
 		studyService.submitCollectionRating(user.getId(), started.getId(), sys1.getId(), Rating.GOOD);
-		// The third new word of the day is refused in any collection; re-rating a started card is not.
+		// A second new card in the same capped collection is refused; re-rating a started card is not.
 		assertThatThrownBy(() -> studyService.submitCollectionRating(user.getId(), started.getId(), sys2.getId(),
 				Rating.GOOD)).isInstanceOf(StudyQuotaExceededException.class);
 		studyService.submitTodayRating(user.getId(), own1.getId(), Rating.EASY);
@@ -115,8 +115,8 @@ class StudyTodayTest {
 	}
 
 	@Test
-	void backlogAndAReturningLearnerPauseNewWords() {
-		User user = learner(10, 1);
+	void backlogAndBreakDoNotOverrideIndependentCollectionLimits() {
+		User user = learner();
 		Collection own = collection(user, "own");
 		for (int i = 0; i < 4; i++) {
 			studyService.submitTodayRating(user.getId(), item(own).getId(), Rating.GOOD);
@@ -125,11 +125,10 @@ class StudyTodayTest {
 		makeEverythingDue(user);
 
 		StudyTodayDTO backlog = studyService.getToday(user.getId());
-		assertThat(backlog.backlog()).as("4 due > 3 sessions of 1").isTrue();
-		assertThat(backlog.newCount()).isZero();
-		assertThat(backlog.sessionCount()).isEqualTo(1);
+		assertThat(backlog.backlog()).isFalse();
+		assertThat(backlog.newCount()).isEqualTo(1);
+		assertThat(backlog.sessionCount()).isEqualTo(5);
 
-		userSettingsService.update(user.getId(), new UpdateUserSettingsRequest(null, 10, null, null, null));
 		entityManager.flush();
 		jdbc.update("DELETE FROM study_daily_cards WHERE user_id = ?", user.getId());
 		jdbc.update("UPDATE users SET last_studied_at = DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 DAY) WHERE id = ?",
@@ -137,22 +136,20 @@ class StudyTodayTest {
 		entityManager.clear();
 
 		StudyTodayDTO returning = studyService.getToday(user.getId());
-		assertThat(returning.returning()).isTrue();
+		assertThat(returning.returning()).isFalse();
 		assertThat(returning.backlog()).isFalse();
-		assertThat(returning.newCount()).as("reviews first after a break").isZero();
-		assertThat(returning.sessionCount()).isEqualTo(4);
-		assertThat(studyService.getTodayQueue(user.getId()).limit()).as("half of 10").isEqualTo(5);
+		assertThat(returning.newCount()).isEqualTo(1);
+		assertThat(returning.sessionCount()).isEqualTo(5);
+		assertThat(studyService.getTodayQueue(user.getId()).limit()).isEqualTo(20);
 	}
 
-	private User learner(int newPerDay, int sessionLimit) {
+	private User learner() {
 		User user = userRepository.save(User.builder()
 				.email("study-today-" + UUID.randomUUID() + "@snapvocab.local")
 				.password("a".repeat(60))
 				.firstName("Learner")
 				.activated(true)
 				.build());
-		userSettingsService.update(user.getId(),
-				new UpdateUserSettingsRequest(newPerDay, sessionLimit, null, null, null));
 		return user;
 	}
 

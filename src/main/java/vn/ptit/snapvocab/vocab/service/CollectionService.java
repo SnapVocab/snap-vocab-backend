@@ -57,6 +57,10 @@ public class CollectionService {
 	private final TopicItemRepository topicItemRepository;
 	private final AdminAuditService audit;
 	private final ObjectMapper objectMapper;
+    private final vn.ptit.snapvocab.study.repository.CollectionStudySettingsRepository collectionStudySettingsRepository;
+    private final vn.ptit.snapvocab.study.repository.StudyDailyCardRepository studyDailyCardRepository;
+    private final vn.ptit.snapvocab.study.repository.StudyDailyProgressRepository studyDailyProgressRepository;
+    private final vn.ptit.snapvocab.study.repository.StudyQueueRepository studyQueueRepository;
 
 	/**
 	 * Writes the admin audit log for: system content, or an admin editing a learner's collection. A learner on their
@@ -263,8 +267,13 @@ public class CollectionService {
 					AuditDiff.of(objectMapper, snapshot, null, DELETE_FIELDS), null, null, null);
 		}
 
-		if (collection.getType() == CollectionType.SYSTEM) {
-			this.collectionRepository.delete(collection);
+        // All learners' settings for a shared collection must disappear too.
+        collectionStudySettingsRepository.deleteByCollectionId(collectionId);
+        studyDailyCardRepository.deleteAllByCollectionId(collectionId);
+        studyDailyProgressRepository.deleteAllByCollectionId(collectionId);
+        studyQueueRepository.deleteAllByCollectionId(collectionId);
+        if (collection.getType() == CollectionType.SYSTEM) {
+            this.collectionRepository.delete(collection);
 			evictAllUserCollectionsCache();
 			evictTopicTreeCache(collectionId);
 			LOG.info("Deleted system collection ID: {}", collectionId);

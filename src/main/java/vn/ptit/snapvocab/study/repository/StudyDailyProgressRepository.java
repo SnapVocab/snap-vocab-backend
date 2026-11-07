@@ -13,6 +13,9 @@ import vn.ptit.snapvocab.study.domain.StudyDailyProgress;
 
 @Repository
 public interface StudyDailyProgressRepository extends JpaRepository<StudyDailyProgress, Long> {
+    @Modifying(flushAutomatically = true)
+    @Query("DELETE FROM StudyDailyProgress d WHERE d.collection.id = :collectionId")
+    int deleteAllByCollectionId(Long collectionId);
 	@Modifying
 	@Query(value = """
 			INSERT INTO study_daily_progress (user_id, collection_id, study_date, created_at, updated_at)

@@ -145,7 +145,7 @@ public class DataInitializer implements CommandLineRunner {
 					createFieldElement(1, CardSide.FRONT, wordAttr, SemanticRole.TARGET_WORD, "Từ vựng", false, false, 32,
 							Alignment.CENTER, "#0F172A"));
 			standardTemplate.addElement(
-					createFieldElement(2, CardSide.FRONT, phoneticAttr, null, "Phiên âm", true, true, 18, Alignment.CENTER,
+					createFieldElement(2, CardSide.FRONT, phoneticAttr, SemanticRole.PHONETIC, "Phiên âm", true, true, 18, Alignment.CENTER,
 							"#0284C7"));
 			standardTemplate.addElement(
 					createFieldElement(3, CardSide.FRONT, levelAttr, null, "Cấp độ", true, false, 12,
@@ -209,7 +209,7 @@ public class DataInitializer implements CommandLineRunner {
 					createFieldElement(3, CardSide.BACK, wordAttr, SemanticRole.TARGET_WORD, "Từ vựng", false, true, 24,
 							Alignment.CENTER, "#0F172A"));
 			listeningTemplate.addElement(
-					createFieldElement(4, CardSide.BACK, phoneticAttr, null, "Phiên âm", true, true, 16, Alignment.CENTER,
+					createFieldElement(4, CardSide.BACK, phoneticAttr, SemanticRole.PHONETIC, "Phiên âm", true, true, 16, Alignment.CENTER,
 							"#0284C7"));
 			listeningTemplate.addElement(
 					createFieldElement(5, CardSide.BACK, translationAttr, SemanticRole.NATIVE_TRANSLATION, "Bản dịch tiếng Việt", false, false, 18,
@@ -271,7 +271,7 @@ public class DataInitializer implements CommandLineRunner {
 					createFieldElement(6, CardSide.BACK, wordAttr, SemanticRole.TARGET_WORD, "Từ vựng", false, true, 24,
 							Alignment.CENTER, "#0F172A"));
 			reverseTemplate.addElement(
-					createFieldElement(7, CardSide.BACK, phoneticAttr, null, "Phiên âm", true, true, 16, Alignment.CENTER,
+					createFieldElement(7, CardSide.BACK, phoneticAttr, SemanticRole.PHONETIC, "Phiên âm", true, true, 16, Alignment.CENTER,
 							"#0284C7"));
 
 			reverseTemplate.addElement(

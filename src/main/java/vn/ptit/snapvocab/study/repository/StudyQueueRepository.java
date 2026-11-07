@@ -19,9 +19,58 @@ import vn.ptit.snapvocab.vocab.domain.enumeration.CardState;
 @Repository
 public interface StudyQueueRepository extends JpaRepository<FsrsRecord, Long> {
 
+    interface TopicStudyStats {
+        Long getTopicId();
+        Long getCollectionId();
+        Long getNewCount();
+        Long getDueCount();
+        Long getLearningCount();
+        Long getNewStarted();
+        Long getWordCount();
+    }
+
+    /** One grouped read for the entire collection list, including collections never studied. */
+    @Query("""
+            SELECT ti.topic.id AS topicId, ti.topic.collection.id AS collectionId,
+              SUM(CASE WHEN fr.id IS NULL THEN 1 ELSE 0 END) AS newCount,
+              SUM(CASE WHEN fr.due <= :now AND fr.state IN :states THEN 1 ELSE 0 END) AS dueCount,
+              SUM(CASE WHEN fr.due <= :now AND fr.state IN :learningStates
+                        AND fr.lastReview >= :dayStart THEN 1 ELSE 0 END) AS learningCount,
+              SUM(CASE WHEN fr.createdAt >= :from AND fr.createdAt < :to THEN 1 ELSE 0 END) AS newStarted,
+              COUNT(ti) AS wordCount
+            FROM TopicItem ti LEFT JOIN FsrsRecord fr ON fr.topicItem = ti AND fr.user.id = :userId
+            WHERE ti.topic.collection.id IN :collectionIds
+            GROUP BY ti.topic.id, ti.topic.collection.id
+            """)
+    List<TopicStudyStats> topicStudyStats(Long userId, List<Long> collectionIds, LocalDateTime now,
+            LocalDateTime dayStart, Instant from, Instant to, List<CardState> states, List<CardState> learningStates);
+
+    @Query("""
+            SELECT fr FROM FsrsRecord fr
+            WHERE fr.user.id = :userId AND fr.topicItem.topic.id IN :topicIds
+              AND fr.due <= :now AND fr.state IN :learningStates AND fr.lastReview >= :dayStart
+            ORDER BY fr.due, fr.id
+            """)
+    List<FsrsRecord> findIntradayLearning(Long userId, List<Long> topicIds, LocalDateTime now,
+            LocalDateTime dayStart, List<CardState> learningStates, Pageable pageable);
+
+    @Query("""
+            SELECT fr FROM FsrsRecord fr
+            WHERE fr.user.id = :userId AND fr.topicItem.topic.id IN :topicIds
+              AND fr.due <= :now AND fr.state IN :states
+              AND (fr.state NOT IN :learningStates OR fr.lastReview IS NULL OR fr.lastReview < :dayStart)
+            ORDER BY fr.due, fr.id
+            """)
+    List<FsrsRecord> findQuotaReviews(Long userId, List<Long> topicIds, LocalDateTime now,
+            LocalDateTime dayStart, List<CardState> states, List<CardState> learningStates, Pageable pageable);
+
 	@Modifying(flushAutomatically = true)
 	@Query("DELETE FROM FsrsRecord fr WHERE fr.topicItem.id = :topicItemId")
 	int deleteAllByTopicItemId(@Param("topicItemId") Long topicItemId);
+
+    @Modifying(flushAutomatically = true)
+    @Query("DELETE FROM FsrsRecord fr WHERE fr.topicItem.topic.collection.id = :collectionId")
+    int deleteAllByCollectionId(Long collectionId);
 
 	@Query("""
 			SELECT fr FROM FsrsRecord fr
