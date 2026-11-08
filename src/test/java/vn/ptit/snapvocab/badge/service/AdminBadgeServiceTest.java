@@ -19,12 +19,15 @@ import vn.ptit.snapvocab.badge.repository.BadgeRepository;
 import vn.ptit.snapvocab.badge.repository.UserBadgeRepository;
 import vn.ptit.snapvocab.badge.repository.UserBadgeRepository.BadgeEarnerCount;
 import vn.ptit.snapvocab.common.exception.ResourceNotFoundException;
+import vn.ptit.snapvocab.shop.repository.ShopItemRepository;
+import vn.ptit.snapvocab.shop.service.ShopMapper;
 
 class AdminBadgeServiceTest {
 
 	private final BadgeRepository badges = mock(BadgeRepository.class);
 	private final UserBadgeRepository earned = mock(UserBadgeRepository.class);
-	private final AdminBadgeService service = new AdminBadgeService(badges, earned, new ObjectMapper(), mock(AdminAuditService.class));
+	private final AdminBadgeService service = new AdminBadgeService(badges, earned, new ObjectMapper(),
+			mock(AdminAuditService.class), mock(ShopItemRepository.class), mock(ShopMapper.class));
 
 	@Test
 	void listIncludesInactiveRowsWithOneAggregateAndARealZeroForUnseenBadges() {

@@ -5,8 +5,10 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -24,13 +26,22 @@ import vn.ptit.snapvocab.badge.repository.UserBadgeWordCreditRepository;
 import vn.ptit.snapvocab.common.exception.BadRequestAlertException;
 import vn.ptit.snapvocab.common.exception.ResourceNotFoundException;
 import vn.ptit.snapvocab.quiz.repository.QuizRepository;
+import vn.ptit.snapvocab.shop.domain.ShopItem;
+import vn.ptit.snapvocab.shop.domain.enumeration.CoinSourceType;
+import vn.ptit.snapvocab.shop.repository.ShopItemRepository;
 import vn.ptit.snapvocab.shop.service.Economy;
+import vn.ptit.snapvocab.shop.service.ShopMapper;
+import vn.ptit.snapvocab.shop.service.ShopRewardService;
+import vn.ptit.snapvocab.shop.service.WalletService;
 import vn.ptit.snapvocab.user.domain.User;
 import vn.ptit.snapvocab.user.repository.UserRepository;
+import vn.ptit.snapvocab.xp.domain.XpSourceType;
+import vn.ptit.snapvocab.xp.service.XpService;
 
 /**
  * Badges (badges.md §6, §8). Badges are granted only by {@link #sync}; producers never grant, they only record word
- * credits ({@link #recordWordCredit}). No reward, no notification, never revoked.
+ * credits ({@link #recordWordCredit}). Never revoked, no notification. The reward (PD-BDG-14) is paid in the same
+ * transaction as the grant and snapshotted on {@code user_badges}: a failure rolls the grant back for the next sync.
  */
 @Service
 @RequiredArgsConstructor
@@ -43,13 +54,18 @@ public class BadgeService {
 	private final BadgeRepository badgeRepository;
 	private final UserBadgeRepository userBadgeRepository;
 	private final UserBadgeWordCreditRepository wordCreditRepository;
+	private final WalletService walletService;
+	private final XpService xpService;
+	private final ShopRewardService shopRewardService;
+	private final ShopItemRepository shopItemRepository;
+	private final ShopMapper shopMapper;
 
 	/** §8.1: read-only; a badge that is due but not synced yet shows {@code earned = false}. */
 	@Transactional(readOnly = true)
 	public BadgesDTO getBadges(Long userId) {
 		User user = userRepository.findById(userId)
 				.orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
-		return view(metrics(user), userBadgeRepository.findByUserId(userId));
+		return view(user, metrics(user), userBadgeRepository.findByUserId(userId));
 	}
 
 	/**
@@ -66,10 +82,37 @@ public class BadgeService {
 		for (Badge badge : badgeRepository.findAllByOrderBySortOrderAscIdAsc()) {
 			if (badge.getActive() && !earnedIds.contains(badge.getId())
 					&& values.get(badge.getMetric()) >= badge.getThreshold()) {
-				earned.add(userBadgeRepository.save(UserBadge.builder().user(user).badge(badge).build()));
+				earned.add(userBadgeRepository.save(rewarded(user, badge)));
 			}
 		}
-		return view(values, earned);
+		return view(user, values, earned);
+	}
+
+	/**
+	 * Pays the badge's current reward and returns the grant carrying its snapshot. One event key per user and badge,
+	 * so the ledgers' UNIQUE event_key backs up UNIQUE(user_id, badge_id). Reward XP is never boosted (BADGE_REWARD).
+	 * A reward item has no Coin fallback: badge frames are never sold, so nobody holds one before earning it.
+	 */
+	private UserBadge rewarded(User user, Badge badge) {
+		String eventKey = "BADGE_REWARD:" + user.getId() + ":" + badge.getId();
+		if (badge.getRewardCoin() > 0) {
+			walletService.apply(user, badge.getRewardCoin(), CoinSourceType.BADGE_REWARD, badge.getCode(),
+					badge.getName(), eventKey);
+		}
+		if (badge.getRewardXp() > 0) {
+			xpService.award(user.getId(), XpSourceType.BADGE_REWARD, badge.getRewardXp(), eventKey);
+		}
+		Boolean itemGranted = badge.getRewardItemCode() == null ? null
+				: shopRewardService.grantShopItemReward(user.getId(), badge.getRewardItemCode(), 1, 0,
+						CoinSourceType.BADGE_REWARD, eventKey + ":ITEM").grantedQuantity() == 1;
+		return UserBadge.builder()
+				.user(user)
+				.badge(badge)
+				.rewardCoin(badge.getRewardCoin())
+				.rewardXp(badge.getRewardXp())
+				.rewardItemCode(badge.getRewardItemCode())
+				.rewardItemGranted(itemGranted)
+				.build();
 	}
 
 	/** §8.3: idempotent; ids that are not the learner's unseen earned badges are ignored. */
@@ -108,21 +151,47 @@ public class BadgeService {
 	}
 
 	/** Active badges plus inactive ones the learner earned (§5.4), by sort order. */
-	private BadgesDTO view(Map<BadgeMetric, Long> values, List<UserBadge> earned) {
+	private BadgesDTO view(User user, Map<BadgeMetric, Long> values, List<UserBadge> earned) {
 		Map<Long, UserBadge> byBadgeId = earned.stream()
 				.collect(Collectors.toMap(ub -> ub.getBadge().getId(), Function.identity()));
-		List<BadgesDTO.Item> items = badgeRepository.findAllByOrderBySortOrderAscIdAsc().stream()
+		List<Badge> shown = badgeRepository.findAllByOrderBySortOrderAscIdAsc().stream()
 				.filter(b -> b.getActive() || byBadgeId.containsKey(b.getId()))
-				.map(b -> item(b, values.get(b.getMetric()), byBadgeId.get(b.getId())))
+				.toList();
+		// One lookup for every reward item on screen (at most one per badge).
+		List<String> codes = Stream.concat(shown.stream().map(Badge::getRewardItemCode),
+				earned.stream().map(UserBadge::getRewardItemCode)).filter(Objects::nonNull).distinct().toList();
+		Map<String, ShopItem> rewardItems = codes.isEmpty() ? Map.of()
+				: shopItemRepository.findByCodeIn(codes).stream()
+						.collect(Collectors.toMap(ShopItem::getCode, Function.identity()));
+		List<BadgesDTO.Item> items = shown.stream()
+				.map(b -> item(b, values.get(b.getMetric()), byBadgeId.get(b.getId()), rewardItems))
 				.toList();
 		int earnedCount = (int) items.stream().filter(BadgesDTO.Item::earned).count();
 		int unseenCount = (int) items.stream().filter(i -> Boolean.FALSE.equals(i.seen())).count();
-		return new BadgesDTO(earnedCount, items.size(), unseenCount, items);
+		BadgesDTO.RewardTotals totals = new BadgesDTO.RewardTotals(
+				earned.stream().mapToLong(ub -> ub.getRewardCoin() == null ? 0 : ub.getRewardCoin()).sum(),
+				earned.stream().mapToLong(ub -> ub.getRewardXp() == null ? 0 : ub.getRewardXp()).sum());
+		return new BadgesDTO(earnedCount, items.size(), unseenCount, totals, user.getCoin(), user.getExp(), items);
 	}
 
-	private static BadgesDTO.Item item(Badge b, long currentValue, UserBadge earned) {
+	private BadgesDTO.Item item(Badge b, long currentValue, UserBadge earned, Map<String, ShopItem> rewardItems) {
 		return new BadgesDTO.Item(b.getId(), b.getCode(), b.getName(), b.getDescription(), b.getMetric(),
 				b.getThreshold(), currentValue, b.getIconKey(), b.getSortOrder(), earned != null,
-				earned == null ? null : earned.getCreatedAt(), earned == null ? null : earned.getSeenAt() != null);
+				earned == null ? null : earned.getCreatedAt(), earned == null ? null : earned.getSeenAt() != null,
+				earned == null ? reward(b.getRewardCoin(), b.getRewardXp(), b.getRewardItemCode(), null, rewardItems)
+						: earned.getRewardCoin() == null ? null
+								: reward(earned.getRewardCoin(), earned.getRewardXp(), earned.getRewardItemCode(),
+										earned.getRewardItemGranted(), rewardItems));
+	}
+
+	private BadgesDTO.Reward reward(int coin, int xp, String itemCode, Boolean granted,
+			Map<String, ShopItem> rewardItems) {
+		ShopItem item = itemCode == null ? null : rewardItems.get(itemCode);
+		if (coin == 0 && xp == 0 && item == null) {
+			return null;
+		}
+		return new BadgesDTO.Reward(coin, xp, item == null ? null
+				: new BadgesDTO.RewardItem(item.getCode(), item.getName(), item.getType(),
+						shopMapper.config(item).frameUrl(), granted));
 	}
 }

@@ -46,6 +46,20 @@ public class UserBadge extends BaseCreatedAtEntity {
 	@JoinColumn(name = "badge_id", nullable = false)
 	private Badge badge;
 
+	/** Reward snapshot taken at grant (PD-BDG-14); all NULL for badges earned before rewards existed (no backfill). */
+	@Column(name = "reward_coin")
+	private Integer rewardCoin;
+
+	@Column(name = "reward_xp")
+	private Integer rewardXp;
+
+	@Column(name = "reward_item_code", length = 64)
+	private String rewardItemCode;
+
+	/** False when the item could not be granted (already owned or not PUBLISHED); there is no Coin fallback. */
+	@Column(name = "reward_item_granted")
+	private Boolean rewardItemGranted;
+
 	/** NULL until the learner has seen the "new badge" modal (§2.3). */
 	@Setter
 	@Column(name = "seen_at")

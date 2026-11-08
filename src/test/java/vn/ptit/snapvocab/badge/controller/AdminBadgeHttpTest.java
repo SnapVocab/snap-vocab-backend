@@ -34,6 +34,10 @@ import vn.ptit.snapvocab.badge.domain.Badge;
 import vn.ptit.snapvocab.badge.domain.enumeration.BadgeMetric;
 import vn.ptit.snapvocab.badge.repository.BadgeRepository;
 import vn.ptit.snapvocab.security.SecurityUtils;
+import vn.ptit.snapvocab.shop.domain.ShopItem;
+import vn.ptit.snapvocab.shop.domain.enumeration.ShopItemStatus;
+import vn.ptit.snapvocab.shop.domain.enumeration.ShopItemType;
+import vn.ptit.snapvocab.shop.repository.ShopItemRepository;
 import vn.ptit.snapvocab.support.LocalDatabaseGuard;
 import vn.ptit.snapvocab.user.domain.User;
 import vn.ptit.snapvocab.user.repository.UserRepository;
@@ -52,6 +56,7 @@ class AdminBadgeHttpTest {
 	@Autowired JwtEncoder jwtEncoder;
 	@Autowired UserRepository users;
 	@Autowired BadgeRepository badges;
+	@Autowired ShopItemRepository shopItems;
 	@Autowired JdbcTemplate jdbc;
 
 	private final ObjectMapper json = new ObjectMapper();
@@ -85,6 +90,7 @@ class AdminBadgeHttpTest {
 		jdbc.update("DELETE FROM badges WHERE code LIKE 'ADMIN_BDG_IT_%'");
 		jdbc.update("DELETE FROM admin_audit_logs WHERE area = 'BADGES'");
 		jdbc.update("DELETE FROM users WHERE email LIKE 'admin-bdg-it-%'");
+		jdbc.update("DELETE FROM shop_items WHERE code LIKE 'ADMIN_BDG_IT_%'");
 	}
 
 	@Test
@@ -208,6 +214,39 @@ class AdminBadgeHttpTest {
 	}
 
 	@Test
+	void rewardsAreEditableAuditedAndTheItemMustBeAnUnsoldPublishedFrame() throws Exception { // PD-BDG-14
+		String path = BASE + "/" + active.getId();
+		ShopItem sold = rewardFrame(true, ShopItemStatus.PUBLISHED, ShopItemType.CARD_FRAME);
+		ShopItem draft = rewardFrame(false, ShopItemStatus.DRAFT, ShopItemType.CARD_FRAME);
+		ShopItem booster = rewardFrame(false, ShopItemStatus.PUBLISHED, ShopItemType.XP_BOOSTER);
+		ShopItem frame = rewardFrame(false, ShopItemStatus.PUBLISHED, ShopItemType.CARD_FRAME);
+		for (String code : List.of(sold.getCode(), draft.getCode(), booster.getCode(), "NO_SUCH_ITEM")) {
+			assertThat(json.readTree(call(admin, "PATCH", path, Map.of("version", 0, "rewardItemCode", code), 400).body())
+					.path("error").asText()).as(code).isEqualTo("REWARD_ITEM_NOT_ELIGIBLE");
+		}
+		for (Map<String, Object> bad : List.<Map<String, Object>>of(Map.of("version", 0, "rewardCoin", -1),
+				Map.of("version", 0, "rewardXp", 1001), Map.of("version", 0, "rewardCoin", "5"))) {
+			assertThat(json.readTree(call(admin, "PATCH", path, bad, 400).body()).path("error").asText())
+					.as(bad.toString()).isEqualTo("VALIDATION_ERROR");
+		}
+
+		JsonNode saved = data(call(admin, "PATCH", path,
+				Map.of("version", 0, "rewardCoin", 0, "rewardXp", 300, "rewardItemCode", frame.getCode()), 200));
+		assertThat(saved.path("rewardXp").asInt()).isEqualTo(300);
+		assertThat(saved.path("rewardItemCode").asText()).isEqualTo(frame.getCode());
+		assertThat(saved.path("rewardItem").path("type").asText()).isEqualTo("CARD_FRAME");
+		assertThat(saved.path("rewardItem").path("purchasable").asBoolean()).isFalse();
+		assertThat(jdbc.queryForObject("SELECT changes FROM admin_audit_logs WHERE area = 'BADGES'", String.class))
+				.contains("\"rewardXp\"", "\"rewardItemCode\"");
+		JsonNode listed = data(call(admin, "GET", BASE, 200));
+		assertThat(listed.findValues("rewardItemCode").stream().map(JsonNode::asText)).contains(frame.getCode());
+
+		JsonNode cleared = data(call(admin, "PATCH", path, json.readTree("{\"version\":1,\"rewardItemCode\":null}"), 200));
+		assertThat(cleared.path("rewardItemCode").isNull()).isTrue();
+		assertThat(cleared.path("rewardItem").isNull()).isTrue();
+	}
+
+	@Test
 	void refillEstimateCountsActivatedQualifiedAccountsThatDoNotHoldTheBadge() throws Exception { // PD-BDG-13d
 		Badge streak = badges.saveAndFlush(Badge.builder().code("ADMIN_BDG_IT_STREAK_" + UUID.randomUUID().toString()
 				.replace("-", "").substring(0, 12)).name("Streak").description("Long streak")
@@ -229,6 +268,12 @@ class AdminBadgeHttpTest {
 				.isOne(); // read-only
 		assertThat(data(call(admin, "GET", BASE + "/" + active.getId() + "/refill-estimate", 200))
 				.path("eligibleCount").asLong()).isZero();
+	}
+
+	private ShopItem rewardFrame(boolean purchasable, ShopItemStatus status, ShopItemType type) {
+		return shopItems.save(ShopItem.builder().code("ADMIN_BDG_IT_ITEM_" + UUID.randomUUID().toString().replace("-", "")
+				.substring(0, 12).toUpperCase()).type(type).name("Khung").status(status).purchasable(purchasable)
+				.price(purchasable ? 500L : null).build());
 	}
 
 	private long auditRows() {

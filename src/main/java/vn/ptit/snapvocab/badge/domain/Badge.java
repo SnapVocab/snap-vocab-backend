@@ -32,6 +32,7 @@ import vn.ptit.snapvocab.common.domain.BaseTimeEntity;
 				@UniqueConstraint(name = "uq_badges_code", columnNames = "code"),
 				@UniqueConstraint(name = "uq_badges_metric_threshold", columnNames = {"metric", "threshold"})})
 @Check(name = "chk_badges_threshold", constraints = "threshold >= 1")
+@Check(name = "chk_badges_reward", constraints = "reward_coin >= 0 AND reward_xp >= 0")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -71,6 +72,21 @@ public class Badge extends BaseTimeEntity {
 	@ColumnDefault("true")
 	@Builder.Default
 	private Boolean active = true;
+
+	/** Reward (PD-BDG-14), added once inside the sync that grants the badge; earners keep what they got (snapshot). */
+	@Column(name = "reward_coin", nullable = false)
+	@ColumnDefault("0")
+	@Builder.Default
+	private Integer rewardCoin = 0;
+
+	@Column(name = "reward_xp", nullable = false)
+	@ColumnDefault("0")
+	@Builder.Default
+	private Integer rewardXp = 0;
+
+	/** Code of a reward-only AVATAR_FRAME/CARD_FRAME (PUBLISHED, not purchasable), usually on a series' last tier. */
+	@Column(name = "reward_item_code", length = 64)
+	private String rewardItemCode;
 
 	/** Admin optimistic lock (badges.md §8.4, P2); column added by migration_badges_v2.sql. */
 	@Version

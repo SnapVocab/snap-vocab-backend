@@ -34,7 +34,7 @@ public class BadgeCatalogSeeder implements ApplicationRunner {
 		}
 	}
 
-	/** badges.md §4.1, names and descriptions per COPY-BDG-01. */
+	/** badges.md §4.1, names and descriptions per COPY-BDG-01; rewards per PD-BDG-14 (last-tier frames are set by Admin). */
 	static List<Badge> mvpCatalog() {
 		return List.of(
 				badge(10, "STREAK_7", BadgeMetric.LONGEST_STREAK_DAYS, 7, "Một Tuần Bền Bỉ",
@@ -63,8 +63,12 @@ public class BadgeCatalogSeeder implements ApplicationRunner {
 						"Tự thêm 500 từ khác nhau vào bộ sưu tập của bạn", "book-open"));
 	}
 
+	/** PD-BDG-14 by tier (sort order ends in 0, 1, 2): Coin + XP for the first two, XP (plus a frame) for the last. */
+	private static final int[][] TIER_REWARD = {{20, 50}, {60, 150}, {0, 300}};
+
 	private static Badge badge(int sortOrder, String code, BadgeMetric metric, int threshold, String name,
 			String description, String iconKey) {
+		int[] reward = TIER_REWARD[sortOrder % 10];
 		return Badge.builder()
 				.code(code)
 				.name(name)
@@ -73,6 +77,8 @@ public class BadgeCatalogSeeder implements ApplicationRunner {
 				.threshold(threshold)
 				.iconKey(iconKey)
 				.sortOrder(sortOrder)
+				.rewardCoin(reward[0])
+				.rewardXp(reward[1])
 				.build();
 	}
 }
