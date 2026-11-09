@@ -13,7 +13,7 @@ pipeline {
             description: 'Deploy prod after tests and image publication succeed')
     }
 
-    triggers { pollSCM('H/5 * * * *') }
+    triggers { githubPush() }
 
     environment {
         IMAGE_REPO = 'ghcr.io/thanhthbm/snapvocab-backend'
@@ -26,7 +26,7 @@ pipeline {
         stage('Checkout prod') {
             steps {
                 git branch: 'prod', credentialsId: 'github-snapvocab',
-                    url: 'https://github.com/thanhthbm/snap-vocab-backend.git'
+                    url: 'https://github.com/SnapVocab/snap-vocab-backend.git'
                 script {
                     def sha = sh(script: 'git rev-parse --short=12 HEAD',
                         returnStdout: true).trim()

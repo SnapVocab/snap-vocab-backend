@@ -10,7 +10,11 @@
 - Credential ID: `github-snapvocab` (Git checkout va GHCR).
 - Workspace volume: `jenkins_agent_home`, mount tai `/home/jenkins/agent`.
 - Agent dung Docker socket cua host; khong chay Docker daemon rieng.
-- Jenkins poll nhanh `prod` moi khoang 5 phut, khong can GitHub webhook.
+- GitHub push webhook triggers an SCM check for `prod`; scheduled polling is disabled.
+- Repository: `https://github.com/SnapVocab/snap-vocab-backend`.
+- Webhook: `https://jenkins.thanhthbm.online/github-webhook/`, push events only,
+  HTTPS verification enabled. Its secret is the existing Jenkins credential
+  `snapvocab-admin-webhook`; the admin job and its webhook are unchanged.
 
 ## File tren server
 
@@ -19,7 +23,7 @@
 | `/home/ubuntu/jenkins/docker-compose.yml` | Compose Jenkins goc |
 | `/home/ubuntu/jenkins/compose.cicd.yml` | Bo sung image agent, group Docker socket va volume production |
 | `/home/ubuntu/snapvocab-jenkins/Dockerfile.agent` | Agent Java 21, Docker CLI va Compose |
-| `/home/ubuntu/snapvocab-jenkins/Jenkinsfile` | Ban pipeline da cai vao job inline |
+| `Jenkinsfile` on `prod` | Production pipeline source, loaded by Jenkins from SCM |
 | `/opt/snapvocab/docker-compose.yml` | Compose backend production |
 | `/opt/snapvocab/.env.prod` | Secrets runtime, quyen 600; khong commit |
 | `/opt/snapvocab/.backups/` | Ban sao env va database truoc deploy dau |
@@ -116,11 +120,8 @@ sudo sh -c '
 
 ## Cap nhat Jenkinsfile
 
-Lan cai dau dung pipeline inline de chay ngay khi Jenkinsfile chua duoc commit
-len `prod`. Sua file local hoac ban sao tren host khong tu cap nhat job inline.
-
-Sau khi review va commit `Jenkinsfile` len nhanh `prod`, co the doi job sang
-`Pipeline script from SCM`, Git URL
-`https://github.com/thanhthbm/snap-vocab-backend.git`, branch `*/prod`, credential
-`github-snapvocab`, script path `Jenkinsfile`. Khi do moi thay doi pipeline duoc
-quan ly cung source code. Khong commit `.env.prod` hoac token.
+The job uses `Pipeline script from SCM`, Git URL
+`https://github.com/SnapVocab/snap-vocab-backend.git`, branch `*/prod`, credential
+`github-snapvocab`, script path `Jenkinsfile`. Pipeline changes take effect on
+the next `prod` push. Pushes to other branches do not deploy production.
+Do not commit `.env.prod`, webhook secrets or tokens.
