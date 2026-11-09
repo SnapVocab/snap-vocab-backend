@@ -11,5 +11,8 @@ public class MinioProperties {
 	private String accessKey;
 	private String secretKey;
 	private String bucket;
+
+	/** Public bucket root, e.g. https://cdn.example.com/snapvocab; defaults to endpoint/bucket. */
+	private String publicBaseUrl;
 }
 
