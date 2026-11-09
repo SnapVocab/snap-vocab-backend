@@ -12,9 +12,9 @@ import vn.ptit.snapvocab.shop.domain.enumeration.ShopItemType;
 public record BadgesDTO(int earnedCount, int totalCount, int unseenCount, RewardTotals rewardTotals, long coin,
 		long exp, List<Item> badges) {
 
-	/** {@code earnedAt} and {@code seen} are null while the badge is not earned. */
+	/** {@code earnedAt} and {@code seen} are null while the badge is not earned; {@code imageUrl} null without art. */
 	public record Item(Long id, String code, String name, String description, BadgeMetric metric, int threshold,
-			long currentValue, String iconKey, int sortOrder, boolean earned, Instant earnedAt, Boolean seen,
+			long currentValue, String imageUrl, int sortOrder, boolean earned, Instant earnedAt, Boolean seen,
 			Reward reward) {
 	}
 

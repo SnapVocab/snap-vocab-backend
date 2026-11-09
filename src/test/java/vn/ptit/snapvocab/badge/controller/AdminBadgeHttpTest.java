@@ -1,10 +1,14 @@
 package vn.ptit.snapvocab.badge.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.minio.MinioClient;
+import io.minio.StatObjectResponse;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -156,10 +160,11 @@ class AdminBadgeHttpTest {
 	@Test
 	void editingContentKeepsEveryEarnerAndIsAudited() throws Exception {
 		List<Map<String, Object>> grants = jdbc.queryForList("SELECT * FROM user_badges ORDER BY id");
+		imageSize(100 * 1024);
 		JsonNode edited = data(call(admin, "PATCH", BASE + "/" + inactive.getId(),
-				Map.of("version", 0, "name", "  Tên mới  ", "iconKey", "award", "sortOrder", 7), 200));
+				Map.of("version", 0, "name", "  Tên mới  ", "imageKey", "public/badges/new-art.png", "sortOrder", 7), 200));
 		assertThat(edited.path("name").asText()).isEqualTo("Tên mới");
-		assertThat(edited.path("iconKey").asText()).isEqualTo("award");
+		assertThat(edited.path("imageKey").asText()).isEqualTo("public/badges/new-art.png");
 		assertThat(edited.path("version").asLong()).isOne();
 		assertThat(edited.path("earnerCount").asLong()).isEqualTo(2);
 		// PD-BDG-13b: earned date and seen state untouched, no new grant.
@@ -168,7 +173,7 @@ class AdminBadgeHttpTest {
 				+ " WHERE area = 'BADGES'");
 		assertThat(row).containsEntry("action", "BADGE_UPDATED").containsEntry("target_code", inactive.getCode())
 				.containsEntry("object_version", 1L);
-		assertThat((String) row.get("changes")).contains("\"name\"", "\"iconKey\"", "\"sortOrder\"").doesNotContain("isActive");
+		assertThat((String) row.get("changes")).contains("\"name\"", "\"imageKey\"", "\"sortOrder\"").doesNotContain("isActive");
 
 		// Same values again: nothing saved, nothing logged.
 		call(admin, "PATCH", BASE + "/" + inactive.getId(), Map.of("version", 1, "name", "Tên mới"), 200);
@@ -187,7 +192,7 @@ class AdminBadgeHttpTest {
 	}
 
 	@Test
-	void lockedFieldsStaleVersionAndUnknownIconAreRejectedWithoutAWrite() throws Exception {
+	void lockedFieldsStaleVersionAndBadImageAreRejectedWithoutAWrite() throws Exception {
 		String path = BASE + "/" + active.getId();
 		JsonNode locked = json.readTree(call(admin, "PATCH", path, Map.of("version", 0, "threshold", 1), 409).body());
 		assertThat(locked.path("error").asText()).isEqualTo("FIELD_LOCKED");
@@ -199,9 +204,12 @@ class AdminBadgeHttpTest {
 		assertThat(stale.path("error").asText()).isEqualTo("VERSION_CONFLICT");
 		assertThat(stale.path("data").path("currentVersion").asLong()).isOne();
 
-		JsonNode icon = json.readTree(call(admin, "PATCH", path, Map.of("version", 1, "iconKey", "rocket"), 400).body());
-		assertThat(icon.path("error").asText()).isEqualTo("VALIDATION_ERROR");
-		assertThat(icon.path("data").path("errors").get(0).path("field").asText()).isEqualTo("iconKey");
+		JsonNode image = json.readTree(call(admin, "PATCH", path, Map.of("version", 1, "imageKey", "public/shop/x.png"), 400).body());
+		assertThat(image.path("error").asText()).isEqualTo("VALIDATION_ERROR");
+		assertThat(image.path("data").path("errors").get(0).path("field").asText()).isEqualTo("imageKey");
+		imageSize(600 * 1024);
+		JsonNode tooBig = json.readTree(call(admin, "PATCH", path, Map.of("version", 1, "imageKey", "public/badges/big.png"), 400).body());
+		assertThat(tooBig.path("data").path("errors").get(0).path("message").asText()).contains("500 KB");
 		for (Map<String, Object> bad : List.<Map<String, Object>>of(Map.of("version", 1, "name", "   "),
 				Map.of("version", 1, "description", "x".repeat(256)), Map.of("version", 1, "sortOrder", "1"),
 				Map.of("version", 1, "isActive", "yes"), Map.of("version", 1, "seenAt", "now"), Map.of("name", "No version"))) {
@@ -250,7 +258,7 @@ class AdminBadgeHttpTest {
 	void refillEstimateCountsActivatedQualifiedAccountsThatDoNotHoldTheBadge() throws Exception { // PD-BDG-13d
 		Badge streak = badges.saveAndFlush(Badge.builder().code("ADMIN_BDG_IT_STREAK_" + UUID.randomUUID().toString()
 				.replace("-", "").substring(0, 12)).name("Streak").description("Long streak")
-				.metric(BadgeMetric.LONGEST_STREAK_DAYS).threshold(400_001).iconKey("flame").sortOrder(0).active(false).build());
+				.metric(BadgeMetric.LONGEST_STREAK_DAYS).threshold(400_001).imageKey("public/badges/streak_7.png").sortOrder(0).active(false).build());
 		User qualified = user();
 		User holder = user();
 		User inactiveAccount = user();
@@ -287,7 +295,7 @@ class AdminBadgeHttpTest {
 	private Badge badge(int threshold, int sortOrder, boolean active) {
 		return badges.saveAndFlush(Badge.builder().code("ADMIN_BDG_IT_" + UUID.randomUUID().toString().replace("-", ""))
 				.name("Admin badge").description("Read-only test").metric(BadgeMetric.QUIZ_COMPLETED)
-				.threshold(threshold).iconKey("clipboard-check").sortOrder(sortOrder).active(active).build());
+				.threshold(threshold).imageKey("public/badges/quiz_1.png").sortOrder(sortOrder).active(active).build());
 	}
 
 	private User user() {
@@ -300,6 +308,12 @@ class AdminBadgeHttpTest {
 				.subject(user.getEmail()).claim(SecurityUtils.AUTHORITIES_CLAIM, authorities)
 				.claim(SecurityUtils.USER_ID_CLAIM, user.getId()).build();
 		return jwtEncoder.encode(JwtEncoderParameters.from(JwsHeader.with(SecurityUtils.JWT_ALGORITHM).build(), claims)).getTokenValue();
+	}
+
+	private void imageSize(long bytes) throws Exception {
+		StatObjectResponse stat = mock(StatObjectResponse.class);
+		when(stat.size()).thenReturn(bytes);
+		when(minioClient.statObject(any())).thenReturn(stat);
 	}
 
 	private HttpResponse<String> call(String token, String method, String path, int status) throws Exception {

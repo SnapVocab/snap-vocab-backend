@@ -176,7 +176,7 @@ public class BadgeService {
 
 	private BadgesDTO.Item item(Badge b, long currentValue, UserBadge earned, Map<String, ShopItem> rewardItems) {
 		return new BadgesDTO.Item(b.getId(), b.getCode(), b.getName(), b.getDescription(), b.getMetric(),
-				b.getThreshold(), currentValue, b.getIconKey(), b.getSortOrder(), earned != null,
+				b.getThreshold(), currentValue, shopMapper.url(b.getImageKey()), b.getSortOrder(), earned != null,
 				earned == null ? null : earned.getCreatedAt(), earned == null ? null : earned.getSeenAt() != null,
 				earned == null ? reward(b.getRewardCoin(), b.getRewardXp(), b.getRewardItemCode(), null, rewardItems)
 						: earned.getRewardCoin() == null ? null

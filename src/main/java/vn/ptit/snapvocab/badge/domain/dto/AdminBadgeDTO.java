@@ -14,17 +14,18 @@ import vn.ptit.snapvocab.shop.domain.enumeration.ShopItemType;
  */
 @JsonInclude(JsonInclude.Include.ALWAYS)
 public record AdminBadgeDTO(Long id, String code, String name, String description, BadgeMetric metric,
-		Integer threshold, String iconKey, Integer sortOrder, @JsonProperty("isActive") Boolean isActive,
-		Integer rewardCoin, Integer rewardXp, String rewardItemCode, RewardItem rewardItem,
-		Long version, Long earnerCount, Instant createdAt, Instant updatedAt) {
+		Integer threshold, String imageKey, String imageUrl, Integer sortOrder,
+		@JsonProperty("isActive") Boolean isActive, Integer rewardCoin, Integer rewardXp, String rewardItemCode,
+		RewardItem rewardItem, Long version, Long earnerCount, Instant createdAt, Instant updatedAt) {
 
 	public record RewardItem(String name, ShopItemType type, ShopItemStatus status, Boolean purchasable,
 			String previewUrl) {
 	}
 
-	public static AdminBadgeDTO of(Badge badge, long earnerCount, RewardItem rewardItem) {
+	public static AdminBadgeDTO of(Badge badge, String imageUrl, long earnerCount, RewardItem rewardItem) {
 		return new AdminBadgeDTO(badge.getId(), badge.getCode(), badge.getName(), badge.getDescription(),
-				badge.getMetric(), badge.getThreshold(), badge.getIconKey(), badge.getSortOrder(), badge.getActive(),
+				badge.getMetric(), badge.getThreshold(), badge.getImageKey(), imageUrl, badge.getSortOrder(),
+				badge.getActive(),
 				badge.getRewardCoin(), badge.getRewardXp(), badge.getRewardItemCode(), rewardItem,
 				badge.getVersion(), earnerCount, badge.getCreatedAt(), badge.getUpdatedAt());
 	}

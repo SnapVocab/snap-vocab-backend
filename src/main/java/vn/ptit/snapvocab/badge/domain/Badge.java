@@ -61,9 +61,9 @@ public class Badge extends BaseTimeEntity {
 	@Column(nullable = false, updatable = false)
 	private Integer threshold;
 
-	/** lucide-react-native icon name; the app falls back to a default icon for unknown keys. */
-	@Column(name = "icon_key", nullable = false, length = 50)
-	private String iconKey;
+	/** MinIO object key of the badge art ({@code public/badges/…}); the app and Admin read its download URL. */
+	@Column(name = "image_key", length = 255)
+	private String imageKey;
 
 	@Column(name = "sort_order", nullable = false)
 	private Integer sortOrder;

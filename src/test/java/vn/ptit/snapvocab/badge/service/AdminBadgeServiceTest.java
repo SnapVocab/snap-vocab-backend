@@ -21,13 +21,14 @@ import vn.ptit.snapvocab.badge.repository.UserBadgeRepository.BadgeEarnerCount;
 import vn.ptit.snapvocab.common.exception.ResourceNotFoundException;
 import vn.ptit.snapvocab.shop.repository.ShopItemRepository;
 import vn.ptit.snapvocab.shop.service.ShopMapper;
+import vn.ptit.snapvocab.storage.service.StorageService;
 
 class AdminBadgeServiceTest {
 
 	private final BadgeRepository badges = mock(BadgeRepository.class);
 	private final UserBadgeRepository earned = mock(UserBadgeRepository.class);
 	private final AdminBadgeService service = new AdminBadgeService(badges, earned, new ObjectMapper(),
-			mock(AdminAuditService.class), mock(ShopItemRepository.class), mock(ShopMapper.class));
+			mock(AdminAuditService.class), mock(ShopItemRepository.class), mock(ShopMapper.class), mock(StorageService.class));
 
 	@Test
 	void listIncludesInactiveRowsWithOneAggregateAndARealZeroForUnseenBadges() {
@@ -84,7 +85,7 @@ class AdminBadgeServiceTest {
 
 	private static Badge badge(Long id, boolean active) {
 		return Badge.builder().id(id).code("QUIZ_" + id).name("Quiz").description("Complete quiz")
-				.metric(BadgeMetric.QUIZ_COMPLETED).threshold(id.intValue()).iconKey("clipboard-check")
+				.metric(BadgeMetric.QUIZ_COMPLETED).threshold(id.intValue()).imageKey("public/badges/quiz_1.png")
 				.sortOrder(id.intValue()).active(active).build();
 	}
 }
