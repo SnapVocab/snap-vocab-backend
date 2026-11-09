@@ -45,7 +45,7 @@ public class ShopMapper {
 				ShopItemType.XP_BOOSTER_MULTIPLIER, activation.getStartedAt(), activation.getExpiresAt());
 	}
 
-	String url(String key) {
+	public String url(String key) {
 		return key == null ? null : storageService.createDownloadUrl(key);
 	}
 }

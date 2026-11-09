@@ -50,6 +50,16 @@ import vn.ptit.snapvocab.quiz.repository.QuizRepository;
 import vn.ptit.snapvocab.quiz.service.QuizContentResolver;
 import vn.ptit.snapvocab.quiz.service.QuizGenerator;
 import vn.ptit.snapvocab.quiz.service.QuizService;
+import vn.ptit.snapvocab.shop.domain.ShopItem;
+import vn.ptit.snapvocab.shop.domain.UserItem;
+import vn.ptit.snapvocab.shop.domain.enumeration.ShopItemStatus;
+import vn.ptit.snapvocab.shop.domain.enumeration.ShopItemType;
+import vn.ptit.snapvocab.shop.repository.ShopItemRepository;
+import vn.ptit.snapvocab.shop.repository.UserItemRepository;
+import vn.ptit.snapvocab.shop.service.ShopMapper;
+import vn.ptit.snapvocab.shop.service.ShopRewardService;
+import vn.ptit.snapvocab.shop.service.WalletService;
+import vn.ptit.snapvocab.storage.service.StorageService;
 import vn.ptit.snapvocab.support.LocalMySqlJpaTest;
 import vn.ptit.snapvocab.user.domain.User;
 import vn.ptit.snapvocab.user.repository.UserRepository;
@@ -73,7 +83,8 @@ import vn.ptit.snapvocab.xp.service.XpService;
 @LocalMySqlJpaTest
 @Import({ DataInitializer.class, SemanticBindingMigration.class, QuizService.class, QuizContentResolver.class,
 		QuizGenerator.class, XpService.class, TopicService.class, MissionTracker.class, ProgressService.class,
-		StreakFreezeService.class, ProgressEventListener.class, BadgeService.class, BadgeIntegrationTest.Beans.class })
+		StreakFreezeService.class, ProgressEventListener.class, BadgeService.class, WalletService.class,
+		ShopRewardService.class, ShopMapper.class, BadgeIntegrationTest.Beans.class })
 class BadgeIntegrationTest {
 
 	@TestConfiguration
@@ -96,6 +107,8 @@ class BadgeIntegrationTest {
 	TopicSchemaMapper topicSchemaMapper;
 	@MockitoBean
 	SchemaMapper schemaMapper;
+	@MockitoBean
+	StorageService storageService;
 
 	@Autowired
 	BadgeService badgeService;
@@ -118,6 +131,10 @@ class BadgeIntegrationTest {
 	@Autowired
 	QuizRepository quizRepository;
 	@Autowired
+	ShopItemRepository shopItemRepository;
+	@Autowired
+	UserItemRepository userItemRepository;
+	@Autowired
 	DataSource dataSource;
 	@Autowired
 	PlatformTransactionManager transactionManager;
@@ -135,10 +152,11 @@ class BadgeIntegrationTest {
 				"user_daily_mission_progress_logs", "user_daily_missions", "learning_events", "quiz_matching_attempts",
 				"quiz_question_options", "quiz_matching_tiles", "quiz_questions", "quizzes",
 				"topic_item_attribute_values", "topic_item_attribute_groups", "topic_items", "topics", "collections",
-				"experience_logs")) {
+				"experience_logs", "coin_transactions", "user_items")) {
 			jdbc.update("DELETE FROM " + table);
 		}
 		jdbc.update("DELETE FROM users WHERE email LIKE 'bdg-it-%'");
+		jdbc.update("DELETE FROM shop_items WHERE code LIKE 'BDG_IT_%'");
 	}
 
 	// --- Granting (§6.1, AC §12.1) ---------------------------------------------------------------
@@ -236,6 +254,79 @@ class BadgeIntegrationTest {
 		assertThat(userBadges(user)).isEqualTo(2);
 	}
 
+	// --- Rewards (PD-BDG-14) ----------------------------------------------------------------------
+
+	@Test
+	void syncPaysEachTierRewardOnceAndSnapshotsIt() {
+		User user = newUser();
+		completeQuiz(user, topicWithWords(user, 5), 5, 5);
+		long quizXp = count("SELECT COALESCE(SUM(amount), 0) FROM experience_logs WHERE user_id = ?", user.getId());
+
+		BadgesDTO synced = badgeService.sync(user.getId());
+		badgeService.sync(user.getId());
+
+		// QUIZ_1 + PERFECT_1, 20 Coin + 50 XP each, never boosted.
+		assertThat(synced.coin()).isEqualTo(40);
+		assertThat(synced.exp()).isEqualTo(quizXp + 100);
+		assertThat(synced.rewardTotals()).isEqualTo(new BadgesDTO.RewardTotals(40, 100));
+		assertThat(item(synced, "QUIZ_1").reward()).isEqualTo(new BadgesDTO.Reward(20, 50, null));
+		assertThat(item(synced, "QUIZ_10").reward()).isEqualTo(new BadgesDTO.Reward(60, 150, null));
+		assertThat(count("SELECT COUNT(*) FROM coin_transactions WHERE user_id = ? AND source_type = 'BADGE_REWARD'",
+				user.getId())).isEqualTo(2);
+		assertThat(count("SELECT COALESCE(SUM(amount), 0) FROM experience_logs WHERE user_id = ?"
+				+ " AND source_type = 'BADGE_REWARD' AND bonus_amount = 0", user.getId())).isEqualTo(100);
+		assertThat(userRepository.findById(user.getId()).orElseThrow().getCoin()).isEqualTo(40);
+	}
+
+	@Test
+	void lastTierGrantsTheFrameAndAnAlreadyHeldFrameHasNoCoinFallback() {
+		ShopItem frame = shopItemRepository.save(ShopItem.builder().code("BDG_IT_FRAME_" + UUID.randomUUID().toString()
+				.replace("-", "").substring(0, 12).toUpperCase()).type(ShopItemType.AVATAR_FRAME).name("Khung Lửa")
+				.status(ShopItemStatus.PUBLISHED).purchasable(false).build());
+		Badge last = badgeRepository.findByCode("STREAK_100").orElseThrow();
+		last.setRewardItemCode(frame.getCode());
+		badgeRepository.save(last);
+		User earner = streakUser(100);
+		User holder = streakUser(100);
+		userItemRepository.save(UserItem.builder().user(holder).item(frame).itemType(frame.getType()).quantity(1).build());
+
+		BadgesDTO first = badgeService.sync(earner.getId());
+		BadgesDTO second = badgeService.sync(holder.getId());
+
+		assertThat(item(first, "STREAK_100").reward()).isEqualTo(new BadgesDTO.Reward(0, 300,
+				new BadgesDTO.RewardItem(frame.getCode(), "Khung Lửa", ShopItemType.AVATAR_FRAME, null, true)));
+		assertThat(count("SELECT COUNT(*) FROM user_items WHERE user_id = ? AND shop_item_id = ?", earner.getId(),
+				frame.getId())).isOne();
+		assertThat(item(second, "STREAK_100").reward().item().granted()).isFalse();
+		// STREAK_7 + STREAK_30 only: the held frame is not paid out as Coin.
+		assertThat(first.coin()).isEqualTo(80);
+		assertThat(second.coin()).isEqualTo(80);
+		assertThat(count("SELECT COUNT(*) FROM coin_transactions WHERE event_key LIKE '%:FALLBACK'")).isZero();
+	}
+
+	@Test
+	void laterRewardChangesSkipEarlierEarnersAndPreRewardGrantsGetNothing() {
+		User early = newUser();
+		completeQuiz(early, topicWithWords(early, 5), 5, 4);
+		badgeService.sync(early.getId());
+		Badge quiz1 = badgeRepository.findByCode("QUIZ_1").orElseThrow();
+		quiz1.setRewardCoin(99);
+		badgeRepository.save(quiz1);
+		User late = newUser();
+		completeQuiz(late, topicWithWords(late, 5), 5, 4);
+		User legacy = streakUser(7);
+		jdbc().update("INSERT INTO user_badges (user_id, badge_id, created_at) VALUES (?, ?, NOW(6))", legacy.getId(),
+				badgeRepository.findByCode("STREAK_7").orElseThrow().getId());
+
+		assertThat(item(badgeService.getBadges(early.getId()), "QUIZ_1").reward().coin()).isEqualTo(20);
+		assertThat(item(badgeService.sync(late.getId()), "QUIZ_1").reward().coin()).isEqualTo(99);
+		BadgesDTO old = badgeService.sync(legacy.getId());
+		assertThat(item(old, "STREAK_7").earned()).isTrue();
+		assertThat(item(old, "STREAK_7").reward()).isNull();
+		assertThat(old.rewardTotals()).isEqualTo(new BadgesDTO.RewardTotals(0, 0));
+		assertThat(old.coin()).isZero();
+	}
+
 	// --- Distinct words (§6.2, AC §12.2) ---------------------------------------------------------
 
 	@Test
@@ -316,6 +407,12 @@ class BadgeIntegrationTest {
 		Badge badge = badgeRepository.findByCode(code).orElseThrow();
 		badge.setActive(active);
 		badgeRepository.save(badge);
+	}
+
+	private User streakUser(int longest) {
+		User user = newUser();
+		user.setLongestStreakDays(longest);
+		return userRepository.save(user);
 	}
 
 	private User newUser() {

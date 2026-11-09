@@ -18,6 +18,8 @@ public interface ShopItemRepository extends JpaRepository<ShopItem, Long> {
 
 	Optional<ShopItem> findByCode(String code);
 
+	List<ShopItem> findByCodeIn(java.util.Collection<String> codes);
+
 	/** Shop visibility rule (shop.md §3.1): PUBLISHED ∧ purchasable ∧ inside the sale window. */
 	@Query("SELECT i FROM ShopItem i "
 			+ "WHERE i.status = vn.ptit.snapvocab.shop.domain.enumeration.ShopItemStatus.PUBLISHED "
