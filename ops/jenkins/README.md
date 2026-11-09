@@ -125,3 +125,14 @@ The job uses `Pipeline script from SCM`, Git URL
 `github-snapvocab`, script path `Jenkinsfile`. Pipeline changes take effect on
 the next `prod` push. Pushes to other branches do not deploy production.
 Do not commit `.env.prod`, webhook secrets or tokens.
+
+`configure-backend-webhook.groovy` is the one-time migration script run inside
+Jenkins as an `init.groovy.d` hook. It uses the existing Jenkins credentials to
+create/update only the backend repository webhook, preserves the global secret
+and admin job, then switches the backend job to SCM and disables polling.
+It writes a non-secret status file and completion marker in `JENKINS_HOME`.
+The previous job/global configuration is backed up on Oracle under
+`/opt/snapvocab/.backups/backend-webhook-20261109T081826Z/`.
+
+The daily database backup service and its verification steps are documented in
+[`../backup/README.md`](../backup/README.md).
