@@ -10,9 +10,9 @@ import org.springframework.util.StringUtils;
 /**
  * Turns the stored avatar value into something the app can load.
  *
- * <p>{@code users.avatar_url} holds the storage object key. Presigned URLs
- * expire (BF-04: TTL ≤ 15 minutes), so one is minted per response instead of
- * being stored. Rows written before that change hold a full URL; those are
+ * <p>{@code users.avatar_url} holds the storage object key. Keys under
+ * {@code public/avatars/} resolve to stable public/CDN URLs; private keys
+ * resolve to presigned URLs. Rows written before that change hold a full URL; those are
  * passed through, even though an expired one no longer loads.
  */
 @Slf4j
