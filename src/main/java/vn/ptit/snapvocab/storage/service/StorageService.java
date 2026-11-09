@@ -11,6 +11,7 @@ public interface StorageService {
 	/** Presigned PUT for a caller-chosen key; the client must upload with exactly {@code contentType}. */
 	PresignedUploadResponse createUploadUrl(String objectName, String contentType);
 
+	/** Stable public/CDN URL for public/ keys; presigned GET for private objects. */
 	String createDownloadUrl(String objectName);
 
 	boolean exists(String objectName);

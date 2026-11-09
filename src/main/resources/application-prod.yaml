@@ -56,6 +56,7 @@ jwt:
   refresh-expiration: 604800000
 
 minio:
+  public-base-url: ${MINIO_PUBLIC_BASE_URL:}
   endpoint: ${MINIO_ENDPOINT}
   access-key: ${MINIO_ACCESS_KEY}
   secret-key: ${MINIO_SECRET_KEY}

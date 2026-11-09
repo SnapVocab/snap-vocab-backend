@@ -16,6 +16,8 @@ import java.util.concurrent.TimeUnit;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
+import org.springframework.web.util.UriComponentsBuilder;
 import vn.ptit.snapvocab.storage.config.MinioProperties;
 import vn.ptit.snapvocab.user.domain.User;
 import vn.ptit.snapvocab.storage.domain.dto.PresignedUploadResponse;
@@ -80,6 +82,12 @@ public class MinioStorageService implements StorageService {
 
 	@Override
 	public String createDownloadUrl(String objectName) {
+		if (objectName.startsWith("public/")) {
+			UriComponentsBuilder url = StringUtils.hasText(properties.getPublicBaseUrl())
+					? UriComponentsBuilder.fromUriString(properties.getPublicBaseUrl())
+					: UriComponentsBuilder.fromUriString(properties.getEndpoint()).pathSegment(properties.getBucket());
+			return url.pathSegment(objectName.split("/")).build().encode().toUriString();
+		}
 		try {
 			return minioClient.getPresignedObjectUrl(
 					GetPresignedObjectUrlArgs.builder()
