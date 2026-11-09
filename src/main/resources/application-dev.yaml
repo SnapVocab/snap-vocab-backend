@@ -55,6 +55,7 @@ jwt:
   refresh-expiration: 604800000
 
 minio:
+  public-base-url: ${MINIO_PUBLIC_BASE_URL:}
   endpoint: https://s3.thanhthbm.online
   access-key: admin
   secret-key: 200320045

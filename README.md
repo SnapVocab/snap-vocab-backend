@@ -148,6 +148,19 @@ jwt:
   refresh-expiration: 604800000
 ```
 
+Public media keys under `public/` (including Shop icons and frames) use permanent
+URLs. By default the URL is `{minio.endpoint}/{minio.bucket}/{objectKey}`; MinIO
+must allow anonymous reads for that prefix. Private media still uses presigned
+GET URLs, and uploads still use presigned PUT URLs.
+
+To serve public media through a CDN or Cloudflare Tunnel, set
+`MINIO_PUBLIC_BASE_URL=https://cdn.example.com/snapvocab` (staging:
+`STAGING_MINIO_PUBLIC_BASE_URL`). This is the root before the object key: the
+example produces `https://cdn.example.com/snapvocab/public/shop/frame.png`.
+If the CDN maps its root directly to the bucket, omit `/snapvocab` from the base
+URL. Keep the `public/` path in the object key. Restart the backend after changing
+the setting; stored keys and frontend response fields remain the same.
+
 ### Run
 
 ```bash
