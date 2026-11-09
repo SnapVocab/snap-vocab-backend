@@ -1,0 +1,14 @@
+[Unit]
+Description=Back up SnapVocab MariaDB to private MinIO storage
+Wants=network-online.target
+After=network-online.target docker.service mariadb.service
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+ExecStart=/usr/local/sbin/snapvocab-backup
+TimeoutStartSec=1h
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

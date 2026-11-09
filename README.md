@@ -153,6 +153,14 @@ URLs. By default the URL is `{minio.endpoint}/{minio.bucket}/{objectKey}`; MinIO
 must allow anonymous reads for that prefix. Private media still uses presigned
 GET URLs, and uploads still use presigned PUT URLs.
 
+Avatar uploads through `POST /api/storage/upload-url` keep the `{fileName}`
+request format and generate `public/avatars/{uuid}.{extension}` keys. The client
+uploads to the returned PUT URL, then submits the returned `objectName` with
+`purpose: AVATAR` to `/api/storage/upload-complete`. Confirmation validates the
+avatar prefix, image extension and 5 MB size limit, stores the key on the user,
+and returns its public URL. The client must use the returned key without
+reconstructing it from the original file name.
+
 To serve public media through a CDN or Cloudflare Tunnel, set
 `MINIO_PUBLIC_BASE_URL=https://cdn.example.com/snapvocab` (staging:
 `STAGING_MINIO_PUBLIC_BASE_URL`). This is the root before the object key: the

@@ -9,6 +9,7 @@ import io.minio.StatObjectArgs;
 import io.minio.StatObjectResponse;
 import io.minio.errors.ErrorResponseException;
 import io.minio.http.Method;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -32,6 +33,7 @@ import vn.ptit.snapvocab.common.exception.BadRequestAlertException;
 public class MinioStorageService implements StorageService {
 
 	private static final long MAX_AVATAR_BYTES = 5L * 1024 * 1024;
+	private static final String AVATAR_PREFIX = "public/avatars/";
 
 	private final MinioClient minioClient;
 	private final MinioProperties properties;
@@ -39,7 +41,15 @@ public class MinioStorageService implements StorageService {
 
 	@Override
 	public PresignedUploadResponse createUploadUrl(String fileName) {
-		return createUploadUrl(UUID.randomUUID() + "-" + fileName, resolveContentType(fileName));
+		if (!StringUtils.hasText(fileName)) {
+			throw new BadRequestAlertException("Avatar file name is required");
+		}
+		String contentType = resolveContentType(fileName);
+		if (!contentType.startsWith("image/")) {
+			throw new BadRequestAlertException("Avatar must be an image");
+		}
+		String extension = fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
+		return createUploadUrl(AVATAR_PREFIX + UUID.randomUUID() + "." + extension, contentType);
 	}
 
 	@Override
@@ -66,7 +76,7 @@ public class MinioStorageService implements StorageService {
 	}
 
 	private String resolveContentType(String fileName) {
-		String ext = fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase();
+		String ext = fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
 		return switch (ext) {
 			case "jpg", "jpeg" -> "image/jpeg";
 			case "png" -> "image/png";
@@ -117,6 +127,9 @@ public class MinioStorageService implements StorageService {
 
 	/** BF-04: an avatar must be an image of at most 5MB, checked server side. */
 	private void validateAvatar(String objectName) {
+		if (!objectName.startsWith(AVATAR_PREFIX)) {
+			throw new BadRequestAlertException("Avatar must be uploaded under " + AVATAR_PREFIX);
+		}
 		if (!resolveContentType(objectName).startsWith("image/")) {
 			throw new BadRequestAlertException("Avatar must be an image");
 		}
@@ -174,8 +187,7 @@ public class MinioStorageService implements StorageService {
 						.orElseThrow(() -> new RuntimeException("Not authenticated"));
 				User user = userRepository.findOneByEmailIgnoreCase(email)
 						.orElseThrow(() -> new RuntimeException("User not found"));
-				// Store the object key, not the presigned URL: that URL expires
-				// (BF-04: TTL <= 15 min) and a stored copy stops loading.
+				// Keep the key so changing the public/CDN base URL does not require DB updates.
 				user.setAvatarUrl(objectName);
 				userRepository.save(user);
 			}
