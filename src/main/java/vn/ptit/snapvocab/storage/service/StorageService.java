@@ -6,6 +6,7 @@ import vn.ptit.snapvocab.storage.domain.enumeration.UploadPurpose;
 
 public interface StorageService {
 
+	/** Avatar upload: generates an image key under public/avatars/ and a presigned PUT URL. */
 	PresignedUploadResponse createUploadUrl(String fileName);
 
 	/** Presigned PUT for a caller-chosen key; the client must upload with exactly {@code contentType}. */
