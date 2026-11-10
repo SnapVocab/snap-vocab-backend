@@ -144,8 +144,8 @@ spring:
 
 jwt:
   secret: your_jwt_secret_key
-  access-expiration: 900000
-  refresh-expiration: 604800000
+  access-expiration: 900 # seconds (15 min)
+  refresh-expiration: 604800 # seconds (7 days)
 ```
 
 ### Run

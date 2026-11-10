@@ -25,8 +25,8 @@ snapvocab:
 # Not real credentials; the MinIO endpoint is local and unused by the JPA slice tests.
 jwt:
   secret: dGVzdC1vbmx5LXNlY3JldC1mb3ItbG9jYWwtc3ByaW5nLWNvbnRleHQtdGVzdHMtMDEyMzQ1Njc4OS02NGJ5dGVzIQ==
-  access-expiration: 900000
-  refresh-expiration: 604800000
+  access-expiration: 900 # seconds (15 min)
+  refresh-expiration: 604800 # seconds (7 days)
 
 minio:
   endpoint: http://127.0.0.1:9000

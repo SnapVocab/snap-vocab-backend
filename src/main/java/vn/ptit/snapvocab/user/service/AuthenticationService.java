@@ -71,7 +71,7 @@ public class AuthenticationService {
 	private final MailService mailService;
 	private final PasswordEncoder passwordEncoder;
 	private final AvatarUrlService avatarUrlService;
-	@Value("${jwt.access-expiration:90000}")
+	@Value("${jwt.access-expiration:900}")
 	private long accessTokenValidityInSeconds;
 
 	public ResponseLoginDTO login(RequestLoginDTO requestLoginDTO) {
