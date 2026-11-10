@@ -39,6 +39,9 @@ jwt:
   refresh-expiration: 604800 # seconds (7 days)
 
 minio:
+  internal-endpoint: ${STAGING_MINIO_INTERNAL_ENDPOINT:}
+  region: ${STAGING_MINIO_REGION:us-east-1}
+  public-base-url: ${STAGING_MINIO_PUBLIC_BASE_URL:}
   endpoint: ${STAGING_MINIO_ENDPOINT}
   access-key: ${STAGING_MINIO_ACCESS_KEY}
   secret-key: ${STAGING_MINIO_SECRET_KEY}

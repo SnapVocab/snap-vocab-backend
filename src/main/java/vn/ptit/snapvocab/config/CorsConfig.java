@@ -14,7 +14,8 @@ public class CorsConfig {
 	public CorsConfigurationSource corsConfigurationSource() {
 		CorsConfiguration configuration = new CorsConfiguration();
 		configuration.setAllowedOrigins(
-				Arrays.asList("http://localhost:3000", "http://localhost:4173", "http://localhost:5173"));
+				Arrays.asList("http://localhost:3000", "http://localhost:4173", "http://localhost:5173",
+						"https://admin.snapvocab.thanhthbm.online"));
 		configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
 		configuration.setAllowedHeaders(List.of("*"));
 		configuration.setAllowCredentials(true);

@@ -148,6 +148,35 @@ jwt:
   refresh-expiration: 604800 # seconds (7 days)
 ```
 
+Public media keys under `public/` (including Shop icons and frames) use permanent
+URLs. By default the URL is `{minio.endpoint}/{minio.bucket}/{objectKey}`; MinIO
+must allow anonymous reads for that prefix. Private media still uses presigned
+GET URLs, and uploads still use presigned PUT URLs.
+
+Avatar uploads through `POST /api/storage/upload-url` keep the `{fileName}`
+request format and generate `public/avatars/{uuid}.{extension}` keys. The client
+uploads to the returned PUT URL, then submits the returned `objectName` with
+`purpose: AVATAR` to `/api/storage/upload-complete`. Confirmation validates the
+avatar prefix, image extension and 5 MB size limit, stores the key on the user,
+and returns its public URL. The client must use the returned key without
+reconstructing it from the original file name.
+
+Set `MINIO_INTERNAL_ENDPOINT` to the backend-only S3 address when the public
+`MINIO_ENDPOINT` goes through a CDN or reverse proxy. For Oracle's host-networked
+backend this is `http://127.0.0.1:9000`. Metadata checks, downloads and deletes use
+the internal endpoint; presigned PUT/GET URLs and public media URLs continue to
+use the public domain. `MINIO_REGION` defaults to `us-east-1` and avoids region
+discovery requests while signing URLs. Staging uses the corresponding
+`STAGING_MINIO_INTERNAL_ENDPOINT` and `STAGING_MINIO_REGION` variables.
+
+To serve public media through a CDN or Cloudflare Tunnel, set
+`MINIO_PUBLIC_BASE_URL=https://cdn.example.com/snapvocab` (staging:
+`STAGING_MINIO_PUBLIC_BASE_URL`). This is the root before the object key: the
+example produces `https://cdn.example.com/snapvocab/public/shop/frame.png`.
+If the CDN maps its root directly to the bucket, omit `/snapvocab` from the base
+URL. Keep the `public/` path in the object key. Restart the backend after changing
+the setting; stored keys and frontend response fields remain the same.
+
 ### Run
 
 ```bash
