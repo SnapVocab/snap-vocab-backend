@@ -23,7 +23,7 @@
 --   1. Backup DB.  2. Script này.
 --   3. migration_notifications_v1, _v2, migration_admin_audit_logs_v1, migration_badges_v1, _v2,
 --      migration_streak_freeze_v1, migration_badges_streak_copy_v2, migration_daily_mission_v1, _triggers_v2,
---      migration_admin_stats_v1, migration_remove_theme_v1.
+--      migration_admin_stats_v1, migration_admin_users_v1, migration_remove_theme_v1.
 --   4. Deploy backend (ddl-auto: update tạo lại các bảng đã xóa).  5. Đổi sang ddl-auto: validate.
 -- ============================================================================
 
