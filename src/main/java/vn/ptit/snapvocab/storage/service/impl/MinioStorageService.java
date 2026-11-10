@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -29,15 +29,24 @@ import vn.ptit.snapvocab.storage.service.StorageService;
 import vn.ptit.snapvocab.common.exception.BadRequestAlertException;
 
 @Service
-@RequiredArgsConstructor
 public class MinioStorageService implements StorageService {
 
 	private static final long MAX_AVATAR_BYTES = 5L * 1024 * 1024;
 	private static final String AVATAR_PREFIX = "public/avatars/";
 
 	private final MinioClient minioClient;
+	private final MinioClient presigningMinioClient;
 	private final MinioProperties properties;
 	private final UserRepository userRepository;
+
+	public MinioStorageService(@Qualifier("minioClient") MinioClient minioClient,
+			@Qualifier("presigningMinioClient") MinioClient presigningMinioClient,
+			MinioProperties properties, UserRepository userRepository) {
+		this.minioClient = minioClient;
+		this.presigningMinioClient = presigningMinioClient;
+		this.properties = properties;
+		this.userRepository = userRepository;
+	}
 
 	@Override
 	public PresignedUploadResponse createUploadUrl(String fileName) {
@@ -60,7 +69,7 @@ public class MinioStorageService implements StorageService {
 		try {
 			Map<String, String> queryParams = Map.of("Content-Type", contentType);
 
-			String uploadUrl = minioClient.getPresignedObjectUrl(
+			String uploadUrl = presigningMinioClient.getPresignedObjectUrl(
 					GetPresignedObjectUrlArgs.builder()
 							.method(Method.PUT)
 							.bucket(properties.getBucket())
@@ -99,7 +108,7 @@ public class MinioStorageService implements StorageService {
 			return url.pathSegment(objectName.split("/")).build().encode().toUriString();
 		}
 		try {
-			return minioClient.getPresignedObjectUrl(
+			return presigningMinioClient.getPresignedObjectUrl(
 					GetPresignedObjectUrlArgs.builder()
 							.method(Method.GET)
 							.bucket(properties.getBucket())
@@ -113,16 +122,7 @@ public class MinioStorageService implements StorageService {
 
 	@Override
 	public boolean exists(String objectName) {
-		try {
-			minioClient.statObject(
-					StatObjectArgs.builder()
-							.bucket(properties.getBucket())
-							.object(objectName)
-							.build());
-			return true;
-		} catch (Exception e) {
-			return false;
-		}
+		return sizeOf(objectName).isPresent();
 	}
 
 	/** BF-04: an avatar must be an image of at most 5MB, checked server side. */
@@ -175,7 +175,7 @@ public class MinioStorageService implements StorageService {
 	@Transactional
 	public String confirmUpload(String objectName, UploadPurpose purpose) {
 		if (!exists(objectName)) {
-			throw new RuntimeException("Object not found in storage: " + objectName);
+			throw new BadRequestAlertException("Uploaded object not found in storage: " + objectName);
 		}
 
 		String downloadUrl = createDownloadUrl(objectName);
