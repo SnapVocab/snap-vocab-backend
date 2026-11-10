@@ -29,7 +29,10 @@ import vn.ptit.snapvocab.user.domain.User;
 @Table(
 		name = "learning_events",
 		uniqueConstraints = @UniqueConstraint(name = "uq_learning_events_source_key", columnNames = "source_key"),
-		indexes = @Index(name = "idx_learning_events_user_date", columnList = "user_id, learning_date")
+		indexes = {
+				@Index(name = "idx_learning_events_user_date", columnList = "user_id, learning_date"),
+				@Index(name = "idx_learning_events_date_type", columnList = "learning_date, event_type")
+		}
 )
 @Getter
 @NoArgsConstructor

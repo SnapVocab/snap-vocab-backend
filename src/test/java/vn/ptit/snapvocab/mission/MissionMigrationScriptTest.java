@@ -83,10 +83,19 @@ class MissionMigrationScriptTest {
 		new JdbcTemplate(dataSource).execute("DROP DATABASE IF EXISTS `" + scratch + "`");
 	}
 
+	/**
+	 * The one user_daily_missions index migration_admin_stats_v1.sql adds (tested whole in
+	 * AdminStatsMigrationScriptTest; it also alters tables this scratch schema does not have).
+	 */
+	private void addAdminStatsIndex() {
+		scratch().execute("ALTER TABLE user_daily_missions ADD INDEX idx_udm_date_status (mission_date, status)");
+	}
+
 	@Test
 	void scriptIsIdempotentAndMatchesTheEntitySchema() throws Exception {
 		run(read(SCRIPT));
 		run(read(SCRIPT));
+		addAdminStatsIndex();
 
 		JdbcTemplate info = new JdbcTemplate(dataSource);
 		for (String table : TABLES) {
@@ -124,6 +133,7 @@ class MissionMigrationScriptTest {
 
 		run(read(TRIGGERS_SCRIPT));
 		run(read(TRIGGERS_SCRIPT));
+		addAdminStatsIndex();
 
 		JdbcTemplate info = new JdbcTemplate(dataSource);
 		for (String table : TABLES) {

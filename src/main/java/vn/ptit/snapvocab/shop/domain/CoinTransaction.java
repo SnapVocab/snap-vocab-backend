@@ -30,7 +30,8 @@ import vn.ptit.snapvocab.shop.domain.enumeration.CoinSourceType;
 				@UniqueConstraint(name = "uq_coin_transactions_event_key", columnNames = {"event_key"})
 		},
 		indexes = {
-				@Index(name = "idx_coin_transactions_user_time", columnList = "user_id, created_at")
+				@Index(name = "idx_coin_transactions_user_time", columnList = "user_id, created_at"),
+				@Index(name = "idx_coin_transactions_source_time", columnList = "source_type, created_at")
 		}
 )
 @Getter
