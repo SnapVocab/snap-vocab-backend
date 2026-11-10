@@ -15,6 +15,9 @@ import io.minio.MinioClient;
 import io.minio.StatObjectArgs;
 import io.minio.StatObjectResponse;
 import io.minio.http.Method;
+import io.minio.errors.ErrorResponseException;
+import io.minio.messages.ErrorResponse;
+import java.io.IOException;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -33,7 +36,61 @@ class MinioStorageServiceTest {
 	private final MinioClient client = mock(MinioClient.class);
 	private final MinioProperties properties = new MinioProperties();
 	private final UserRepository users = mock(UserRepository.class);
-	private final MinioStorageService service = new MinioStorageService(client, properties, users);
+	private final MinioStorageService service = new MinioStorageService(client, client, properties, users);
+
+	@Test
+	void existenceCheckOnlyReturnsFalseForMissingObjects() throws Exception {
+		properties.setBucket("snapvocab");
+		var failure = mock(ErrorResponseException.class);
+		var response = mock(ErrorResponse.class);
+		when(response.code()).thenReturn("NoSuchKey");
+		when(failure.errorResponse()).thenReturn(response);
+		when(client.statObject(any(StatObjectArgs.class))).thenThrow(failure);
+
+		assertThat(service.exists("public/avatars/missing.jpeg")).isFalse();
+		assertThatThrownBy(() -> service.confirmUpload("public/avatars/missing.jpeg", UploadPurpose.AVATAR))
+				.isInstanceOf(BadRequestAlertException.class).hasMessageContaining("not found");
+		verifyNoInteractions(users);
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {"AccessDenied", "SignatureDoesNotMatch", "NoSuchBucket"})
+	void storageErrorsAreNotReportedAsMissingObjects(String code) throws Exception {
+		properties.setBucket("snapvocab");
+		var failure = mock(ErrorResponseException.class);
+		var response = mock(ErrorResponse.class);
+		when(response.code()).thenReturn(code);
+		when(failure.errorResponse()).thenReturn(response);
+		when(client.statObject(any(StatObjectArgs.class))).thenThrow(failure);
+
+		assertThatThrownBy(() -> service.confirmUpload("public/avatars/avatar.jpeg", UploadPurpose.AVATAR))
+				.isInstanceOf(RuntimeException.class).hasMessage("Failed to stat object").hasCause(failure);
+		verifyNoInteractions(users);
+	}
+
+	@Test
+	void networkErrorsAreNotReportedAsMissingObjects() throws Exception {
+		properties.setBucket("snapvocab");
+		when(client.statObject(any(StatObjectArgs.class))).thenThrow(new IOException("connection reset"));
+
+		assertThatThrownBy(() -> service.exists("public/avatars/avatar.jpeg"))
+				.hasMessage("Failed to stat object").hasCauseInstanceOf(IOException.class);
+	}
+
+	@Test
+	void metadataUsesInternalClientWhilePutAndPrivateGetUsePublicSigner() throws Exception {
+		properties.setBucket("snapvocab");
+		var signer = mock(MinioClient.class);
+		var separated = new MinioStorageService(client, signer, properties, users);
+		when(client.statObject(any(StatObjectArgs.class))).thenReturn(mock(StatObjectResponse.class));
+		when(signer.getPresignedObjectUrl(any(GetPresignedObjectUrlArgs.class))).thenReturn("https://public/signed");
+
+		assertThat(separated.exists("public/avatars/avatar.png")).isTrue();
+		assertThat(separated.createUploadUrl("avatar.png").getUploadUrl()).isEqualTo("https://public/signed");
+		assertThat(separated.createDownloadUrl("scans/private.png")).isEqualTo("https://public/signed");
+		verify(client, never()).getPresignedObjectUrl(any(GetPresignedObjectUrlArgs.class));
+		verify(signer, never()).statObject(any(StatObjectArgs.class));
+	}
 
 	@Test
 	void avatarUploadGeneratesPublicKeyAndSignsOnlyThePutRequest() throws Exception {

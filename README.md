@@ -161,6 +161,14 @@ avatar prefix, image extension and 5 MB size limit, stores the key on the user,
 and returns its public URL. The client must use the returned key without
 reconstructing it from the original file name.
 
+Set `MINIO_INTERNAL_ENDPOINT` to the backend-only S3 address when the public
+`MINIO_ENDPOINT` goes through a CDN or reverse proxy. For Oracle's host-networked
+backend this is `http://127.0.0.1:9000`. Metadata checks, downloads and deletes use
+the internal endpoint; presigned PUT/GET URLs and public media URLs continue to
+use the public domain. `MINIO_REGION` defaults to `us-east-1` and avoids region
+discovery requests while signing URLs. Staging uses the corresponding
+`STAGING_MINIO_INTERNAL_ENDPOINT` and `STAGING_MINIO_REGION` variables.
+
 To serve public media through a CDN or Cloudflare Tunnel, set
 `MINIO_PUBLIC_BASE_URL=https://cdn.example.com/snapvocab` (staging:
 `STAGING_MINIO_PUBLIC_BASE_URL`). This is the root before the object key: the
