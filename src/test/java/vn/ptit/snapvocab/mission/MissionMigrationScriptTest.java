@@ -43,7 +43,7 @@ import vn.ptit.snapvocab.support.LocalMySqlJpaTest;
  * The script runs in a throw-away database on the same local server; the test schema is only read.
  */
 @LocalMySqlJpaTest
-class MissionMigrationScriptTest {
+public class MissionMigrationScriptTest {
 
 	private static final List<String> TABLES = List.of("mission_templates", "user_daily_missions",
 			"user_daily_mission_progress_logs", "user_daily_mission_claims", "user_word_credits");
@@ -402,7 +402,7 @@ class MissionMigrationScriptTest {
 		}
 	}
 
-	static List<String> split(String script) {
+	public static List<String> split(String script) {
 		List<String> statements = new ArrayList<>();
 		String delimiter = ";";
 		StringBuilder current = new StringBuilder();

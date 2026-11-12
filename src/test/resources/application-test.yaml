@@ -33,3 +33,7 @@ minio:
   access-key: test
   secret-key: test-secret
   bucket: snapvocab-test
+
+# The leaderboard job never fires during a test run; tests call refresh()/get() themselves.
+leaderboard:
+  refresh-interval-ms: 3600000
