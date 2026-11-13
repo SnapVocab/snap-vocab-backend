@@ -1,6 +1,5 @@
 package vn.ptit.snapvocab.shop.domain.dto;
 
-import jakarta.validation.constraints.NotNull;
-
-public record EquipRequest(@NotNull Long itemId) {
+/** Null {@code itemId} is checked in InventoryService (VALIDATION_ERROR), not by bean validation. */
+public record EquipRequest(Long itemId) {
 }
