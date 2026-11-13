@@ -348,8 +348,11 @@ public class StudyService {
 		SrsReviewCompletedEvent event = new SrsReviewCompletedEvent(userId, collection.getId(), item.getId(),
 				record.getReps(), rating, reviewedAt);
 		eventPublisher.publishEvent(event);
-		missionTracker.apply(userId, today, MissionTriggerEvent.SRS_REVIEW_COMPLETED, event.sourceKey(),
-				MissionFacts.NONE, reviewedAt);
+		if (!alreadyCounted) {
+			// STUDY_N_CARDS counts distinct cards per study day, like review XP (daily_mission.md §5.1).
+			missionTracker.apply(userId, today, MissionTriggerEvent.SRS_REVIEW_COMPLETED,
+					"SRS_CARD_DAY:" + userId + ":" + item.getId() + ":" + today, MissionFacts.NONE, reviewedAt);
+		}
 		return new ReviewResultDTO(item.getId(), record.getState(), record.getDue(),
 				record.getStability(), record.getDifficulty(), record.getReps(), record.getLapses(),
 				xpAwarded, !wasMastered && isMastered(record));

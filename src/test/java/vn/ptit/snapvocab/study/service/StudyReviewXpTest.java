@@ -121,18 +121,18 @@ class StudyReviewXpTest {
 		// Coin 0 and no booster ⇒ slot 5 is KEEP_DAILY_STREAK (daily_mission.md §5.1).
 		assertThat(jdbc.queryForObject("SELECT status FROM user_daily_missions WHERE user_id = ? AND code = 'KEEP_DAILY_STREAK'",
 				String.class, user.getId())).isEqualTo("COMPLETED");
-		// Every rating counts, re-rating the first card included. Slot 3 is its own slot.
+		// Distinct cards per day, like XP: re-rating the first card does not count (daily_mission.md §5.1). Slot 3 is its own slot.
 		entityManager.flush();
 		assertThat(jdbc.queryForMap("SELECT slot, current_progress FROM user_daily_missions WHERE user_id = ?"
-				+ " AND code = 'STUDY_5_CARDS'", user.getId())).containsEntry("slot", 3).containsEntry("current_progress", 3);
+				+ " AND code = 'STUDY_5_CARDS'", user.getId())).containsEntry("slot", 3).containsEntry("current_progress", 2);
 	}
 
 	@Test
-	void studyTenCardsGoesOnlyToALearnerWithOwnWords() { // PD-DM-12, HAS_STUDY_CARDS_FOR_TARGET (master rule)
+	void studyTenCardsGoesOnlyToALearnerWithTenCardsToday() { // PD-DM-12, HAS_STUDY_CARDS_FOR_TARGET (daily_mission.md §4.3)
 		jdbc.update("UPDATE mission_templates SET is_active = (code = 'STUDY_10_CARDS')"
 				+ " WHERE code IN ('STUDY_5_CARDS', 'STUDY_10_CARDS')");
-		User ready = learnerWithOwnWords(1);
-		User shortOfCards = learnerWithOwnWords(0);
+		User ready = learnerWithOwnWords(10);
+		User shortOfCards = learnerWithOwnWords(9);
 
 		assertThat(dailyMissionService.getToday(ready.getId()).missions().get(2).code()).isEqualTo("STUDY_10_CARDS");
 		// Not eligible and no other SRS template: slot 3 falls back to a core template.
