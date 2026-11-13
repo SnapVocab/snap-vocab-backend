@@ -113,6 +113,17 @@ public class User extends BaseTimeEntity {
 	@Builder.Default
 	private boolean activated = false;
 
+	/** Locked by an admin (never {@code activated}): no new tokens while set; learning data is kept. */
+	@Column(name = "banned_at")
+	private Instant bannedAt;
+
+	@Column(name = "ban_reason", length = 500)
+	private String banReason;
+
+	/** Email of the admin who locked the account, as it was then. */
+	@Column(name = "banned_by", length = 254)
+	private String bannedBy;
+
 	@Size(max = 200, message = "Bio must not exceed 200 characters")
 	@Column(name = "bio", length = 200)
 	private String bio;

@@ -42,7 +42,10 @@ import vn.ptit.snapvocab.user.domain.User;
 				@UniqueConstraint(name = "uq_user_daily_missions_template",
 						columnNames = {"user_id", "mission_date", "mission_template_id"})
 		},
-		indexes = @Index(name = "idx_user_daily_missions_template", columnList = "mission_template_id"))
+		indexes = {
+				@Index(name = "idx_user_daily_missions_template", columnList = "mission_template_id"),
+				@Index(name = "idx_udm_date_status", columnList = "mission_date, status")
+		})
 @Check(name = "chk_user_daily_missions_slot", constraints = "slot BETWEEN 1 AND 5")
 @Check(name = "chk_user_daily_missions_target", constraints = "target_value >= 1")
 @Check(name = "chk_user_daily_missions_progress", constraints = "current_progress >= 0 AND current_progress <= target_value")

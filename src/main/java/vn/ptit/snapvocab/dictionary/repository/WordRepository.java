@@ -1,5 +1,6 @@
 package vn.ptit.snapvocab.dictionary.repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -58,5 +59,9 @@ public interface WordRepository extends JpaRepository<Word, Long> {
 			WHERE w.id = :id
 			""")
 	Optional<Word> findWordById(@Param("id") Long id);
+
+	/** Which of {@code words} are English entries, lower-cased; no joins (scan stats, admin_overview_backend.md G2). */
+	@Query("SELECT LOWER(w.word) FROM Word w WHERE w.word IN :words AND w.langCode = 'en'")
+	List<String> findExistingEnglish(@Param("words") Collection<String> words);
 }
 

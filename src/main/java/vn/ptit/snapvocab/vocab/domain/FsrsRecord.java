@@ -33,7 +33,8 @@ import vn.ptit.snapvocab.vocab.domain.enumeration.CardState;
 @Table(name = "fsrs_records", uniqueConstraints = {
 		@UniqueConstraint(name = "uq_fsrs_user_topic_item", columnNames = { "user_id", "topic_item_id" })
 }, indexes = {
-		@Index(name = "idx_fsrs_user_due_state", columnList = "user_id, due, state")
+		@Index(name = "idx_fsrs_user_due_state", columnList = "user_id, due, state"),
+		@Index(name = "idx_fsrs_state_stability", columnList = "state, stability")
 })
 public class FsrsRecord extends BaseTimeEntity {
 

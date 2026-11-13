@@ -37,7 +37,8 @@ import vn.ptit.snapvocab.quiz.domain.enumeration.QuizStatus;
 		"create_idempotency_key" }), indexes = {
 		@Index(name = "idx_quiz_user_created", columnList = "user_id, created_at"),
 		// Covers the per-user completed/perfect counts (badge sync, Admin refill estimate): index-only, no row reads.
-		@Index(name = "idx_quiz_user_status", columnList = "user_id, status, correct_count, total_units") })
+		@Index(name = "idx_quiz_user_status", columnList = "user_id, status, correct_count, total_units"),
+		@Index(name = "idx_quizzes_status_completed", columnList = "status, completed_at") })
 @Getter
 @Setter
 @NoArgsConstructor

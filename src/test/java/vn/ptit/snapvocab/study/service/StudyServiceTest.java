@@ -115,8 +115,9 @@ class StudyServiceTest {
 		assertThat(event.getValue().reviewedAt()).isEqualTo(REVIEWED_AT);
 		assertThat(event.getValue().rating()).isEqualTo(rating);
 		assertThat(event.getValue().sourceKey()).isEqualTo("SRS_REVIEW_COMPLETED:7:21:1");
+		// Missions count the card once per study day, not every rating (daily_mission.md §5.1).
 		verify(missionTracker).apply(7L, STUDY_DAY, MissionTriggerEvent.SRS_REVIEW_COMPLETED,
-				event.getValue().sourceKey(), MissionFacts.NONE, REVIEWED_AT);
+				"SRS_CARD_DAY:7:21:" + STUDY_DAY, MissionFacts.NONE, REVIEWED_AT);
 	}
 
 	@Test

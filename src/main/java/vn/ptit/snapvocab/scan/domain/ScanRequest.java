@@ -37,7 +37,8 @@ import vn.ptit.snapvocab.scan.domain.enumeration.ScanStatus;
 		name = "scan_requests",
 		indexes = {
 				@Index(name = "idx_scan_requests_user_created", columnList = "user_id, created_at"),
-				@Index(name = "idx_scan_requests_status", columnList = "status")
+				@Index(name = "idx_scan_requests_status", columnList = "status"),
+				@Index(name = "idx_scan_requests_created", columnList = "created_at")
 		}
 )
 public class ScanRequest extends BaseTimeEntity {

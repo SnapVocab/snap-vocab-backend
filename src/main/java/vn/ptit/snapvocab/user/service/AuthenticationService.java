@@ -52,6 +52,7 @@ import vn.ptit.snapvocab.security.SecurityUtils;
 import vn.ptit.snapvocab.common.constant.OtpPurpose;
 import vn.ptit.snapvocab.common.exception.BadRequestAlertException;
 import vn.ptit.snapvocab.common.exception.ResourceAlreadyExistException;
+import vn.ptit.snapvocab.common.exception.UserNotActivatedException;
 
 @Service
 @RequiredArgsConstructor
@@ -70,7 +71,7 @@ public class AuthenticationService {
 	private final MailService mailService;
 	private final PasswordEncoder passwordEncoder;
 	private final AvatarUrlService avatarUrlService;
-	@Value("${jwt.access-expiration:90000}")
+	@Value("${jwt.access-expiration:900}")
 	private long accessTokenValidityInSeconds;
 
 	public ResponseLoginDTO login(RequestLoginDTO requestLoginDTO) {
@@ -108,7 +109,12 @@ public class AuthenticationService {
 		return response;
 	}
 
+	/** Every token pair comes from here (login, email verify, refresh), so this is the one ban guard. */
 	private ResponseLoginDTO generateAuthResponse(User user) {
+		if (user.getBannedAt() != null) {
+			securityAuditLogger.failure("TOKEN_ISSUE", user.getEmail(), "USER_BANNED");
+			throw new UserNotActivatedException("USER_BANNED");
+		}
 		Collection<GrantedAuthority> authorities = user.getAuthorities().stream()
 				.map(auth -> new SimpleGrantedAuthority(
 						auth.getName())).collect(Collectors.toUnmodifiableList());
@@ -318,6 +324,7 @@ public class AuthenticationService {
 
 		u.setPassword(passwordEncoder.encode(resetPasswordRequest.newPassword()));
 		userRepository.save(u);
+		refreshTokenService.revokeAllTokens(u.getEmail()); // sessions opened with the old password end here
 		securityAuditLogger.success("PASSWORD_RESET", u.getId());
 	}
 
