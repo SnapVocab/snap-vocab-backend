@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -53,8 +54,10 @@ public class TodayStudyController {
 
 	@PostMapping("/items/{topicItemId}/reviews")
 	public ResponseEntity<ReviewResultDTO> submitRating(@PathVariable Long topicItemId,
-			@Valid @RequestBody SubmitRatingRequest request) {
-		return ResponseEntity.ok(studyService.submitTodayRating(currentUserId(), topicItemId, request.rating()));
+			@Valid @RequestBody SubmitRatingRequest request,
+			@RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
+		return ResponseEntity.ok(studyService.submitTodayRating(currentUserId(), topicItemId, request.rating(),
+				idempotencyKey));
 	}
 
 	private Long currentUserId() {

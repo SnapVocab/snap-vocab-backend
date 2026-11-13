@@ -128,6 +128,32 @@ class StudyReviewXpTest {
 	}
 
 	@Test
+	void aRetriedRatingWithTheSameIdempotencyKeyIsCountedOnce() {
+		User user = learnerWithOwnWords(0);
+		Collection collection = collectionRepository.save(Collection.builder().name("sys").type(CollectionType.SYSTEM).build());
+		Topic topic = topicRepository.save(Topic.builder().collection(collection).name("topic")
+				.schema(schemaRepository.findByCode("DEFAULT_ENGLISH").orElseThrow()).build());
+		TopicItem card = topicItemRepository.save(TopicItem.builder().topic(topic).build());
+		jdbc.update("UPDATE mission_templates SET is_active = 1 WHERE code = 'STUDY_5_CARDS'");
+
+		var first = studyService.submitRating(user.getId(), topic.getId(), card.getId(), Rating.GOOD, "k-1");
+		// Lost response: React Query retries the same request, same key.
+		var replay = studyService.submitRating(user.getId(), topic.getId(), card.getId(), Rating.GOOD, "k-1");
+		studyService.submitRating(user.getId(), topic.getId(), card.getId(), Rating.EASY, "k-2");
+
+		assertThat(replay.reps()).isEqualTo(first.reps()).isEqualTo(1);
+		assertThat(replay.due()).isEqualTo(first.due());
+		assertThat(replay.xpAwarded()).isZero();
+		entityManager.flush();
+		assertThat(jdbc.queryForObject("SELECT reps FROM fsrs_records WHERE user_id = ? AND topic_item_id = ?",
+				Integer.class, user.getId(), card.getId())).as("k-1 once + k-2").isEqualTo(2);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM learning_events WHERE user_id = ? AND event_type = 'SRS_REVIEW_COMPLETED'",
+				Integer.class, user.getId())).isEqualTo(2);
+		assertThat(jdbc.queryForObject("SELECT current_progress FROM user_daily_missions WHERE user_id = ? AND code = 'STUDY_5_CARDS'",
+				Integer.class, user.getId())).as("one card").isEqualTo(1);
+	}
+
+	@Test
 	void studyTenCardsGoesOnlyToALearnerWithTenCardsToday() { // PD-DM-12, HAS_STUDY_CARDS_FOR_TARGET (daily_mission.md §4.3)
 		jdbc.update("UPDATE mission_templates SET is_active = (code = 'STUDY_10_CARDS')"
 				+ " WHERE code IN ('STUDY_5_CARDS', 'STUDY_10_CARDS')");

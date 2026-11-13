@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import vn.ptit.snapvocab.security.SecurityUtils;
@@ -32,9 +33,10 @@ public class StudyController {
 	public ResponseEntity<ReviewResultDTO> submitRating(
 			@PathVariable Long topicId,
 			@PathVariable Long topicItemId,
-			@Valid @RequestBody SubmitRatingRequest request) {
+			@Valid @RequestBody SubmitRatingRequest request,
+			@RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
 		return ResponseEntity.ok(studyService.submitRating(
-				currentUserId(), topicId, topicItemId, request.rating()));
+				currentUserId(), topicId, topicItemId, request.rating(), idempotencyKey));
 	}
 
 	private Long currentUserId() {

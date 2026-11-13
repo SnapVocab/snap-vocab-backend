@@ -5,10 +5,18 @@ import java.time.Instant;
 
 /** One persisted rating, published synchronously in the review transaction. */
 public record SrsReviewCompletedEvent(Long userId, Long collectionId, Long topicItemId,
-		int reviewNumber, Rating rating, Instant reviewedAt) {
+		int reviewNumber, Rating rating, Instant reviewedAt, String idempotencyKey) {
 
-	/** A card can be reviewed repeatedly; its locked, increasing reps identifies each accepted rating. */
+	/**
+	 * With an Idempotency-Key the client's key identifies the rating, so a retried POST finds it and replays.
+	 * Without one (older apps), the card's locked, increasing reps identifies each accepted rating.
+	 */
 	public String sourceKey() {
-		return "SRS_REVIEW_COMPLETED:" + userId + ":" + topicItemId + ":" + reviewNumber;
+		return idempotencyKey != null ? keyedSourceKey(userId, idempotencyKey)
+				: "SRS_REVIEW_COMPLETED:" + userId + ":" + topicItemId + ":" + reviewNumber;
+	}
+
+	public static String keyedSourceKey(Long userId, String idempotencyKey) {
+		return "SRS_REVIEW_COMPLETED:" + userId + ":KEY:" + idempotencyKey;
 	}
 }
