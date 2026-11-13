@@ -1,10 +1,12 @@
 package vn.ptit.snapvocab.common.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
+import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -262,17 +264,39 @@ public class GlobalExceptionHandler {
 		return ResponseEntity.badRequest().body(response);
 	}
 
-	/** Constraint races that survive service-level handling; never leak SQL to the client. */
+	/**
+	 * Only a duplicate key is a race worth retrying (409). CHECK, FK, NOT NULL or too-long data is a
+	 * server bug (500), so it is not masked as "busy". Never leak SQL to the client.
+	 */
 	@ExceptionHandler(DataIntegrityViolationException.class)
-	public ResponseEntity<RestResponse<Object>> handleDataIntegrity(DataIntegrityViolationException ex) {
+	public ResponseEntity<RestResponse<Object>> handleDataIntegrity(DataIntegrityViolationException ex,
+			HttpServletRequest request) {
 
-		log.warn("Data integrity violation: {}", ex.getMostSpecificCause().getMessage());
+		if (!isDuplicateKey(ex)) {
+			log.error("Data integrity violation for {} {}", request.getMethod(), request.getRequestURI(), ex);
+			RestResponse<Object> response = RestResponse.builder()
+					.statusCode(500)
+					.error("INTERNAL_ERROR")
+					.build();
+			return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+		}
+		log.warn("Duplicate key: {}", ex.getMostSpecificCause().getMessage());
 		RestResponse<Object> response = RestResponse.builder()
 				.statusCode(409)
 				.error("CONCURRENT_MODIFICATION")
 				.build();
 
 		return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+	}
+
+	/** MySQL ER_DUP_ENTRY (1062); every integrity error shares SQLState 23000, so the vendor code decides. */
+	static boolean isDuplicateKey(Throwable ex) {
+		for (Throwable t = ex; t != null; t = t.getCause()) {
+			if (t instanceof DuplicateKeyException || (t instanceof SQLException sql && sql.getErrorCode() == 1062)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/** Unexpected failure: a fixed code for the client, the details only in the server log. */
