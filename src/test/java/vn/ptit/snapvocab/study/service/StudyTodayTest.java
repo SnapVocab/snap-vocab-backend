@@ -56,6 +56,8 @@ class StudyTodayTest {
 
 	@Autowired
 	StudyService studyService;
+	@Autowired
+	vn.ptit.snapvocab.progress.service.ProgressService progressService;
     @Autowired
     CollectionStudySettingsService collectionSettings;
 	@Autowired
@@ -107,6 +109,11 @@ class StudyTodayTest {
 		assertThat(today.sessionCount()).isEqualTo(2);
 		assertThat(today.studiedToday()).isEqualTo(2);
 		assertThat(today.totalWords()).as("own 2 + started system 2; untouched system excluded").isEqualTo(4);
+		// Progress counts the same library: a studied system card is in both learned and total (no "learned 3 / 1").
+		var summary = progressService.getSummary(user.getId());
+		assertThat(summary.totalWords()).isEqualTo(today.totalWords());
+		assertThat(summary.learnedCount()).isEqualTo(2).isLessThanOrEqualTo(summary.totalWords());
+		assertThat(progressService.getHomeWidget(user.getId()).totalWords()).isEqualTo(4);
 
 		assertThat(studyService.getTodayQueue(user.getId()).cards()).extracting(StudyCardDTO::collectionName)
 				.containsExactlyInAnyOrder("own", "started system");
