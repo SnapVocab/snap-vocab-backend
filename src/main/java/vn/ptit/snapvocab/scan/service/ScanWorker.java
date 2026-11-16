@@ -9,6 +9,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -43,6 +44,7 @@ public class ScanWorker {
 	private final AiDetectionService aiDetectionService;
 	private final ScanResultAssembler resultAssembler;
 	private final ScanDetectionRecorder detectionRecorder;
+	private final ScanNotificationService scanNotificationService;
 	private final ObjectMapper objectMapper;
 	private final TransactionTemplate transactionTemplate;
 	private final Clock clock;
@@ -51,11 +53,21 @@ public class ScanWorker {
 			AiDetectionService aiDetectionService, ScanResultAssembler resultAssembler,
 			ScanDetectionRecorder detectionRecorder, ObjectMapper objectMapper,
 			PlatformTransactionManager transactionManager, Clock clock) {
+		this(scanRequestRepository, storageService, aiDetectionService, resultAssembler,
+				detectionRecorder, null, objectMapper, transactionManager, clock);
+	}
+
+	@Autowired
+	public ScanWorker(ScanRequestRepository scanRequestRepository, StorageService storageService,
+			AiDetectionService aiDetectionService, ScanResultAssembler resultAssembler,
+			ScanDetectionRecorder detectionRecorder, ScanNotificationService scanNotificationService,
+			ObjectMapper objectMapper, PlatformTransactionManager transactionManager, Clock clock) {
 		this.scanRequestRepository = scanRequestRepository;
 		this.storageService = storageService;
 		this.aiDetectionService = aiDetectionService;
 		this.resultAssembler = resultAssembler;
 		this.detectionRecorder = detectionRecorder;
+		this.scanNotificationService = scanNotificationService;
 		this.objectMapper = objectMapper;
 		this.transactionTemplate = new TransactionTemplate(transactionManager);
 		this.clock = clock;
@@ -138,7 +150,7 @@ public class ScanWorker {
 					resultAssembler.filter(rawDetections != null ? rawDetections : List.of()));
 			String json = objectMapper.writeValueAsString(detections);
 			Set<String> knownWords = detectionRecorder.knownWords(detections.detections());
-			finish(requestId, ScanStatus.PROCESSING, r -> {
+			ScanRequest savedJob = finish(requestId, ScanStatus.PROCESSING, r -> {
 				r.setStatus(ScanStatus.DONE);
 				r.setResultJson(json);
 				r.setDetectionCount(detections.detections().size());
@@ -147,6 +159,13 @@ public class ScanWorker {
 				// Admin label stats; skipped with the rest when the sweeper finished the job first.
 				detectionRecorder.save(r, detections.detections(), knownWords);
 			});
+			if (savedJob != null && scanNotificationService != null) {
+				try {
+					scanNotificationService.notifyScanCompleted(savedJob);
+				} catch (RuntimeException e) {
+					log.warn("Failed to send completion notification for scan {}", requestId, e);
+				}
+			}
 		} catch (JsonProcessingException e) {
 			log.error("Scan {} failed to serialize detections", requestId, e);
 			fail(requestId, ScanErrorCode.AI_ERROR, e.getMessage());
@@ -240,21 +259,22 @@ public class ScanWorker {
 	 * Moves the job out of {@code expected}, unless someone else (the sweeper)
 	 * already did.
 	 */
-	private void finish(String requestId, ScanStatus expected, Consumer<ScanRequest> update) {
+	private ScanRequest finish(String requestId, ScanStatus expected, Consumer<ScanRequest> update) {
 		try {
-			transactionTemplate.executeWithoutResult(status -> {
+			return transactionTemplate.execute(status -> {
 				ScanRequest job = scanRequestRepository.findById(requestId).orElse(null);
 				if (job == null || job.getStatus() != expected) {
 					log.warn("Scan {} result dropped: already {}", requestId,
 							job == null ? "deleted" : job.getStatus());
-					return;
+					return null;
 				}
 				update.accept(job);
 				job.setFinishedAt(clock.instant());
-				scanRequestRepository.save(job);
+				return scanRequestRepository.save(job);
 			});
 		} catch (ObjectOptimisticLockingFailureException e) {
 			log.warn("Scan {} result dropped: the sweeper finished it first", requestId);
+			return null;
 		}
 	}
 

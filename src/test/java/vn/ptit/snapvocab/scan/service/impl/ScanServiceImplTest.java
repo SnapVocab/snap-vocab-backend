@@ -151,12 +151,14 @@ class ScanServiceImplTest {
 		ScanDetectionsDTO stored = new ScanDetectionsDTO(640, 480, List.of(detection()));
 		done.setResultJson(objectMapper.writeValueAsString(stored));
 		when(scanRequestRepository.findByIdAndUser_Id("req-1", USER_ID)).thenReturn(Optional.of(done));
+		when(storageService.createDownloadUrl(KEY)).thenReturn("https://storage/signed");
 		ScanResultDTO assembled = ScanResultDTO.builder().imageWidth(640).items(List.of()).build();
 		when(resultAssembler.assemble(stored)).thenReturn(assembled);
 
 		ScanStatusDTO status = service.getStatus("req-1");
 
 		assertThat(status.getStatus()).isEqualTo(ScanStatus.DONE);
+		assertThat(status.getImageUrl()).isEqualTo("https://storage/signed");
 		assertThat(status.getResult()).isSameAs(assembled);
 	}
 
