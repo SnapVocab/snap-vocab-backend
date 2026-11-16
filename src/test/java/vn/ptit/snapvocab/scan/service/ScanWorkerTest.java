@@ -20,7 +20,6 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -69,8 +68,9 @@ class ScanWorkerTest {
 
 	@Test
 	void processStoresBoxesAndModelInfoOnSuccess() throws Exception {
-		when(storageService.download(KEY)).thenReturn(new byte[] {1, 2});
-		when(aiDetectionService.detect(any(), eq("req-1"))).thenReturn(response(detection("cup")));
+		when(storageService.createDownloadUrl(KEY)).thenReturn("https://storage/signed");
+		when(aiDetectionService.detectByUrl("https://storage/signed", "req-1"))
+				.thenReturn(response(detection("cup")));
 
 		worker.process("req-1");
 
@@ -86,22 +86,21 @@ class ScanWorkerTest {
 	}
 
 	@Test
-	void processSendsImageTypedByItsKeyExtension() {
-		when(storageService.download(KEY)).thenReturn(new byte[] {1, 2});
-		when(aiDetectionService.detect(any(), eq("req-1"))).thenReturn(response());
+	void processSendsPresignedDownloadUrlWithoutDownloadingBytes() {
+		when(storageService.createDownloadUrl(KEY)).thenReturn("https://storage/signed");
+		when(aiDetectionService.detectByUrl("https://storage/signed", "req-1")).thenReturn(response());
 
 		worker.process("req-1");
 
-		ArgumentCaptor<ScanImage> image = ArgumentCaptor.forClass(ScanImage.class);
-		verify(aiDetectionService).detect(image.capture(), eq("req-1"));
-		assertThat(image.getValue().contentType()).isEqualTo("image/png");
-		assertThat(image.getValue().filename()).isEqualTo("abc.png");
+		verify(storageService).createDownloadUrl(KEY);
+		verify(aiDetectionService).detectByUrl("https://storage/signed", "req-1");
+		verify(storageService, never()).download(any());
 	}
 
 	@Test
 	void processRecordsAiErrorCodeOnFailure() {
-		when(storageService.download(KEY)).thenReturn(new byte[] {1, 2});
-		when(aiDetectionService.detect(any(), eq("req-1")))
+		when(storageService.createDownloadUrl(KEY)).thenReturn("https://storage/signed");
+		when(aiDetectionService.detectByUrl("https://storage/signed", "req-1"))
 				.thenThrow(new ScanException(ScanErrorCode.AI_TIMEOUT, "slow"));
 
 		worker.process("req-1");
@@ -113,7 +112,7 @@ class ScanWorkerTest {
 
 	@Test
 	void processTurnsUnexpectedErrorsIntoAiError() {
-		when(storageService.download(KEY)).thenThrow(new RuntimeException("storage down"));
+		when(storageService.createDownloadUrl(KEY)).thenThrow(new RuntimeException("storage down"));
 
 		worker.process("req-1");
 
@@ -133,8 +132,8 @@ class ScanWorkerTest {
 
 	@Test
 	void lateResultDoesNotOverwriteASweptJob() {
-		when(storageService.download(KEY)).thenReturn(new byte[] {1, 2});
-		when(aiDetectionService.detect(any(), eq("req-1"))).thenAnswer(inv -> {
+		when(storageService.createDownloadUrl(KEY)).thenReturn("https://storage/signed");
+		when(aiDetectionService.detectByUrl("https://storage/signed", "req-1")).thenAnswer(inv -> {
 			job.setStatus(ScanStatus.FAILED); // the sweeper got there while the AI was running
 			job.setErrorCode(ScanErrorCode.INTERRUPTED);
 			return response(detection("cup"));
