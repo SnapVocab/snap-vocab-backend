@@ -19,6 +19,8 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import vn.ptit.snapvocab.scan.config.AiServiceProperties;
+import vn.ptit.snapvocab.scan.domain.dto.scan.AiDetectAsyncRequestDTO;
+import vn.ptit.snapvocab.scan.domain.dto.scan.AiDetectAsyncResponseDTO;
 import vn.ptit.snapvocab.scan.domain.dto.scan.AiDetectResponseDTO;
 import vn.ptit.snapvocab.scan.domain.dto.scan.AiDetectUrlRequestDTO;
 import vn.ptit.snapvocab.scan.domain.dto.scan.AiErrorResponseDTO;
@@ -62,11 +64,22 @@ public class AiDetectionServiceImpl implements AiDetectionService {
 		return response;
 	}
 
+	@Override
+	public boolean isAsyncEnabled() {
+		return StringUtils.hasText(properties.getCallbackUrl());
+	}
+
+	@Override
+	public void submitByUrl(String imageUrl, String requestId) {
+		AiDetectAsyncResponseDTO response = sendWithRetries(() -> sendAsync(imageUrl, requestId), requestId);
+		log.info("scan request_id={} ai_status={} mode=async", requestId, response.status());
+	}
+
 	/**
 	 * A scaled-to-zero endpoint can fail a request while its worker is still booting,
 	 * so "not there yet" is retried; anything the AI service itself decided is final.
 	 */
-	private AiDetectResponseDTO sendWithRetries(Supplier<AiDetectResponseDTO> call, String requestId) {
+	private <T> T sendWithRetries(Supplier<T> call, String requestId) {
 		for (int attempt = 0;; attempt++) {
 			try {
 				return call.get();
@@ -96,18 +109,38 @@ public class AiDetectionServiceImpl implements AiDetectionService {
 				.filename(image.filename())
 				.contentType(MediaType.parseMediaType(image.contentType()));
 
-		return executePost("/api/v1/detect", MediaType.MULTIPART_FORM_DATA, body.build(), requestId);
+		AiDetectResponseDTO response = executePost(
+				"/api/v1/detect", MediaType.MULTIPART_FORM_DATA, body.build(), AiDetectResponseDTO.class, requestId);
+		if (response == null || response.detections() == null) {
+			throw new ScanException(ScanErrorCode.AI_ERROR, "Empty AI response for request " + requestId);
+		}
+		return response;
 	}
 
 	private AiDetectResponseDTO sendUrl(String imageUrl, String requestId) {
-		return executePost("/api/v1/detect-url", MediaType.APPLICATION_JSON,
-				new AiDetectUrlRequestDTO(imageUrl), requestId);
+		AiDetectResponseDTO response = executePost(
+				"/api/v1/detect-url", MediaType.APPLICATION_JSON,
+				new AiDetectUrlRequestDTO(imageUrl), AiDetectResponseDTO.class, requestId);
+		if (response == null || response.detections() == null) {
+			throw new ScanException(ScanErrorCode.AI_ERROR, "Empty AI response for request " + requestId);
+		}
+		return response;
 	}
 
-	private AiDetectResponseDTO executePost(String uri, MediaType contentType, Object body, String requestId) {
-		AiDetectResponseDTO response;
+	private AiDetectAsyncResponseDTO sendAsync(String imageUrl, String requestId) {
+		AiDetectAsyncResponseDTO response = executePost(
+				"/api/v1/detect-async", MediaType.APPLICATION_JSON,
+				new AiDetectAsyncRequestDTO(requestId, imageUrl, properties.getCallbackUrl()),
+				AiDetectAsyncResponseDTO.class, requestId);
+		if (response == null || !StringUtils.hasText(response.status())) {
+			throw new ScanException(ScanErrorCode.AI_ERROR, "Empty AI async response for request " + requestId);
+		}
+		return response;
+	}
+
+	private <T> T executePost(String uri, MediaType contentType, Object body, Class<T> responseType, String requestId) {
 		try {
-			response = aiServiceRestClient.post()
+			return aiServiceRestClient.post()
 					.uri(uri)
 					.contentType(contentType)
 					.headers(h -> {
@@ -124,7 +157,7 @@ public class AiDetectionServiceImpl implements AiDetectionService {
 					.onStatus(HttpStatusCode::isError, (req, res) -> {
 						throw toScanException(res, requestId);
 					})
-					.body(AiDetectResponseDTO.class);
+					.body(responseType);
 		} catch (ResourceAccessException e) {
 			throw isReadTimeout(e)
 					? new ScanException(ScanErrorCode.AI_TIMEOUT,
@@ -135,11 +168,6 @@ public class AiDetectionServiceImpl implements AiDetectionService {
 			throw new ScanException(ScanErrorCode.AI_ERROR,
 					"Unreadable AI response for request " + requestId, e);
 		}
-
-		if (response == null || response.detections() == null) {
-			throw new ScanException(ScanErrorCode.AI_ERROR, "Empty AI response for request " + requestId);
-		}
-		return response;
 	}
 
 	private ScanException toScanException(ClientHttpResponse res, String requestId) throws IOException {
@@ -152,6 +180,8 @@ public class AiDetectionServiceImpl implements AiDetectionService {
 		ScanErrorCode code;
 		if ("INVALID_IMAGE".equals(aiCode)) {
 			code = ScanErrorCode.INVALID_IMAGE;
+		} else if ("QUEUE_FULL".equals(aiCode)) {
+			code = ScanErrorCode.AI_QUEUE_FULL;
 		} else if ("MODEL_NOT_READY".equals(aiCode) || status.value() == 503 || isGatewayError(status, detail)) {
 			code = ScanErrorCode.AI_UNAVAILABLE;
 		} else {

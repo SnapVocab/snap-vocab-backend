@@ -34,6 +34,22 @@ public class AiServiceProperties {
 	 */
 	private int maxInputPx = 1400;
 
+	/**
+	 * Shared secret for HMAC-SHA256 verification of /api/webhooks/scan callbacks.
+	 * Falls back to serviceToken when blank.
+	 */
+	private String webhookSecret;
+
+	/** Maximum age/skew (in seconds) accepted for X-Webhook-Timestamp. */
+	private long webhookToleranceSeconds = 300;
+
+	/** Public backend URL where the AI service posts webhook results. */
+	private String callbackUrl;
+
+	public String effectiveWebhookSecret() {
+		return (webhookSecret != null && !webhookSecret.isBlank()) ? webhookSecret : serviceToken;
+	}
+
 	/** Longest one scan can spend calling the AI service, retries included. */
 	public long maxDetectTimeMs() {
 		return readTimeoutMs * (coldStartRetries + 1L) + retryDelayMs * coldStartRetries;
