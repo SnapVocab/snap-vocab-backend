@@ -118,6 +118,9 @@ public class ScanServiceImpl implements ScanService {
 				.errorCode(job.getErrorCode())
 				.createdAt(job.getCreatedAt())
 				.finishedAt(job.getFinishedAt())
+				.imageUrl(job.getStatus() == ScanStatus.DONE && job.getObjectKey() != null
+						? storageService.createDownloadUrl(job.getObjectKey())
+						: null)
 				.result(job.getStatus() == ScanStatus.DONE ? readResult(job) : null)
 				.build();
 	}

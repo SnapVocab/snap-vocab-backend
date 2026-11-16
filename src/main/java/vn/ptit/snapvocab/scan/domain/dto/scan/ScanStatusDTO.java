@@ -25,6 +25,7 @@ public class ScanStatusDTO {
 	private ScanErrorCode errorCode;
 	private Instant createdAt;
 	private Instant finishedAt;
+	private String imageUrl;
 	private ScanResultDTO result;
 }
 
