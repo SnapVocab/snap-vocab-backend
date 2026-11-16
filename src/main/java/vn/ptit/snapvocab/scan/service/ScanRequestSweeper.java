@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -13,6 +14,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.util.StringUtils;
 import vn.ptit.snapvocab.scan.config.AiServiceProperties;
 import vn.ptit.snapvocab.scan.config.ScanProperties;
 import vn.ptit.snapvocab.scan.domain.ScanRequest;
@@ -51,7 +53,10 @@ public class ScanRequestSweeper {
 	/** The queue is in memory, so after a restart every unfinished job is gone. Single-instance assumption. */
 	@EventListener(ApplicationReadyEvent.class)
 	public void failJobsLostOnRestart() {
-		List<ScanRequest> lost = scanRequestRepository.findByStatusIn(ScanStatus.ACTIVE);
+		Collection<ScanStatus> lostStatuses = StringUtils.hasText(aiServiceProperties.getCallbackUrl())
+				? List.of(ScanStatus.PENDING)
+				: ScanStatus.ACTIVE;
+		List<ScanRequest> lost = scanRequestRepository.findByStatusIn(lostStatuses);
 		lost.forEach(job -> failIfStillActive(job.getId(), "Lost on server restart"));
 		if (!lost.isEmpty()) {
 			log.warn("Marked {} unfinished scans INTERRUPTED after restart", lost.size());

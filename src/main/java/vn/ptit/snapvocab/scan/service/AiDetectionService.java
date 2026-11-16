@@ -20,5 +20,17 @@ public interface AiDetectionService {
 	 * @throws vn.ptit.snapvocab.scan.exception.ScanException on any failure
 	 */
 	AiDetectResponseDTO detectByUrl(String imageUrl, String requestId);
+
+	default boolean isAsyncEnabled() {
+		return false;
+	}
+
+	/**
+	 * Dispatches a scan job asynchronously to the AI service with the configured webhook callback URL.
+	 *
+	 * @param requestId sent as request_id and X-Request-Id
+	 * @throws vn.ptit.snapvocab.scan.exception.ScanException on dispatch failure
+	 */
+	void submitByUrl(String imageUrl, String requestId);
 }
 
