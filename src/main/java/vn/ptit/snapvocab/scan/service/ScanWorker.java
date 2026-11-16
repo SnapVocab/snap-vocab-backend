@@ -69,7 +69,7 @@ public class ScanWorker {
 				return;
 			}
 			try {
-				runDetection(requestId, () -> loadImage(job));
+				runDetection(requestId, () -> detectFromStorage(job));
 			} catch (ScanException e) {
 				// already recorded on the job; the app reads it by polling
 			}
@@ -87,7 +87,7 @@ public class ScanWorker {
 	public AiDetectResponseDTO runSync(String requestId, ScanImage image) {
 		MDC.put("requestId", requestId);
 		try {
-			return runDetection(requestId, () -> image);
+			return runDetection(requestId, () -> aiDetectionService.detect(image, requestId));
 		} finally {
 			MDC.remove("requestId");
 		}
@@ -105,9 +105,9 @@ public class ScanWorker {
 		});
 	}
 
-	private AiDetectResponseDTO runDetection(String requestId, Supplier<ScanImage> image) {
+	private AiDetectResponseDTO runDetection(String requestId, Supplier<AiDetectResponseDTO> detector) {
 		try {
-			AiDetectResponseDTO response = aiDetectionService.detect(image.get(), requestId);
+			AiDetectResponseDTO response = detector.get();
 			ScanDetectionsDTO detections = new ScanDetectionsDTO(
 					response.imageWidth(), response.imageHeight(), resultAssembler.filter(response.detections()));
 			String json = objectMapper.writeValueAsString(detections);
@@ -150,11 +150,13 @@ public class ScanWorker {
 		});
 	}
 
-	private ScanImage loadImage(ScanRequest job) {
+	private AiDetectResponseDTO detectFromStorage(ScanRequest job) {
 		String key = job.getObjectKey();
-		String contentType = ScanObjectKeys.contentTypeOf(key)
-				.orElseThrow(() -> new ScanException(ScanErrorCode.INVALID_IMAGE, "Unsupported key " + key));
-		return new ScanImage(storageService.download(key), ScanObjectKeys.filenameOf(key), contentType);
+		if (key == null || ScanObjectKeys.contentTypeOf(key).isEmpty()) {
+			throw new ScanException(ScanErrorCode.INVALID_IMAGE, "Unsupported key " + key);
+		}
+		String downloadUrl = storageService.createDownloadUrl(key);
+		return aiDetectionService.detectByUrl(downloadUrl, job.getId());
 	}
 
 	private void fail(String requestId, ScanErrorCode code, String message) {

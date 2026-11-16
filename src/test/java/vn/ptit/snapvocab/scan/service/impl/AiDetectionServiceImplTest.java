@@ -3,6 +3,7 @@ package vn.ptit.snapvocab.scan.service.impl;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.ExpectedCount.once;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.headerDoesNotExist;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
@@ -50,6 +51,57 @@ class AiDetectionServiceImplTest {
 	private ResponseActions expectDetect() {
 		return server.expect(once(), requestTo("http://ai-service/api/v1/detect"))
 				.andExpect(method(HttpMethod.POST));
+	}
+
+	private ResponseActions expectDetectUrl() {
+		return server.expect(once(), requestTo("http://ai-service/api/v1/detect-url"))
+				.andExpect(method(HttpMethod.POST));
+	}
+
+	@Test
+	void detectByUrlParsesContractAndSendsJsonBodyAndHeaders() {
+		properties.setServiceToken("s3cret");
+		properties.setApiKey("rp_key");
+		expectDetectUrl()
+				.andExpect(header("X-Request-Id", "req-1"))
+				.andExpect(header("X-Service-Token", "s3cret"))
+				.andExpect(header("Authorization", "Bearer rp_key"))
+				.andExpect(content().contentType(MediaType.APPLICATION_JSON))
+				.andExpect(content().json("{\"image_url\":\"https://storage/signed\"}"))
+				.andRespond(withSuccess(OK_BODY, MediaType.APPLICATION_JSON));
+
+		AiDetectResponseDTO response = service.detectByUrl("https://storage/signed", "req-1");
+
+		assertThat(response.modelVersion()).isEqualTo("Florence-2-base/od+self");
+		assertThat(response.detections()).singleElement()
+				.extracting(d -> d.label())
+				.isEqualTo("coffee mug");
+		server.verify();
+	}
+
+	@Test
+	void detectByUrlRetriesWhileWorkerIsBooting() {
+		properties.setColdStartRetries(1);
+		properties.setRetryDelayMs(0);
+		expectDetectUrl().andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
+		expectDetectUrl().andRespond(withSuccess(OK_BODY, MediaType.APPLICATION_JSON));
+
+		assertThat(service.detectByUrl("https://storage/signed", "req-1").modelVersion())
+				.isEqualTo("Florence-2-base/od+self");
+		server.verify();
+	}
+
+	@Test
+	void detectByUrlMapsAiErrors() {
+		expectDetectUrl().andRespond(withStatus(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+				.contentType(MediaType.APPLICATION_JSON)
+				.body("{\"error\":{\"code\":\"INVALID_IMAGE\",\"message\":\"bad\"}}"));
+
+		assertThatThrownBy(() -> service.detectByUrl("https://storage/signed", "req-1"))
+				.isInstanceOf(ScanException.class)
+				.extracting(e -> ((ScanException) e).getCode())
+				.isEqualTo(ScanErrorCode.INVALID_IMAGE);
+		server.verify();
 	}
 
 	@Test

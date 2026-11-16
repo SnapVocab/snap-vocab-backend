@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.util.Locale;
+import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ByteArrayResource;
@@ -19,6 +20,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import vn.ptit.snapvocab.scan.config.AiServiceProperties;
 import vn.ptit.snapvocab.scan.domain.dto.scan.AiDetectResponseDTO;
+import vn.ptit.snapvocab.scan.domain.dto.scan.AiDetectUrlRequestDTO;
 import vn.ptit.snapvocab.scan.domain.dto.scan.AiErrorResponseDTO;
 import vn.ptit.snapvocab.scan.domain.dto.scan.ScanImage;
 import vn.ptit.snapvocab.scan.domain.enumeration.ScanErrorCode;
@@ -45,10 +47,18 @@ public class AiDetectionServiceImpl implements AiDetectionService {
 	@Override
 	public AiDetectResponseDTO detect(ScanImage original, String requestId) {
 		ScanImage image = ScanImageDownscaler.fit(original, properties.getMaxInputPx());
-		AiDetectResponseDTO response = sendWithRetries(image, requestId);
+		AiDetectResponseDTO response = sendWithRetries(() -> send(image, requestId), requestId);
 		log.info("scan request_id={} model={} objects={} ai_time_ms={} sent_bytes={} original_bytes={}",
 				requestId, response.modelVersion(), response.detections().size(), response.processingTimeMs(),
 				image.bytes().length, original.bytes().length);
+		return response;
+	}
+
+	@Override
+	public AiDetectResponseDTO detectByUrl(String imageUrl, String requestId) {
+		AiDetectResponseDTO response = sendWithRetries(() -> sendUrl(imageUrl, requestId), requestId);
+		log.info("scan request_id={} model={} objects={} ai_time_ms={} mode=url",
+				requestId, response.modelVersion(), response.detections().size(), response.processingTimeMs());
 		return response;
 	}
 
@@ -56,10 +66,10 @@ public class AiDetectionServiceImpl implements AiDetectionService {
 	 * A scaled-to-zero endpoint can fail a request while its worker is still booting,
 	 * so "not there yet" is retried; anything the AI service itself decided is final.
 	 */
-	private AiDetectResponseDTO sendWithRetries(ScanImage image, String requestId) {
+	private AiDetectResponseDTO sendWithRetries(Supplier<AiDetectResponseDTO> call, String requestId) {
 		for (int attempt = 0;; attempt++) {
 			try {
-				return send(image, requestId);
+				return call.get();
 			} catch (ScanException e) {
 				boolean notThereYet = e.getCode() == ScanErrorCode.AI_UNAVAILABLE
 						|| e.getCode() == ScanErrorCode.AI_TIMEOUT;
@@ -86,11 +96,20 @@ public class AiDetectionServiceImpl implements AiDetectionService {
 				.filename(image.filename())
 				.contentType(MediaType.parseMediaType(image.contentType()));
 
+		return executePost("/api/v1/detect", MediaType.MULTIPART_FORM_DATA, body.build(), requestId);
+	}
+
+	private AiDetectResponseDTO sendUrl(String imageUrl, String requestId) {
+		return executePost("/api/v1/detect-url", MediaType.APPLICATION_JSON,
+				new AiDetectUrlRequestDTO(imageUrl), requestId);
+	}
+
+	private AiDetectResponseDTO executePost(String uri, MediaType contentType, Object body, String requestId) {
 		AiDetectResponseDTO response;
 		try {
 			response = aiServiceRestClient.post()
-					.uri("/api/v1/detect")
-					.contentType(MediaType.MULTIPART_FORM_DATA)
+					.uri(uri)
+					.contentType(contentType)
 					.headers(h -> {
 						h.set("X-Request-Id", requestId);
 						if (StringUtils.hasText(properties.getServiceToken())) {
@@ -100,7 +119,7 @@ public class AiDetectionServiceImpl implements AiDetectionService {
 							h.setBearerAuth(properties.getApiKey());
 						}
 					})
-					.body(body.build())
+					.body(body)
 					.retrieve()
 					.onStatus(HttpStatusCode::isError, (req, res) -> {
 						throw toScanException(res, requestId);
