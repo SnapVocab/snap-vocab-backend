@@ -58,6 +58,46 @@ class AiDetectionServiceImplTest {
 				.andExpect(method(HttpMethod.POST));
 	}
 
+	private ResponseActions expectDetectAsync() {
+		return server.expect(once(), requestTo("http://ai-service/api/v1/detect-async"))
+				.andExpect(method(HttpMethod.POST));
+	}
+
+	@Test
+	void submitByUrlSendsAsyncContractAndCallbackUrl() {
+		properties.setServiceToken("s3cret");
+		properties.setCallbackUrl("https://backend/api/webhooks/scan");
+		assertThat(service.isAsyncEnabled()).isTrue();
+		expectDetectAsync()
+				.andExpect(header("X-Request-Id", "req-1"))
+				.andExpect(header("X-Service-Token", "s3cret"))
+				.andExpect(content().contentType(MediaType.APPLICATION_JSON))
+				.andExpect(content().json(
+						"{\"request_id\":\"req-1\",\"image_url\":\"https://storage/signed\","
+								+ "\"callback_url\":\"https://backend/api/webhooks/scan\"}"))
+				.andRespond(withStatus(HttpStatus.ACCEPTED)
+						.contentType(MediaType.APPLICATION_JSON)
+						.body("{\"request_id\":\"req-1\",\"status\":\"QUEUED\"}"));
+
+		service.submitByUrl("https://storage/signed", "req-1");
+
+		server.verify();
+	}
+
+	@Test
+	void queueFullFromAiIsAiQueueFull() {
+		properties.setCallbackUrl("https://backend/api/webhooks/scan");
+		expectDetectAsync().andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE)
+				.contentType(MediaType.APPLICATION_JSON)
+				.body("{\"error\":{\"code\":\"QUEUE_FULL\",\"message\":\"busy\"}}"));
+
+		assertThatThrownBy(() -> service.submitByUrl("https://storage/signed", "req-1"))
+				.isInstanceOf(ScanException.class)
+				.extracting(e -> ((ScanException) e).getCode())
+				.isEqualTo(ScanErrorCode.AI_QUEUE_FULL);
+		server.verify();
+	}
+
 	@Test
 	void detectByUrlParsesContractAndSendsJsonBodyAndHeaders() {
 		properties.setServiceToken("s3cret");

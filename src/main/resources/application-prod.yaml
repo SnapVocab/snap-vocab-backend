@@ -75,3 +75,5 @@ ai-service:
   # Extra attempts while a Serverless worker boots. Keep read-timeout-ms above RunPod's 2 min "no worker" limit then.
   cold-start-retries: ${AI_SERVICE_COLD_START_RETRIES:0}
   max-upload-mb: 10
+  webhook-secret: ${AI_WEBHOOK_SECRET:}
+  callback-url: ${AI_WEBHOOK_CALLBACK_URL:}

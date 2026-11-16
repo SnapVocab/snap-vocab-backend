@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -29,6 +30,7 @@ import vn.ptit.snapvocab.scan.domain.dto.scan.BoundingBoxDTO;
 import vn.ptit.snapvocab.scan.domain.dto.scan.DetectionDTO;
 import vn.ptit.snapvocab.scan.domain.dto.scan.ScanDetectionsDTO;
 import vn.ptit.snapvocab.scan.domain.dto.scan.ScanImage;
+import vn.ptit.snapvocab.scan.domain.dto.scan.ScanWebhookPayloadDTO;
 import vn.ptit.snapvocab.scan.domain.enumeration.ScanErrorCode;
 import vn.ptit.snapvocab.scan.domain.enumeration.ScanStatus;
 import vn.ptit.snapvocab.scan.repository.ScanRequestRepository;
@@ -168,6 +170,83 @@ class ScanWorkerTest {
 
 		assertThat(job.getStatus()).isEqualTo(ScanStatus.FAILED);
 		assertThat(job.getErrorCode()).isEqualTo(ScanErrorCode.AI_QUEUE_FULL);
+	}
+
+	@Test
+	void handleWebhookStoresResultWhenDone() throws Exception {
+		job.setStatus(ScanStatus.PROCESSING);
+		ScanWebhookPayloadDTO payload = new ScanWebhookPayloadDTO(
+				"req-1", "DONE", "Florence-2-base/od+self", 1800L, 800, 600,
+				List.of(detection("cup")), null, null);
+
+		worker.handleWebhook(payload);
+
+		assertThat(job.getStatus()).isEqualTo(ScanStatus.DONE);
+		assertThat(job.getFinishedAt()).isEqualTo(NOW);
+		assertThat(job.getDetectionCount()).isEqualTo(1);
+		assertThat(job.getModelVersion()).isEqualTo("Florence-2-base/od+self");
+		assertThat(job.getProcessingTimeMs()).isEqualTo(1800L);
+		ScanDetectionsDTO stored = objectMapper.readValue(job.getResultJson(), ScanDetectionsDTO.class);
+		assertThat(stored.imageWidth()).isEqualTo(800);
+		assertThat(stored.detections()).extracting(DetectionDTO::label).containsExactly("cup");
+		verify(detectionRecorder).save(eq(job), eq(stored.detections()), any());
+	}
+
+	@Test
+	void handleWebhookMarksJobFailedWithMappedErrorCode() {
+		job.setStatus(ScanStatus.PROCESSING);
+		ScanWebhookPayloadDTO payload = new ScanWebhookPayloadDTO(
+				"req-1", "FAILED", null, 0L, 0, 0, null, "INVALID_IMAGE", "Could not decode");
+
+		worker.handleWebhook(payload);
+
+		assertThat(job.getStatus()).isEqualTo(ScanStatus.FAILED);
+		assertThat(job.getErrorCode()).isEqualTo(ScanErrorCode.INVALID_IMAGE);
+		assertThat(job.getErrorMessage()).isEqualTo("Could not decode");
+		assertThat(job.getFinishedAt()).isEqualTo(NOW);
+	}
+
+	@Test
+	void handleWebhookIsIdempotentWhenJobAlreadyDone() {
+		job.setStatus(ScanStatus.DONE);
+		job.setResultJson("{\"existing\":true}");
+		ScanWebhookPayloadDTO payload = new ScanWebhookPayloadDTO(
+				"req-1", "DONE", "Florence-2-base/od+self", 1800L, 800, 600,
+				List.of(detection("cup")), null, null);
+
+		worker.handleWebhook(payload);
+
+		assertThat(job.getStatus()).isEqualTo(ScanStatus.DONE);
+		assertThat(job.getResultJson()).isEqualTo("{\"existing\":true}");
+		verify(repository, never()).save(any());
+	}
+
+	@Test
+	void processDispatchesAsyncAndLeavesJobProcessingUntilWebhookArrives() {
+		when(aiDetectionService.isAsyncEnabled()).thenReturn(true);
+		when(storageService.createDownloadUrl(KEY)).thenReturn("https://storage/signed");
+
+		worker.process("req-1");
+
+		verify(aiDetectionService).submitByUrl("https://storage/signed", "req-1");
+		verify(aiDetectionService, never()).detectByUrl(any(), any());
+		assertThat(job.getStatus()).isEqualTo(ScanStatus.PROCESSING);
+		assertThat(job.getStartedAt()).isEqualTo(NOW);
+		assertThat(job.getFinishedAt()).isNull();
+	}
+
+	@Test
+	void processMarksJobFailedWhenAsyncDispatchFails() {
+		when(aiDetectionService.isAsyncEnabled()).thenReturn(true);
+		when(storageService.createDownloadUrl(KEY)).thenReturn("https://storage/signed");
+		doThrow(new ScanException(ScanErrorCode.AI_QUEUE_FULL, "queue full"))
+				.when(aiDetectionService).submitByUrl("https://storage/signed", "req-1");
+
+		worker.process("req-1");
+
+		assertThat(job.getStatus()).isEqualTo(ScanStatus.FAILED);
+		assertThat(job.getErrorCode()).isEqualTo(ScanErrorCode.AI_QUEUE_FULL);
+		assertThat(job.getFinishedAt()).isEqualTo(NOW);
 	}
 
 	private static AiDetectResponseDTO response(DetectionDTO... detections) {

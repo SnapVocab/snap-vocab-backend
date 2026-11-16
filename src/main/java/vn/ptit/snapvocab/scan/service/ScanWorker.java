@@ -3,6 +3,7 @@ package vn.ptit.snapvocab.scan.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
+import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -14,8 +15,10 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import vn.ptit.snapvocab.scan.domain.ScanRequest;
 import vn.ptit.snapvocab.scan.domain.dto.scan.AiDetectResponseDTO;
+import vn.ptit.snapvocab.scan.domain.dto.scan.DetectionDTO;
 import vn.ptit.snapvocab.scan.domain.dto.scan.ScanDetectionsDTO;
 import vn.ptit.snapvocab.scan.domain.dto.scan.ScanImage;
+import vn.ptit.snapvocab.scan.domain.dto.scan.ScanWebhookPayloadDTO;
 import vn.ptit.snapvocab.scan.domain.enumeration.ScanErrorCode;
 import vn.ptit.snapvocab.scan.domain.enumeration.ScanStatus;
 import vn.ptit.snapvocab.scan.repository.ScanRequestRepository;
@@ -69,7 +72,11 @@ public class ScanWorker {
 				return;
 			}
 			try {
-				runDetection(requestId, () -> detectFromStorage(job));
+				if (aiDetectionService.isAsyncEnabled()) {
+					dispatchAsync(job);
+				} else {
+					runDetection(requestId, () -> detectFromStorage(job));
+				}
 			} catch (ScanException e) {
 				// already recorded on the job; the app reads it by polling
 			}
@@ -105,28 +112,72 @@ public class ScanWorker {
 		});
 	}
 
-	private AiDetectResponseDTO runDetection(String requestId, Supplier<AiDetectResponseDTO> detector) {
+	public void handleWebhook(ScanWebhookPayloadDTO payload) {
+		String requestId = payload.requestId();
+		MDC.put("requestId", requestId);
 		try {
-			AiDetectResponseDTO response = detector.get();
+			if ("DONE".equalsIgnoreCase(payload.status())) {
+				complete(requestId, payload.modelVersion(), payload.processingTimeMs(),
+						payload.imageWidth(), payload.imageHeight(), payload.detections());
+			} else {
+				ScanErrorCode code = mapWebhookErrorCode(payload.errorCode());
+				String msg = payload.errorMessage() != null ? payload.errorMessage() : "AI webhook reported failure";
+				log.warn("Scan {} failed via webhook with {}: {}", requestId, code, msg);
+				fail(requestId, code, msg);
+			}
+		} finally {
+			MDC.remove("requestId");
+		}
+	}
+
+	public void complete(String requestId, String modelVersion, long processingTimeMs,
+			int imageWidth, int imageHeight, List<DetectionDTO> rawDetections) {
+		try {
 			ScanDetectionsDTO detections = new ScanDetectionsDTO(
-					response.imageWidth(), response.imageHeight(), resultAssembler.filter(response.detections()));
+					imageWidth, imageHeight,
+					resultAssembler.filter(rawDetections != null ? rawDetections : List.of()));
 			String json = objectMapper.writeValueAsString(detections);
 			Set<String> knownWords = detectionRecorder.knownWords(detections.detections());
 			finish(requestId, ScanStatus.PROCESSING, r -> {
 				r.setStatus(ScanStatus.DONE);
 				r.setResultJson(json);
 				r.setDetectionCount(detections.detections().size());
-				r.setModelVersion(response.modelVersion());
-				r.setProcessingTimeMs(response.processingTimeMs());
+				r.setModelVersion(modelVersion);
+				r.setProcessingTimeMs(processingTimeMs);
 				// Admin label stats; skipped with the rest when the sweeper finished the job first.
 				detectionRecorder.save(r, detections.detections(), knownWords);
 			});
+		} catch (JsonProcessingException e) {
+			log.error("Scan {} failed to serialize detections", requestId, e);
+			fail(requestId, ScanErrorCode.AI_ERROR, e.getMessage());
+			throw new ScanException(ScanErrorCode.AI_ERROR, "Scan " + requestId + " failed unexpectedly", e);
+		}
+	}
+
+	private static ScanErrorCode mapWebhookErrorCode(String aiCode) {
+		if ("INVALID_IMAGE".equals(aiCode)) {
+			return ScanErrorCode.INVALID_IMAGE;
+		}
+		if ("MODEL_NOT_READY".equals(aiCode)) {
+			return ScanErrorCode.AI_UNAVAILABLE;
+		}
+		if ("AI_TIMEOUT".equals(aiCode)) {
+			return ScanErrorCode.AI_TIMEOUT;
+		}
+		return ScanErrorCode.AI_ERROR;
+	}
+
+	private AiDetectResponseDTO runDetection(String requestId, Supplier<AiDetectResponseDTO> detector) {
+		try {
+			AiDetectResponseDTO response = detector.get();
+			complete(requestId, response.modelVersion(), response.processingTimeMs(),
+					response.imageWidth(), response.imageHeight(), response.detections());
 			return response;
 		} catch (ScanException e) {
 			log.warn("Scan {} failed with {}: {}", requestId, e.getCode(), e.getMessage());
 			fail(requestId, e.getCode(), e.getMessage());
 			throw e;
-		} catch (JsonProcessingException | RuntimeException e) {
+		} catch (RuntimeException e) {
 			log.error("Scan {} failed unexpectedly", requestId, e);
 			fail(requestId, ScanErrorCode.AI_ERROR, e.getMessage());
 			throw new ScanException(ScanErrorCode.AI_ERROR, "Scan " + requestId + " failed unexpectedly", e);
@@ -150,13 +201,31 @@ public class ScanWorker {
 		});
 	}
 
+	private void dispatchAsync(ScanRequest job) {
+		String requestId = job.getId();
+		try {
+			aiDetectionService.submitByUrl(resolveDownloadUrl(job), requestId);
+		} catch (ScanException e) {
+			log.warn("Scan {} async dispatch failed with {}: {}", requestId, e.getCode(), e.getMessage());
+			fail(requestId, e.getCode(), e.getMessage());
+			throw e;
+		} catch (RuntimeException e) {
+			log.error("Scan {} async dispatch failed unexpectedly", requestId, e);
+			fail(requestId, ScanErrorCode.AI_ERROR, e.getMessage());
+			throw new ScanException(ScanErrorCode.AI_ERROR, "Scan " + requestId + " failed unexpectedly", e);
+		}
+	}
+
 	private AiDetectResponseDTO detectFromStorage(ScanRequest job) {
+		return aiDetectionService.detectByUrl(resolveDownloadUrl(job), job.getId());
+	}
+
+	private String resolveDownloadUrl(ScanRequest job) {
 		String key = job.getObjectKey();
 		if (key == null || ScanObjectKeys.contentTypeOf(key).isEmpty()) {
 			throw new ScanException(ScanErrorCode.INVALID_IMAGE, "Unsupported key " + key);
 		}
-		String downloadUrl = storageService.createDownloadUrl(key);
-		return aiDetectionService.detectByUrl(downloadUrl, job.getId());
+		return storageService.createDownloadUrl(key);
 	}
 
 	private void fail(String requestId, ScanErrorCode code, String message) {

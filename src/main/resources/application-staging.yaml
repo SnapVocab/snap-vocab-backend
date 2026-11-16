@@ -53,6 +53,8 @@ ai-service:
   read-timeout-ms: ${STAGING_AI_SERVICE_READ_TIMEOUT_MS:60000}
   service-token: ${STAGING_AI_SERVICE_TOKEN:}
   max-upload-mb: 10
+  webhook-secret: ${STAGING_AI_WEBHOOK_SECRET:}
+  callback-url: ${STAGING_AI_WEBHOOK_CALLBACK_URL:}
 
 logging:
   level:

@@ -52,7 +52,8 @@ public class SecurityConfiguration {
 				"/api/auth/resend-code",
 				"/api/auth/forgot-password",
 				"/api/auth/reset-password",
-				"/api/auth/refresh"
+				"/api/auth/refresh",
+				"/api/webhooks/scan"
 		};
 
 		http
