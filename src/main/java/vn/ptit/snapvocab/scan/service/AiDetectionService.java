@@ -12,5 +12,13 @@ public interface AiDetectionService {
 	 * @throws vn.ptit.snapvocab.scan.exception.ScanException on any failure
 	 */
 	AiDetectResponseDTO detect(ScanImage image, String requestId);
+
+	/**
+	 * Sends a presigned storage URL instead of uploading bytes through the backend.
+	 *
+	 * @param requestId sent as X-Request-Id so AI-side logs line up with ours
+	 * @throws vn.ptit.snapvocab.scan.exception.ScanException on any failure
+	 */
+	AiDetectResponseDTO detectByUrl(String imageUrl, String requestId);
 }
 
