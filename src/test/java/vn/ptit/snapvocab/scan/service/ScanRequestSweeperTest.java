@@ -96,6 +96,21 @@ class ScanRequestSweeperTest {
 		assertThat(lost.getErrorCode()).isEqualTo(ScanErrorCode.INTERRUPTED);
 	}
 
+	@Test
+	void processingJobsSurviveRestartWhenAsyncWebhookEnabled() {
+		AiServiceProperties asyncProps = new AiServiceProperties();
+		asyncProps.setCallbackUrl("https://backend/api/webhooks/scan");
+		ScanRequestSweeper asyncSweeper = new ScanRequestSweeper(
+				repository, transactionManager, new ScanProperties(), asyncProps, Clock.fixed(NOW, ZoneOffset.UTC));
+		ScanRequest pending = job("p", ScanStatus.PENDING);
+		when(repository.findByStatusIn(List.of(ScanStatus.PENDING))).thenReturn(List.of(pending));
+
+		asyncSweeper.failJobsLostOnRestart();
+
+		verify(repository).findByStatusIn(List.of(ScanStatus.PENDING));
+		assertThat(pending.getStatus()).isEqualTo(ScanStatus.FAILED);
+	}
+
 	private ScanRequest job(String id, ScanStatus status) {
 		ScanRequest job = ScanRequest.builder().id(id).status(status).build();
 		lenient().when(repository.findById(id)).thenReturn(Optional.of(job));
