@@ -77,11 +77,19 @@ public class ScanQuotaService {
 			throw new ScanException(ScanErrorCode.AI_QUEUE_FULL, "Quota lock busy for user " + userId);
 		}
 		try {
-			return transactionTemplate.execute(status -> {
-				ScanQuotaDTO quota = quota(userId);
-				if (quota.remaining() <= 0) {
-					throw new ScanException(ScanErrorCode.QUOTA_EXCEEDED,
-							"Daily scan quota used up for user " + userId, quota, null);
+			ScanRequest reserved = transactionTemplate.execute(status -> {
+				if (quota(userId).remaining() <= 0) {
+					// Recorded for the Admin's "hết lượt" count (admin_overview_backend.md G1). FAILED never counts
+					// toward quota, so this row costs the user nothing.
+					scanRequestRepository.save(ScanRequest.builder()
+							.id(UUID.randomUUID().toString())
+							.user(userRepository.getReferenceById(userId))
+							.status(ScanStatus.FAILED)
+							.errorCode(ScanErrorCode.QUOTA_EXCEEDED)
+							.errorMessage("Daily scan quota used up")
+							.finishedAt(clock.instant())
+							.build());
+					return null;
 				}
 				return scanRequestRepository.save(ScanRequest.builder()
 						.id(UUID.randomUUID().toString())
@@ -91,6 +99,11 @@ public class ScanQuotaService {
 						.startedAt(initialStatus == ScanStatus.PROCESSING ? clock.instant() : null)
 						.build());
 			});
+			if (reserved == null) {
+				throw new ScanException(ScanErrorCode.QUOTA_EXCEEDED,
+						"Daily scan quota used up for user " + userId, quota(userId), null);
+			}
+			return reserved;
 		} finally {
 			lock.unlock();
 		}

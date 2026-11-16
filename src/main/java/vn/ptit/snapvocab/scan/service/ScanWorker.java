@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
@@ -41,17 +42,20 @@ public class ScanWorker {
 	private final StorageService storageService;
 	private final AiDetectionService aiDetectionService;
 	private final ScanResultAssembler resultAssembler;
+	private final ScanDetectionRecorder detectionRecorder;
 	private final ObjectMapper objectMapper;
 	private final TransactionTemplate transactionTemplate;
 	private final Clock clock;
 
 	public ScanWorker(ScanRequestRepository scanRequestRepository, StorageService storageService,
 			AiDetectionService aiDetectionService, ScanResultAssembler resultAssembler,
-			ObjectMapper objectMapper, PlatformTransactionManager transactionManager, Clock clock) {
+			ScanDetectionRecorder detectionRecorder, ObjectMapper objectMapper,
+			PlatformTransactionManager transactionManager, Clock clock) {
 		this.scanRequestRepository = scanRequestRepository;
 		this.storageService = storageService;
 		this.aiDetectionService = aiDetectionService;
 		this.resultAssembler = resultAssembler;
+		this.detectionRecorder = detectionRecorder;
 		this.objectMapper = objectMapper;
 		this.transactionTemplate = new TransactionTemplate(transactionManager);
 		this.clock = clock;
@@ -133,12 +137,15 @@ public class ScanWorker {
 					imageWidth, imageHeight,
 					resultAssembler.filter(rawDetections != null ? rawDetections : List.of()));
 			String json = objectMapper.writeValueAsString(detections);
+			Set<String> knownWords = detectionRecorder.knownWords(detections.detections());
 			finish(requestId, ScanStatus.PROCESSING, r -> {
 				r.setStatus(ScanStatus.DONE);
 				r.setResultJson(json);
 				r.setDetectionCount(detections.detections().size());
 				r.setModelVersion(modelVersion);
 				r.setProcessingTimeMs(processingTimeMs);
+				// Admin label stats; skipped with the rest when the sweeper finished the job first.
+				detectionRecorder.save(r, detections.detections(), knownWords);
 			});
 		} catch (JsonProcessingException e) {
 			log.error("Scan {} failed to serialize detections", requestId, e);

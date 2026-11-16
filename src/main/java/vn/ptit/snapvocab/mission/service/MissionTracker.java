@@ -56,7 +56,7 @@ import vn.ptit.snapvocab.user.service.MailService;
 import vn.ptit.snapvocab.shop.service.ShopPurchasePolicy;
 import vn.ptit.snapvocab.user.domain.User;
 import vn.ptit.snapvocab.user.repository.UserRepository;
-import vn.ptit.snapvocab.vocab.repository.TopicItemRepository;
+import vn.ptit.snapvocab.study.service.StudyService;
 
 /**
  * Assignment and progress of Daily Missions (daily_mission.md §4, §6). Both always join the caller's transaction
@@ -96,7 +96,7 @@ public class MissionTracker {
 	private final ShopItemRepository shopItemRepository;
 	private final BoosterActivationRepository activationRepository;
 	private final StreakFreezeService streakFreezeService;
-	private final TopicItemRepository topicItemRepository;
+	private final ObjectProvider<StudyService> studyService;
 	private final Counter poolInsufficient;
 	private final ObjectProvider<MailService> mailService;
 	private final String alertEmail;
@@ -108,7 +108,7 @@ public class MissionTracker {
 			UserDailyMissionProgressLogRepository progressLogRepository, UserWordCreditRepository wordCreditRepository,
 			UserRepository userRepository, UserItemRepository userItemRepository, ShopItemRepository shopItemRepository,
 			BoosterActivationRepository activationRepository, StreakFreezeService streakFreezeService,
-			TopicItemRepository topicItemRepository, ObjectProvider<MeterRegistry> meterRegistry,
+			ObjectProvider<StudyService> studyService, ObjectProvider<MeterRegistry> meterRegistry,
 			ObjectProvider<MailService> mailService, @Value("${mission.alert-email:}") String alertEmail) {
 		this.templateRepository = templateRepository;
 		this.missionRepository = missionRepository;
@@ -119,7 +119,8 @@ public class MissionTracker {
 		this.shopItemRepository = shopItemRepository;
 		this.activationRepository = activationRepository;
 		this.streakFreezeService = streakFreezeService;
-		this.topicItemRepository = topicItemRepository;
+		// Provider: StudyService itself depends on this tracker.
+		this.studyService = studyService;
 		// Exported as mission_pool_insufficient_total (daily_mission.md §12); expected to stay 0, alert on any increase.
 		this.poolInsufficient = Counter.builder(POOL_INSUFFICIENT_METRIC)
 				.description("ensureAssigned results that could not fill 5 slots (catalog misconfigured)")
@@ -379,6 +380,7 @@ public class MissionTracker {
 		private final Instant now;
 		private final Map<MissionEligibilityRule, Boolean> cache = new EnumMap<>(MissionEligibilityRule.class);
 		private List<UserItem> owned;
+		private Integer studyCards;
 
 		Eligibility(Long userId, Instant now) {
 			this.userId = userId;
@@ -387,7 +389,19 @@ public class MissionTracker {
 
 		@Override
 		public boolean test(MissionTemplate template) {
+			if (template.getEligibilityRule() == MissionEligibilityRule.HAS_STUDY_CARDS_FOR_TARGET) {
+				return studyCards() >= template.getTargetValue();
+			}
 			return cache.computeIfAbsent(template.getEligibilityRule(), this::evaluate);
+		}
+
+		/** Cards in today's study session as the Learn tab shows it, read once; 0 without StudyService. */
+		private int studyCards() {
+			if (studyCards == null) {
+				StudyService study = studyService.getIfAvailable();
+				studyCards = study == null ? 0 : study.getToday(userId).sessionCount();
+			}
+			return studyCards;
 		}
 
 		private boolean evaluate(MissionEligibilityRule rule) {
@@ -406,7 +420,7 @@ public class MissionTracker {
 							.anyMatch(item -> ShopPurchasePolicy.canBuyNow(item, quantities.getOrDefault(item.getId(), 0),
 									user.getCoin(), now));
 				}
-				case HAS_STUDY_CARDS_FOR_TARGET -> topicItemRepository.existsOwnedBy(userId);
+				case HAS_STUDY_CARDS_FOR_TARGET -> throw new IllegalStateException("depends on the template: see test()");
 			};
 		}
 

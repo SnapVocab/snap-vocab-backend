@@ -155,6 +155,16 @@ class StreakFreezeMigrationScriptTest {
 		assertThat(db().queryForObject("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ?"
 				+ " AND TABLE_NAME = 'shop_items' AND COLUMN_NAME = 'theme_key'", Integer.class, scratch)).isZero();
 
+		// Then badge rewards (PD-BDG-14) and badge art on MinIO (image_key replaces icon_key). Rewards also alter
+		// user_badges, which this scratch schema lacks (and does not validate): a bare one is enough.
+		db().execute("CREATE TABLE user_badges (id BIGINT AUTO_INCREMENT PRIMARY KEY, user_id BIGINT NOT NULL,"
+				+ " badge_id BIGINT NOT NULL, created_at DATETIME(6) NOT NULL)");
+		for (String next : List.of("migration_badges_rewards_v3.sql", "migration_badges_image_v4.sql")) {
+			String sql = Files.readString(Path.of("migration", next), StandardCharsets.UTF_8);
+			assertThat(mysql(client, sql)).as(next).startsWith("exit=0");
+			assertThat(mysql(client, sql)).as(next + " re-run").startsWith("exit=0");
+		}
+
 		hibernateValidate();
 	}
 

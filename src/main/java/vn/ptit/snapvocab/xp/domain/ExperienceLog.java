@@ -23,7 +23,12 @@ import vn.ptit.snapvocab.user.domain.User;
 @Table(
 		name = "experience_logs",
 		uniqueConstraints = @UniqueConstraint(name = "uq_experience_logs_event_key", columnNames = "event_key"),
-		indexes = @Index(name = "idx_experience_logs_user_time", columnList = "user_id, created_at")
+		indexes = {
+				@Index(name = "idx_experience_logs_user_time", columnList = "user_id, created_at"),
+				// Weekly XP range scan over every user (leaderboard_backend.md §4.1).
+				@Index(name = "idx_experience_logs_leaderboard",
+						columnList = "created_at, source_type, user_id, amount, bonus_amount")
+		}
 )
 @Getter
 @NoArgsConstructor
