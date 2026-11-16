@@ -34,19 +34,21 @@ BEGIN
 END //
 CREATE PROCEDURE `stats_v1_index`(IN `tbl` VARCHAR(64), IN `idx` VARCHAR(64), IN `cols` VARCHAR(200))
 BEGIN
-    CALL stats_v1_ddl(
-        EXISTS (SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = `tbl`)
-        AND NOT EXISTS (SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE()
-            AND TABLE_NAME = `tbl` AND INDEX_NAME = `idx`),
-        CONCAT('ALTER TABLE `', `tbl`, '` ADD INDEX `', `idx`, '` (', `cols`, ')'));
+    IF EXISTS (SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = `tbl`)
+            AND NOT EXISTS (SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE()
+                AND TABLE_NAME = `tbl` AND INDEX_NAME = `idx`) THEN
+        CALL stats_v1_ddl(TRUE, CONCAT('ALTER TABLE `', `tbl`, '` ADD INDEX `', `idx`, '` (', `cols`, ')'));
+    END IF;
 END //
 -- Đặt lại collation của một cột đã có nếu nó khác scan_requests.id (cột do Hibernate tạo theo mặc định của bảng).
 CREATE PROCEDURE `stats_v1_match`(IN `tbl` VARCHAR(64), IN `col` VARCHAR(64), IN `def` VARCHAR(100))
 BEGIN
-    CALL stats_v1_ddl(@stats_v1_collation IS NOT NULL AND EXISTS (SELECT 1 FROM information_schema.COLUMNS
+    IF @stats_v1_collation IS NOT NULL AND EXISTS (SELECT 1 FROM information_schema.COLUMNS
             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = `tbl` AND COLUMN_NAME = `col`
-              AND COLLATION_NAME <> @stats_v1_collation),
-        CONCAT('ALTER TABLE `', `tbl`, '` MODIFY `', `col`, '` VARCHAR(36) COLLATE ', @stats_v1_collation, ' ', `def`));
+              AND COLLATION_NAME <> @stats_v1_collation) THEN
+        CALL stats_v1_ddl(TRUE,
+            CONCAT('ALTER TABLE `', `tbl`, '` MODIFY `', `col`, '` VARCHAR(36) COLLATE ', @stats_v1_collation, ' ', `def`));
+    END IF;
 END //
 DELIMITER ;
 
@@ -72,10 +74,11 @@ CALL stats_v1_ddl(@stats_v1_collation IS NOT NULL,
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=', @stats_v1_collation));
 
 -- BƯỚC 2: topic_items.source_scan_id (G3)
-CALL stats_v1_ddl(EXISTS (SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_NAME = 'topic_items')
-    AND NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_NAME = 'topic_items' AND COLUMN_NAME = 'source_scan_id'),
+SET @stats_v1_add_col = (SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'topic_items') > 0
+    AND (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'topic_items' AND COLUMN_NAME = 'source_scan_id') = 0;
+CALL stats_v1_ddl(@stats_v1_add_col,
     CONCAT('ALTER TABLE `topic_items` ADD COLUMN `source_scan_id` VARCHAR(36)',
         IF(@stats_v1_collation IS NULL, '', CONCAT(' COLLATE ', @stats_v1_collation)), ' NULL'));
 CALL stats_v1_match('topic_items', 'source_scan_id', 'NULL');
