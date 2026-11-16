@@ -31,5 +31,8 @@ public class ScanProperties {
 
 	/** Lowest reliability shown to the user: HIGH, MEDIUM or LOW (= show everything). */
 	private String minReliability = "LOW";
+
+	/** Run ScanDetectionBackfill once at startup (admin_overview_backend.md G2); turn off again afterwards. */
+	private boolean detectionsBackfill = false;
 }
 

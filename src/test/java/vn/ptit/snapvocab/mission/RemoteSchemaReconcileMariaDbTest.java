@@ -36,7 +36,7 @@ class RemoteSchemaReconcileMariaDbTest {
 			"migration_notifications_v1.sql", "migration_notifications_v2.sql", "migration_admin_audit_logs_v1.sql",
 			"migration_badges_v1.sql", "migration_badges_v2.sql", "migration_streak_freeze_v1.sql",
 			"migration_badges_streak_copy_v2.sql", "migration_daily_mission_v1.sql",
-			"migration_daily_mission_triggers_v2.sql",
+			"migration_daily_mission_triggers_v2.sql", "migration_admin_stats_v1.sql", "migration_admin_users_v1.sql",
 			"migration_remove_theme_v1.sql");
 
 	private SingleConnectionDataSource db;
@@ -67,9 +67,26 @@ class RemoteSchemaReconcileMariaDbTest {
 		}
 		run(Files.readString(RECONCILE, StandardCharsets.UTF_8)); // idempotent: nothing left to drop
 		assertThat(tables()).doesNotContain("mission_configs", "quiz_attempts", "reward_grants");
+		// Admin stats: the script itself, not Hibernate update below, must create what validate needs.
+		assertThat(tables()).contains("scan_detections");
+		assertThat(new JdbcTemplate(db).queryForObject("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE "
+				+ "TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'topic_items' AND COLUMN_NAME = 'source_scan_id'",
+				Integer.class)).isOne();
+		// The remote mixes utf8mb4_unicode_ci (scan_requests) and utf8mb4_uca1400_ai_ci (topic_items): every column the
+		// stats queries compare with scan_requests.id must share its collation (FK, "=" error 1267, index use).
+		assertThat(new JdbcTemplate(db).queryForList("SELECT DISTINCT COLLATION_NAME FROM information_schema.COLUMNS WHERE "
+				+ "TABLE_SCHEMA = DATABASE() AND ((TABLE_NAME = 'scan_requests' AND COLUMN_NAME = 'id') OR (TABLE_NAME = "
+				+ "'topic_items' AND COLUMN_NAME = 'source_scan_id') OR (TABLE_NAME = 'scan_detections' AND COLUMN_NAME = "
+				+ "'scan_request_id'))", String.class)).hasSize(1);
 
 		hibernate("update");
 		hibernate("validate");
+		// Tables the reconcile dropped come back from Hibernate with the stats indexes declared on their entities.
+		assertThat(new JdbcTemplate(db).queryForList("SELECT DISTINCT INDEX_NAME FROM information_schema.STATISTICS "
+				+ "WHERE TABLE_SCHEMA = DATABASE()", String.class)).contains("idx_topic_items_source_scan",
+				"idx_topic_items_created", "idx_learning_events_date_type", "idx_scan_requests_created",
+				"idx_coin_transactions_source_time", "idx_udm_date_status", "idx_quizzes_status_completed",
+				"idx_fsrs_state_stability", "idx_scan_detections_label");
 
 		assertThat(new JdbcTemplate(db).queryForObject("SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE "
 				+ "TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'mission_templates' AND COLUMN_NAME = 'id'", String.class))

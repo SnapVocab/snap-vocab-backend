@@ -49,6 +49,7 @@ import vn.ptit.snapvocab.quiz.service.QuizContentResolver;
 import vn.ptit.snapvocab.security.AuthoritiesConstants;
 import vn.ptit.snapvocab.shop.service.Economy;
 import vn.ptit.snapvocab.security.SecurityUtils;
+import vn.ptit.snapvocab.scan.domain.ScanRequest;
 import vn.ptit.snapvocab.scan.domain.enumeration.ScanStatus;
 import vn.ptit.snapvocab.scan.repository.ScanRequestRepository;
 import vn.ptit.snapvocab.scan.service.ScanDetectedWords;
@@ -826,8 +827,9 @@ public class TopicService {
 	}
 
 	/**
-	 * {@code scanRequestId}: the scan the word was saved from. It only feeds the SCAN_WORD_SAVED mission; an unknown,
-	 * foreign or unfinished scan, or a word the scan did not detect, still saves the word (daily_mission.md §6.1).
+	 * {@code scanRequestId}: the scan the word was saved from. It feeds the SCAN_WORD_SAVED mission and the Admin scan
+	 * funnel ({@code source_scan_id}, admin_analytics_backend.md §7); an unknown, foreign or unfinished scan, or a word
+	 * the scan did not detect, still saves the word (daily_mission.md §6.1).
 	 */
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	@CacheEvict(cacheNames = "topic-items", allEntries = true)
@@ -941,6 +943,8 @@ public class TopicService {
 		if (learnerId != null) {
 			missionTracker.ensureAssigned(learnerId, missionDate, actionInstant);
 		}
+		ScanRequest sourceScan = scanSource(learnerId, topic, scanRequestId);
+		topicItem.setSourceScanId(sourceScan == null ? null : sourceScan.getId());
 		TopicItem savedItem = this.topicItemRepository.save(topicItem);
 		if (learnerId != null) {
 			byte[] wordHash = quizContentResolver.resolveQuizReady(topic, savedItem.getId())
@@ -951,7 +955,7 @@ public class TopicService {
 			if (wordHash != null) {
 				badgeService.recordWordCredit(learnerId, wordHash, actionInstant);
 			}
-			if (wordHash != null && scanRequestId != null && scanDetected(learnerId, scanRequestId, wordHash)) {
+			if (wordHash != null && sourceScan != null && scanDetected(sourceScan, wordHash)) {
 				// One credit per word per scan: saving it again, or into another topic, does not count twice.
 				String sourceKey = "SCAN_SAVE:" + scanRequestId + ":" + HexFormat.of().formatHex(wordHash);
 				missionTracker.apply(learnerId, missionDate, MissionTriggerEvent.SCAN_WORD_SAVED, sourceKey,
@@ -981,12 +985,26 @@ public class TopicService {
 				.orElse("#" + topicItemId);
 	}
 
-	private boolean scanDetected(Long learnerId, String scanRequestId, byte[] wordHash) {
-		return scanRequestRepository.findByIdAndUser_Id(scanRequestId, learnerId)
-				.filter(scan -> scan.getStatus() == ScanStatus.DONE)
-				.map(scan -> ScanDetectedWords.of(scan.getResultJson()).stream()
-						.anyMatch(word -> Arrays.equals(MissionTracker.wordHash(word), wordHash)))
-				.orElse(false);
+	/**
+	 * The caller's own finished scan, only for a word saved to their own USER collection; anything else is dropped
+	 * with a WARN, so saving never fails over stats (admin_analytics_backend.md §7, G3).
+	 */
+	private ScanRequest scanSource(Long learnerId, Topic topic, String scanRequestId) {
+		if (scanRequestId == null || scanRequestId.isBlank()) {
+			return null;
+		}
+		ScanRequest scan = learnerId == null ? null : scanRequestRepository.findByIdAndUser_Id(scanRequestId, learnerId)
+				.filter(s -> s.getStatus() == ScanStatus.DONE)
+				.orElse(null);
+		if (scan == null) {
+			LOG.warn("Ignored scanRequestId={} for topic {}", scanRequestId, topic.getId());
+		}
+		return scan;
+	}
+
+	private static boolean scanDetected(ScanRequest scan, byte[] wordHash) {
+		return ScanDetectedWords.of(scan.getResultJson()).stream()
+				.anyMatch(word -> Arrays.equals(MissionTracker.wordHash(word), wordHash));
 	}
 
 	@Transactional

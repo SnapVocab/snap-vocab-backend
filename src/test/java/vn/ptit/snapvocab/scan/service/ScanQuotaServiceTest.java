@@ -16,6 +16,7 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.api.RLock;
@@ -105,16 +106,22 @@ class ScanQuotaServiceTest {
 	}
 
 	@Test
-	void reserveOverQuotaThrowsWithQuotaDetailsAndReleasesLock() throws Exception {
+	void reserveOverQuotaRecordsAFailedRowThrowsWithQuotaDetailsAndReleasesLock() throws Exception {
 		givenLock(true);
 		givenUsedToday(3);
+		when(scanRequestRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
 		assertThatThrownBy(() -> service.reserve(7L, "scans/7/a.jpg", ScanStatus.PENDING))
 				.isInstanceOfSatisfying(ScanException.class, e -> {
 					assertThat(e.getCode()).isEqualTo(ScanErrorCode.QUOTA_EXCEEDED);
 					assertThat(e.getDetails()).isEqualTo(new ScanQuotaDTO(3, 3, 0, VN_MIDNIGHT_TOMORROW));
 				});
-		verify(scanRequestRepository, never()).save(any());
+		// G1-01: kept for the Admin's "hết lượt" count; FAILED, so the quota above is unchanged by it.
+		ArgumentCaptor<ScanRequest> refused = ArgumentCaptor.forClass(ScanRequest.class);
+		verify(scanRequestRepository).save(refused.capture());
+		assertThat(refused.getValue().getStatus()).isEqualTo(ScanStatus.FAILED);
+		assertThat(refused.getValue().getErrorCode()).isEqualTo(ScanErrorCode.QUOTA_EXCEEDED);
+		assertThat(refused.getValue().getFinishedAt()).isEqualTo(NOW);
 		verify(lock).unlock();
 	}
 

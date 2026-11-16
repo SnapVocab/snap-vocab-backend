@@ -51,6 +51,8 @@ class ScanWorkerTest {
 	@Mock
 	private ScanResultAssembler resultAssembler;
 	@Mock
+	private ScanDetectionRecorder detectionRecorder;
+	@Mock
 	private PlatformTransactionManager transactionManager;
 
 	private final ObjectMapper objectMapper = new ObjectMapper();
@@ -60,7 +62,7 @@ class ScanWorkerTest {
 	@BeforeEach
 	void setUp() {
 		worker = new ScanWorker(repository, storageService, aiDetectionService, resultAssembler,
-				objectMapper, transactionManager, Clock.fixed(NOW, ZoneOffset.UTC));
+				detectionRecorder, objectMapper, transactionManager, Clock.fixed(NOW, ZoneOffset.UTC));
 		job = ScanRequest.builder().id("req-1").objectKey(KEY).status(ScanStatus.PENDING).build();
 		lenient().when(repository.findById("req-1")).thenAnswer(inv -> Optional.of(job));
 		lenient().when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -83,6 +85,7 @@ class ScanWorkerTest {
 		ScanDetectionsDTO stored = objectMapper.readValue(job.getResultJson(), ScanDetectionsDTO.class);
 		assertThat(stored.imageWidth()).isEqualTo(640);
 		assertThat(stored.detections()).extracting(DetectionDTO::label).containsExactly("cup");
+		verify(detectionRecorder).save(eq(job), eq(stored.detections()), any()); // G2-01: with the DONE write
 	}
 
 	@Test
@@ -145,6 +148,7 @@ class ScanWorkerTest {
 		assertThat(job.getStatus()).isEqualTo(ScanStatus.FAILED);
 		assertThat(job.getErrorCode()).isEqualTo(ScanErrorCode.INTERRUPTED);
 		assertThat(job.getResultJson()).isNull();
+		verify(detectionRecorder, never()).save(any(), anyList(), any()); // G2-02: no orphan labels
 	}
 
 	@Test
