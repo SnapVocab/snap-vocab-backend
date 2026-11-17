@@ -115,6 +115,7 @@ public class DataInitializer implements CommandLineRunner {
 		SchemaAttribute levelAttr = findOrCreateAttribute(mainGroup, "level", "Cấp độ", DataType.TEXT, false, (short) 3);
 		SchemaAttribute defTranslationAttr = findOrCreateAttribute(mainGroup, "definition_translation", "Dịch định nghĩa", DataType.TEXT, false, (short) 4);
 		SchemaAttribute definitionAttr = findOrCreateAttribute(mainGroup, "definition", "Định nghĩa tiếng Anh", DataType.TEXT, false, (short) 5);
+		SchemaAttribute audioAttr = findOrCreateAttribute(mainGroup, "audio", "Phát âm", DataType.AUDIO, false, (short) 6);
 
 		SchemaAttributeGroup meaningGroup = findOrCreateGroup(schema, "meaning", "Ý nghĩa & Ví dụ", (short) 1, false);
 		SchemaAttribute meaningAttr = findOrCreateAttribute(meaningGroup, "meaning", "Giải nghĩa", DataType.TEXT, false, (short) 0);
@@ -198,7 +199,7 @@ public class DataInitializer implements CommandLineRunner {
 					TemplateElement.builder().position(0).side(CardSide.FRONT)
 							.type(TemplateElementType.SECTION_BREAK).sectionLabel("Luyện nghe").repeatable(false).build());
 			listeningTemplate.addElement(
-					createFieldElement(1, CardSide.FRONT, wordAttr, SemanticRole.AUDIO, "Nghe phát âm", false, true, 32,
+					createFieldElement(1, CardSide.FRONT, audioAttr, SemanticRole.AUDIO, "Nghe phát âm", false, true, 32,
 							Alignment.CENTER, null));
 
 			// BACK
