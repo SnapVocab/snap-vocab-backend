@@ -53,6 +53,9 @@ public class SecurityConfiguration {
 				"/api/auth/forgot-password",
 				"/api/auth/reset-password",
 				"/api/auth/refresh",
+				"/api/auth/webauthn/login/options",
+				"/api/auth/webauthn/login/verify",
+				"/.well-known/**",
 				"/api/webhooks/scan"
 		};
 
