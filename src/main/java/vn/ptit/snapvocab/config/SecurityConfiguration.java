@@ -55,6 +55,7 @@ public class SecurityConfiguration {
 				"/api/auth/refresh",
 				"/api/auth/webauthn/login/options",
 				"/api/auth/webauthn/login/verify",
+				"/api/auth/biometric/login",
 				"/.well-known/**",
 				"/api/webhooks/scan"
 		};
