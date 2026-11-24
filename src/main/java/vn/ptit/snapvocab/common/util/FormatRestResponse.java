@@ -38,7 +38,7 @@ public class FormatRestResponse implements ResponseBodyAdvice<Object> {
 
 		String path = servletRequest.getRequestURI();
 
-		if (path.startsWith("/v3/api-docs") || path.startsWith("/swagger-ui")) {
+		if (path.startsWith("/v3/api-docs") || path.startsWith("/swagger-ui") || path.startsWith("/.well-known/")) {
 			return body;
 		}
 

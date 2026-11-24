@@ -109,7 +109,12 @@ public class AuthenticationService {
 		return response;
 	}
 
-	/** Every token pair comes from here (login, email verify, refresh), so this is the one ban guard. */
+	/** Issues a fresh access + refresh token pair for an already-verified user (e.g. WebAuthn). */
+	public ResponseLoginDTO issueTokensForAuthenticatedUser(User user) {
+		return generateAuthResponse(user);
+	}
+
+	/** Every token pair comes from here (login, email verify, refresh, WebAuthn), so this is the one ban guard. */
 	private ResponseLoginDTO generateAuthResponse(User user) {
 		if (user.getBannedAt() != null) {
 			securityAuditLogger.failure("TOKEN_ISSUE", user.getEmail(), "USER_BANNED");
