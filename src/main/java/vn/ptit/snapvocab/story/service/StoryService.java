@@ -35,11 +35,12 @@ import vn.ptit.snapvocab.story.domain.enumeration.StoryMode;
 import vn.ptit.snapvocab.story.repository.AiStoryRepository;
 import vn.ptit.snapvocab.user.domain.User;
 import vn.ptit.snapvocab.user.repository.UserRepository;
+import vn.ptit.snapvocab.vocab.domain.TemplateField;
 import vn.ptit.snapvocab.vocab.domain.Topic;
-import vn.ptit.snapvocab.vocab.domain.TopicItem;
-import vn.ptit.snapvocab.vocab.domain.TopicItemAttributeGroup;
-import vn.ptit.snapvocab.vocab.domain.TopicItemAttributeValue;
-import vn.ptit.snapvocab.vocab.repository.TopicItemRepository;
+import vn.ptit.snapvocab.vocab.domain.enumeration.CollectionType;
+import vn.ptit.snapvocab.vocab.domain.enumeration.SemanticRole;
+import vn.ptit.snapvocab.vocab.repository.TemplateFieldRepository;
+import vn.ptit.snapvocab.vocab.repository.TopicItemAttributeValueRepository;
 import vn.ptit.snapvocab.vocab.repository.TopicRepository;
 
 @Service
@@ -52,7 +53,8 @@ public class StoryService {
 	private static final int DEFAULT_TOPIC_AUTO_PICK = 7;
 
 	private final AiStoryRepository storyRepository;
-	private final TopicItemRepository topicItemRepository;
+	private final TopicItemAttributeValueRepository topicValueRepository;
+	private final TemplateFieldRepository templateFieldRepository;
 	private final TopicRepository topicRepository;
 	private final UserRepository userRepository;
 	private final LlmGatewayService llmGatewayService;
@@ -69,7 +71,7 @@ public class StoryService {
 			throw new IllegalStateException("You have reached today's AI Story limit (" + quota.getDailyLimit() + "/day).");
 		}
 
-		List<String> words = resolveTargetWords(request);
+		List<String> words = resolveTargetWords(userId, request);
 		int minWords = Math.max(1, storyProperties.getMinWords());
 		int maxWords = Math.max(minWords, storyProperties.getMaxWords());
 		if (words.size() < minWords) {
@@ -236,7 +238,7 @@ public class StoryService {
 				.build();
 	}
 
-	private List<String> resolveTargetWords(GenerateStoryRequest request) {
+	private List<String> resolveTargetWords(Long userId, GenerateStoryRequest request) {
 		Map<String, String> deduped = new LinkedHashMap<>();
 
 		if (request.getWords() != null) {
@@ -246,29 +248,51 @@ public class StoryService {
 		}
 
 		if (deduped.isEmpty() && request.getTopicId() != null) {
+			Topic topic = topicRepository.findById(request.getTopicId())
+					.orElseThrow(() -> new IllegalArgumentException("Topic not found"));
+
+			if (topic.getCollection() != null
+					&& topic.getCollection().getType() == CollectionType.USER
+					&& (topic.getCollection().getOwner() == null
+					|| !topic.getCollection().getOwner().getId().equals(userId))) {
+				throw new IllegalArgumentException("Topic not found");
+			}
+
 			int desiredCount = request.getWordCount() != null
 					? Math.min(storyProperties.getMaxWords(), Math.max(storyProperties.getMinWords(), request.getWordCount()))
 					: DEFAULT_TOPIC_AUTO_PICK;
 
-			List<TopicItem> allItems = new ArrayList<>(topicItemRepository.findByTopicIdWithEav(request.getTopicId()));
-			// Also collect from direct child subtopics if the parent topic itself holds few items
-			if (allItems.size() < desiredCount) {
-				topicRepository.findById(request.getTopicId()).ifPresent(topic -> {
-					if (topic.getChildren() != null) {
-						for (Topic child : topic.getChildren()) {
-							allItems.addAll(topicItemRepository.findByTopicIdWithEav(child.getId()));
-							if (allItems.size() >= 40) {
-								break;
-							}
-						}
-					}
-				});
+			Long targetWordAttrId = resolveTargetWordAttributeId(topic);
+			List<Long> topicIds = new ArrayList<>();
+			collectTopicIds(topic, topicIds);
+
+			List<Object[]> flatRows = topicValueRepository.findFlatValuesByTopicIds(topicIds);
+			Map<Long, String> primaryByItem = new LinkedHashMap<>();
+			Map<Long, String> fallbackByItem = new LinkedHashMap<>();
+
+			for (Object[] row : flatRows) {
+				Long itemId = (Long) row[0];
+				Long attrId = (Long) row[1];
+				String attrName = row[2] != null ? ((String) row[2]).toLowerCase(Locale.ROOT) : "";
+				String val = row[3] != null ? ((String) row[3]).trim() : "";
+				if (val.isEmpty()) {
+					continue;
+				}
+				if (targetWordAttrId != null && targetWordAttrId.equals(attrId)) {
+					primaryByItem.putIfAbsent(itemId, val);
+				} else if (!primaryByItem.containsKey(itemId)
+						&& (attrName.equals("word") || attrName.contains("word") || attrName.contains("term")
+						|| attrName.contains("vocab") || attrName.contains("front"))) {
+					primaryByItem.put(itemId, val);
+				}
+				fallbackByItem.putIfAbsent(itemId, val);
 			}
 
-			Collections.shuffle(allItems);
-			for (TopicItem item : allItems) {
-				String extracted = extractPrimaryWord(item);
-				addWord(deduped, extracted);
+			List<Long> itemIds = new ArrayList<>(fallbackByItem.keySet());
+			Collections.shuffle(itemIds);
+			for (Long itemId : itemIds) {
+				String chosen = primaryByItem.getOrDefault(itemId, fallbackByItem.get(itemId));
+				addWord(deduped, chosen);
 				if (deduped.size() >= desiredCount) {
 					break;
 				}
@@ -276,6 +300,31 @@ public class StoryService {
 		}
 
 		return new ArrayList<>(deduped.values());
+	}
+
+	private Long resolveTargetWordAttributeId(Topic topic) {
+		if (topic.getActiveTemplate() == null || topic.getActiveTemplate().getId() == null) {
+			return null;
+		}
+		List<TemplateField> fields = templateFieldRepository.findByTemplateId(topic.getActiveTemplate().getId());
+		for (TemplateField f : fields) {
+			if (f.getSemanticRole() == SemanticRole.TARGET_WORD && f.getSchemaAttribute() != null) {
+				return f.getSchemaAttribute().getId();
+			}
+		}
+		return null;
+	}
+
+	private void collectTopicIds(Topic topic, List<Long> ids) {
+		if (topic == null || topic.getId() == null || ids.size() >= 100) {
+			return;
+		}
+		ids.add(topic.getId());
+		if (topic.getChildren() != null) {
+			for (Topic child : topic.getChildren()) {
+				collectTopicIds(child, ids);
+			}
+		}
 	}
 
 	private void addWord(Map<String, String> deduped, String raw) {
@@ -288,34 +337,6 @@ public class StoryService {
 		}
 		String key = cleaned.toLowerCase(Locale.ROOT);
 		deduped.putIfAbsent(key, cleaned);
-	}
-
-	private String extractPrimaryWord(TopicItem item) {
-		if (item == null || item.getGroupInstances() == null) {
-			return null;
-		}
-		String fallback = null;
-		for (TopicItemAttributeGroup group : item.getGroupInstances()) {
-			if (group.getValues() == null) {
-				continue;
-			}
-			for (TopicItemAttributeValue value : group.getValues()) {
-				String val = value.getValue();
-				if (val == null || val.isBlank()) {
-					continue;
-				}
-				String attrName = value.getAttribute() != null && value.getAttribute().getName() != null
-						? value.getAttribute().getName().toLowerCase(Locale.ROOT)
-						: "";
-				if (attrName.contains("word") || attrName.contains("term") || attrName.contains("vocab") || attrName.contains("front")) {
-					return val.trim();
-				}
-				if (fallback == null) {
-					fallback = val.trim();
-				}
-			}
-		}
-		return fallback;
 	}
 
 	private String buildSystemPrompt(StoryMode mode) {

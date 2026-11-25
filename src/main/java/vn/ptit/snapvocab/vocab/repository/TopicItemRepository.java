@@ -69,7 +69,6 @@ public interface TopicItemRepository extends JpaRepository<TopicItem, Long> {
 			SELECT DISTINCT ti
 			FROM TopicItem ti
 			LEFT JOIN FETCH ti.groupInstances gi
-			LEFT JOIN FETCH gi.values v
 			WHERE ti.topic.id = :topicId
 			""")
 	List<TopicItem> findByTopicIdWithEav(@Param("topicId") Long topicId);
