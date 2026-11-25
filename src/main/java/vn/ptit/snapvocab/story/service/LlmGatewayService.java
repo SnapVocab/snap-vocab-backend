@@ -2,6 +2,7 @@ package vn.ptit.snapvocab.story.service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,13 +19,40 @@ import vn.ptit.snapvocab.story.repository.AiProviderConfigRepository;
 public class LlmGatewayService {
 
 	private static final Logger LOG = LoggerFactory.getLogger(LlmGatewayService.class);
+	private static final int MIN_STORY_MAX_TOKENS = 4096;
+	private static final int MIN_STORY_TIMEOUT_MS = 30000;
 
 	private final AiProviderConfigRepository providerRepository;
 	private final ApiKeyCryptoService cryptoService;
 	private final List<LlmProviderAdapter> adapters;
 	private final StoryProperties storyProperties;
 
+	public record ValidatedGeneration<T>(
+			T parsed,
+			String providerName,
+			String modelName,
+			long latencyMs
+	) {}
+
 	public LlmProviderAdapter.LlmGenerationResult generateJson(String systemPrompt, String userPrompt) {
+		ValidatedGeneration<String> res = generateAndParse(systemPrompt, userPrompt, Function.identity());
+		return new LlmProviderAdapter.LlmGenerationResult(
+				res.parsed(),
+				res.providerName(),
+				res.modelName(),
+				res.latencyMs()
+		);
+	}
+
+	/**
+	 * Executes the active provider chain in priority order and runs {@code parser} inside the loop so
+	 * truncated or malformed JSON from Provider #1 automatically falls back to Provider #2 / #3.
+	 */
+	public <T> ValidatedGeneration<T> generateAndParse(
+			String systemPrompt,
+			String userPrompt,
+			Function<String, T> parser
+	) {
 		List<LlmProviderAdapter.ResolvedProvider> chain = resolveActiveProviders();
 		if (chain.isEmpty()) {
 			throw new IllegalStateException("No AI provider is configured or enabled. Please configure one in Admin AI Providers.");
@@ -36,10 +64,11 @@ public class LlmGatewayService {
 			try {
 				LlmProviderAdapter adapter = findAdapter(provider.providerType());
 				String content = adapter.generateJson(provider, systemPrompt, userPrompt);
+				T parsed = parser.apply(content);
 				long latency = System.currentTimeMillis() - start;
-				LOG.info("LLM generation succeeded via provider='{}' model='{}' in {}ms",
+				LOG.info("LLM generation & validation succeeded via provider='{}' model='{}' in {}ms",
 						provider.name(), provider.modelName(), latency);
-				return new LlmProviderAdapter.LlmGenerationResult(content, provider.name(), provider.modelName(), latency);
+				return new ValidatedGeneration<>(parsed, provider.name(), provider.modelName(), latency);
 			} catch (RuntimeException ex) {
 				long latency = System.currentTimeMillis() - start;
 				LOG.warn("LLM provider '{}' ({}) failed after {}ms: {} — falling back if available",
@@ -71,7 +100,7 @@ public class LlmGatewayService {
 	public TestAiProviderResponse testProvider(AiProviderConfig config) {
 		long start = System.currentTimeMillis();
 		try {
-			LlmProviderAdapter.ResolvedProvider resolved = toResolved(config);
+			LlmProviderAdapter.ResolvedProvider resolved = toResolved(config, false);
 			LlmProviderAdapter adapter = findAdapter(resolved.providerType());
 			String sample = adapter.generateJson(
 					resolved,
@@ -96,7 +125,7 @@ public class LlmGatewayService {
 		List<AiProviderConfig> configs = providerRepository.findByEnabledTrueOrderByPriorityAscIdAsc();
 		List<LlmProviderAdapter.ResolvedProvider> resolved = new ArrayList<>();
 		for (AiProviderConfig c : configs) {
-			resolved.add(toResolved(c));
+			resolved.add(toResolved(c, true));
 		}
 
 		if (resolved.isEmpty()
@@ -109,14 +138,16 @@ public class LlmGatewayService {
 					storyProperties.getFallbackGeminiApiKey().trim(),
 					storyProperties.getFallbackGeminiModel(),
 					0.7,
-					1500,
-					20000
+					MIN_STORY_MAX_TOKENS,
+					MIN_STORY_TIMEOUT_MS
 			));
 		}
 		return resolved;
 	}
 
-	private LlmProviderAdapter.ResolvedProvider toResolved(AiProviderConfig config) {
+	private LlmProviderAdapter.ResolvedProvider toResolved(AiProviderConfig config, boolean enforceStoryHeadroom) {
+		int configuredTokens = config.getMaxTokens() != null ? config.getMaxTokens() : MIN_STORY_MAX_TOKENS;
+		int configuredTimeout = config.getTimeoutMs() != null ? config.getTimeoutMs() : MIN_STORY_TIMEOUT_MS;
 		return new LlmProviderAdapter.ResolvedProvider(
 				config.getName(),
 				config.getProviderType(),
@@ -124,8 +155,8 @@ public class LlmGatewayService {
 				cryptoService.decrypt(config.getApiKeyEncrypted()),
 				config.getModelName(),
 				config.getTemperature() != null ? config.getTemperature() : 0.7,
-				config.getMaxTokens() != null ? config.getMaxTokens() : 1500,
-				config.getTimeoutMs() != null ? config.getTimeoutMs() : 20000
+				enforceStoryHeadroom ? Math.max(MIN_STORY_MAX_TOKENS, configuredTokens) : Math.max(512, configuredTokens),
+				enforceStoryHeadroom ? Math.max(MIN_STORY_TIMEOUT_MS, configuredTimeout) : Math.max(12000, configuredTimeout)
 		);
 	}
 
@@ -136,4 +167,3 @@ public class LlmGatewayService {
 				.orElseThrow(() -> new IllegalArgumentException("Unsupported AI provider type: " + type));
 	}
 }
-
