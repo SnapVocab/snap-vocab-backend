@@ -23,6 +23,9 @@ public class GenerateStoryRequest {
 
 	private Long topicId;
 
+	/** Optional auto-pick count when resolving words from a Topic (defaults to 7, max 20). */
+	private Integer wordCount;
+
 	@Size(max = 20, message = "Maximum 20 words allowed per story")
 	private List<String> words;
 

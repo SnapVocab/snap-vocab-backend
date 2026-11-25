@@ -43,6 +43,9 @@ public class OpenAiCompatibleLlmAdapter implements LlmProviderAdapter {
 			payload.put("temperature", provider.temperature());
 			payload.put("max_tokens", provider.maxTokens());
 			payload.put("response_format", Map.of("type", "json_object"));
+			if (base.contains("groq.com") && provider.modelName() != null && provider.modelName().startsWith("openai/gpt-oss")) {
+				payload.put("reasoning_effort", "low");
+			}
 			payload.put("messages", List.of(
 					Map.of("role", "system", "content", systemPrompt),
 					Map.of("role", "user", "content", userPrompt)

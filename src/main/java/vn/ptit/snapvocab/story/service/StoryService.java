@@ -35,10 +35,12 @@ import vn.ptit.snapvocab.story.domain.enumeration.StoryMode;
 import vn.ptit.snapvocab.story.repository.AiStoryRepository;
 import vn.ptit.snapvocab.user.domain.User;
 import vn.ptit.snapvocab.user.repository.UserRepository;
+import vn.ptit.snapvocab.vocab.domain.Topic;
 import vn.ptit.snapvocab.vocab.domain.TopicItem;
 import vn.ptit.snapvocab.vocab.domain.TopicItemAttributeGroup;
 import vn.ptit.snapvocab.vocab.domain.TopicItemAttributeValue;
 import vn.ptit.snapvocab.vocab.repository.TopicItemRepository;
+import vn.ptit.snapvocab.vocab.repository.TopicRepository;
 
 @Service
 @RequiredArgsConstructor
@@ -46,9 +48,12 @@ public class StoryService {
 
 	private static final Logger LOG = LoggerFactory.getLogger(StoryService.class);
 	private static final Pattern BLANK_PATTERN = Pattern.compile("\\[\\[([^\\[\\]]+)\\]\\]");
+	private static final Pattern BOLD_MARKER_PATTERN = Pattern.compile("\\*\\*([^*\\[\\]\\n]{1,50})\\*\\*");
+	private static final int DEFAULT_TOPIC_AUTO_PICK = 7;
 
 	private final AiStoryRepository storyRepository;
 	private final TopicItemRepository topicItemRepository;
+	private final TopicRepository topicRepository;
 	private final UserRepository userRepository;
 	private final LlmGatewayService llmGatewayService;
 	private final StoryProperties storyProperties;
@@ -71,7 +76,7 @@ public class StoryService {
 			throw new IllegalArgumentException("Please provide at least " + minWords + " vocabulary words.");
 		}
 		if (words.size() > maxWords) {
-			words = words.subList(0, maxWords);
+			words = new ArrayList<>(words.subList(0, maxWords));
 		}
 
 		StoryMode mode = request.getMode() != null ? request.getMode() : StoryMode.BLENDED;
@@ -81,8 +86,13 @@ public class StoryService {
 		String systemPrompt = buildSystemPrompt(mode);
 		String userPrompt = buildUserPrompt(words, mode, level, genre);
 
-		LlmProviderAdapter.LlmGenerationResult result = llmGatewayService.generateJson(systemPrompt, userPrompt);
-		ParsedStory parsed = parseStoryJson(result.jsonContent(), words);
+		final List<String> finalWords = List.copyOf(words);
+		LlmGatewayService.ValidatedGeneration<ParsedStory> generation = llmGatewayService.generateAndParse(
+				systemPrompt,
+				userPrompt,
+				rawJson -> parseStoryJson(rawJson, finalWords)
+		);
+		ParsedStory parsed = generation.parsed();
 
 		AiStory entity = AiStory.builder()
 				.user(user)
@@ -91,8 +101,8 @@ public class StoryService {
 				.storyMode(mode)
 				.level(level)
 				.genre(genre)
-				.providerName(result.providerName())
-				.modelName(result.modelName())
+				.providerName(generation.providerName())
+				.modelName(generation.modelName())
 				.targetWordsJson(toJson(parsed.targetWords()))
 				.sentencesJson(toJson(parsed.sentences()))
 				.totalBlanks(parsed.totalBlanks())
@@ -236,11 +246,30 @@ public class StoryService {
 		}
 
 		if (deduped.isEmpty() && request.getTopicId() != null) {
-			List<TopicItem> items = topicItemRepository.findByTopicIdWithEav(request.getTopicId());
-			for (TopicItem item : items) {
+			int desiredCount = request.getWordCount() != null
+					? Math.min(storyProperties.getMaxWords(), Math.max(storyProperties.getMinWords(), request.getWordCount()))
+					: DEFAULT_TOPIC_AUTO_PICK;
+
+			List<TopicItem> allItems = new ArrayList<>(topicItemRepository.findByTopicIdWithEav(request.getTopicId()));
+			// Also collect from direct child subtopics if the parent topic itself holds few items
+			if (allItems.size() < desiredCount) {
+				topicRepository.findById(request.getTopicId()).ifPresent(topic -> {
+					if (topic.getChildren() != null) {
+						for (Topic child : topic.getChildren()) {
+							allItems.addAll(topicItemRepository.findByTopicIdWithEav(child.getId()));
+							if (allItems.size() >= 40) {
+								break;
+							}
+						}
+					}
+				});
+			}
+
+			Collections.shuffle(allItems);
+			for (TopicItem item : allItems) {
 				String extracted = extractPrimaryWord(item);
 				addWord(deduped, extracted);
-				if (deduped.size() >= storyProperties.getMaxWords()) {
+				if (deduped.size() >= desiredCount) {
 					break;
 				}
 			}
@@ -292,63 +321,72 @@ public class StoryService {
 	private String buildSystemPrompt(StoryMode mode) {
 		if (mode == StoryMode.ENGLISH) {
 			return """
-					You are an engaging English language storyteller for Vietnamese learners.
+					You are an engaging English storyteller for Vietnamese learners.
 					Write a vivid, coherent short story in natural English that weaves ALL target English vocabulary words naturally into the plot.
-					Wrap every occurrence of each target vocabulary word (or its natural inflected form) in double square brackets like [[word]].
-					Provide a natural Vietnamese translation for each sentence.
-					Always return strictly valid JSON with NO markdown fences and NO extra commentary.
+					Wrap EVERY occurrence of each target vocabulary word in double square brackets like [[word]]. Never use **word**.
+					Include a concise Vietnamese translation for each sentence.
+					Always return strictly valid JSON with NO markdown fences and NO extra text.
 					""";
 		}
 		return """
 				You are a creative Vietnamese-English "Truyện Chêm" (Macaronic storytelling) author.
-				Write a lively, relatable, natural Vietnamese short story where EVERY target English vocabulary word is seamlessly woven directly into the Vietnamese sentences in English, wrapped in double square brackets like [[word]].
-				Do NOT put Vietnamese translations in parentheses right next to the English word — the surrounding Vietnamese context must make the meaning crystal clear so the learner absorbs the word naturally.
-				For each sentence's "translation" field, provide a clean, natural full-English version of that sentence.
-				Always return strictly valid JSON with NO markdown fences and NO extra commentary.
+				Write a lively, relatable, natural Vietnamese short story where EVERY target English vocabulary word is seamlessly woven directly into the Vietnamese sentences in English, wrapped in double square brackets like [[word]]. Never use **word**.
+				Do NOT put Vietnamese translations in parentheses next to the English word — let the Vietnamese context make the meaning intuitive.
+				Always return strictly valid JSON with NO markdown fences and NO extra text.
 				""";
 	}
 
 	private String buildUserPrompt(List<String> words, StoryMode mode, StoryLevel level, StoryGenre genre) {
 		String wordList = String.join(", ", words);
-		int sentenceCount = Math.max(5, Math.min(12, words.size() + 2));
-		return """
-				Create a story with the following parameters:
-				- Mode: %s
-				- CEFR Level: %s
-				- Genre: %s
-				- Target English words (%d words — MUST use ALL of them at least once wrapped in [[word]]): %s
-				- Length: %d to %d sentences organized into 2-3 short paragraphs (paragraph 1, 2, 3).
+		int minSentences = Math.max(5, Math.min(9, (int) Math.ceil(words.size() * 0.55) + 2));
+		int maxSentences = minSentences + 2;
 
-				Return strictly valid JSON matching this exact schema:
+		if (mode == StoryMode.ENGLISH) {
+			return """
+					Create an English context story:
+					- CEFR Level: %s, Genre: %s
+					- Target English words (%d words — MUST use ALL wrapped in [[word]]): %s
+					- Length: %d to %d concise sentences across 2-3 paragraphs ( multiple target words may share a sentence ).
+
+					Return strictly valid JSON:
+					{
+					  "title": "Short catchy English title",
+					  "targetWords": [
+					    {"word": "exact word", "meaning": "ngắn gọn tiếng Việt", "phonetic": "/IPA/", "partOfSpeech": "n./v./adj./adv."}
+					  ],
+					  "sentences": [
+					    {"index": 1, "paragraph": 1, "text": "Sentence with [[word]]...", "translation": "Bản dịch tiếng Việt tự nhiên"}
+					  ]
+					}
+					""".formatted(level.name(), genre.name(), words.size(), wordList, minSentences, maxSentences);
+		}
+
+		return """
+				Create a Vietnamese-English "Truyện Chêm" story:
+				- Level: %s, Genre: %s
+				- Target English words (%d words — MUST use ALL wrapped in [[word]]): %s
+				- Length: %d to %d concise Vietnamese sentences across 2-3 paragraphs (2-3 target words may naturally share one sentence).
+
+				Return strictly valid JSON:
 				{
-				  "title": "Short catchy title",
+				  "title": "Tựa truyện tiếng Việt ngắn gọn, cuốn hút",
 				  "targetWords": [
-				    {
-				      "word": "original English word",
-				      "meaning": "concise Vietnamese meaning",
-				      "phonetic": "/IPA/",
-				      "partOfSpeech": "n. / v. / adj. / adv."
-				    }
+				    {"word": "exact word", "meaning": "nghĩa tiếng Việt ngắn gọn", "phonetic": "/IPA/", "partOfSpeech": "n./v./adj./adv."}
 				  ],
 				  "sentences": [
-				    {
-				      "index": 1,
-				      "paragraph": 1,
-				      "text": "Sentence containing [[targetWord]] naturally...",
-				      "translation": "Companion translation sentence"
-				    }
+				    {"index": 1, "paragraph": 1, "text": "Câu tiếng Việt chêm [[word]] tự nhiên..."}
 				  ]
 				}
-				""".formatted(mode.name(), level.name(), genre.name(), words.size(), wordList, sentenceCount, sentenceCount + 2);
+				""".formatted(level.name(), genre.name(), words.size(), wordList, minSentences, maxSentences);
 	}
 
 	private ParsedStory parseStoryJson(String rawContent, List<String> fallbackWords) {
 		String cleaned = stripCodeFence(rawContent);
 		try {
 			JsonNode root = objectMapper.readTree(cleaned);
-			String title = root.path("title").asText("Untitled Context Story").trim();
+			String title = root.path("title").asText("Truyện Chêm Từ Vựng").trim();
 			if (title.isEmpty()) {
-				title = "Untitled Context Story";
+				title = "Truyện Chêm Từ Vựng";
 			}
 			if (title.length() > 180) {
 				title = title.substring(0, 180);
@@ -381,15 +419,16 @@ public class StoryService {
 			if (sentencesNode.isArray()) {
 				int idx = 1;
 				for (JsonNode n : sentencesNode) {
-					String text = n.path("text").asText("").trim();
-					if (text.isEmpty()) {
+					String rawText = n.path("text").asText("").trim();
+					if (rawText.isEmpty()) {
 						continue;
 					}
+					String normalizedText = normalizeMarkers(rawText, fallbackWords);
 					int paragraph = n.path("paragraph").asInt(1);
 					String translation = n.path("translation").asText("").trim();
 
 					List<StoryDTO.StoryBlankDTO> blanks = new ArrayList<>();
-					Matcher matcher = BLANK_PATTERN.matcher(text);
+					Matcher matcher = BLANK_PATTERN.matcher(normalizedText);
 					while (matcher.find()) {
 						String token = matcher.group(1).trim();
 						if (!token.isEmpty()) {
@@ -405,7 +444,7 @@ public class StoryService {
 					sentences.add(StoryDTO.StorySentenceDTO.builder()
 							.index(n.path("index").asInt(idx))
 							.paragraph(Math.max(1, paragraph))
-							.text(text)
+							.text(normalizedText)
 							.translation(translation)
 							.blanks(blanks)
 							.build());
@@ -416,12 +455,36 @@ public class StoryService {
 			if (sentences.isEmpty()) {
 				throw new IllegalStateException("AI model returned a story with no sentences.");
 			}
+			if (blankCounter == 0) {
+				throw new IllegalStateException("AI model returned sentences without any [[targetWord]] markers.");
+			}
 
 			return new ParsedStory(title, targetWords, sentences, blankCounter);
+		} catch (RuntimeException ex) {
+			LOG.warn("Failed to parse LLM story JSON: {}", ex.getMessage());
+			throw ex;
 		} catch (Exception ex) {
-			LOG.error("Failed to parse LLM story JSON: {}", rawContent, ex);
-			throw new IllegalStateException("AI returned malformed story format. Please try again.", ex);
+			LOG.warn("Malformed LLM story JSON: {}", ex.getMessage());
+			throw new IllegalStateException("AI returned malformed story format: " + ex.getMessage(), ex);
 		}
+	}
+
+	/**
+	 * Converts accidental Markdown **word** into [[word]], and if a sentence still has no [[...]] markers,
+	 * wraps bare occurrences of target words so highlighting & Cloze practice always work reliably.
+	 */
+	private String normalizeMarkers(String text, List<String> targetWords) {
+		String normalized = BOLD_MARKER_PATTERN.matcher(text).replaceAll("[[$1]]");
+		if (!BLANK_PATTERN.matcher(normalized).find() && targetWords != null) {
+			for (String w : targetWords) {
+				if (w == null || w.isBlank()) {
+					continue;
+				}
+				Pattern bareWord = Pattern.compile("(?<!\\[)(?i)\\b(" + Pattern.quote(w.trim()) + ")\\b(?!\\])");
+				normalized = bareWord.matcher(normalized).replaceFirst("[[$1]]");
+			}
+		}
+		return normalized;
 	}
 
 	private String stripCodeFence(String raw) {
