@@ -45,6 +45,9 @@ public class CollectionService {
 
 	private static final Logger LOG = LoggerFactory.getLogger(CollectionService.class);
 
+	public static final String DEFAULT_USER_COLLECTION_NAME = "Bộ từ của tôi";
+	public static final String DEFAULT_USER_COLLECTION_TRANSLATION = "My Vocabulary";
+
 	/** Audit "changes" (admin_audit_log_backend.md §4.4.4). */
 	private static final List<String> AUDIT_FIELDS = List.of("name", "translation");
 	private static final List<String> DELETE_FIELDS = List.of("name", "topicCount", "itemCount");
@@ -133,6 +136,31 @@ public class CollectionService {
 		validateCollectionReadAccess(collection, userId);
 
 		return collectionMapper.toDto(collection);
+	}
+
+	/**
+	 * Ensures a newly registered (or activated) user has a default personal collection ready to use.
+	 * Idempotent: does nothing if the user already owns at least one collection.
+	 */
+	@Transactional
+	public CollectionDTO ensureDefaultUserCollection(User user) {
+		if (user == null || user.getId() == null) {
+			return null;
+		}
+		List<Collection> existing = this.collectionRepository.findByOwnerId(user.getId());
+		if (!existing.isEmpty()) {
+			return collectionMapper.toDto(existing.get(0));
+		}
+		Collection collection = Collection.builder()
+				.name(DEFAULT_USER_COLLECTION_NAME)
+				.translation(DEFAULT_USER_COLLECTION_TRANSLATION)
+				.type(CollectionType.USER)
+				.owner(user)
+				.build();
+		Collection saved = this.collectionRepository.save(collection);
+		evictUserCollectionsCache(user.getId());
+		LOG.info("Created default personal collection ID={} for user ID={}", saved.getId(), user.getId());
+		return collectionMapper.toDto(saved);
 	}
 
 	/**
