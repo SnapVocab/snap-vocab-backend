@@ -5,9 +5,11 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -47,6 +49,7 @@ import vn.ptit.snapvocab.quiz.domain.enumeration.QuizStatus;
 import vn.ptit.snapvocab.quiz.repository.QuizMatchingAttemptRepository;
 import vn.ptit.snapvocab.quiz.repository.QuizQuestionRepository;
 import vn.ptit.snapvocab.quiz.repository.QuizRepository;
+import vn.ptit.snapvocab.vocab.repository.TopicItemRepository;
 import vn.ptit.snapvocab.vocab.repository.TopicRepository;
 import vn.ptit.snapvocab.user.repository.UserRepository;
 import vn.ptit.snapvocab.vocab.service.TopicService;
@@ -76,6 +79,7 @@ public class QuizService {
 	private final QuizMatchingAttemptRepository attemptRepository;
 	private final TopicRepository topicRepository;
 	private final TopicService topicService;
+	private final TopicItemRepository topicItemRepository;
 	private final UserRepository userRepository;
 	private final QuizContentResolver contentResolver;
 	private final QuizGenerator generator;
@@ -88,9 +92,9 @@ public class QuizService {
 
 	public QuizService(QuizRepository quizRepository, QuizQuestionRepository questionRepository,
 			QuizMatchingAttemptRepository attemptRepository, TopicRepository topicRepository,
-			TopicService topicService, UserRepository userRepository, QuizContentResolver contentResolver,
-			QuizGenerator generator, ApplicationEventPublisher eventPublisher, XpService xpService,
-			ExperienceLogRepository experienceLogRepository, MissionTracker missionTracker,
+			TopicService topicService, TopicItemRepository topicItemRepository, UserRepository userRepository,
+			QuizContentResolver contentResolver, QuizGenerator generator, ApplicationEventPublisher eventPublisher,
+			XpService xpService, ExperienceLogRepository experienceLogRepository, MissionTracker missionTracker,
 			PlatformTransactionManager transactionManager) {
 		this.missionTracker = missionTracker;
 		this.xpService = xpService;
@@ -100,6 +104,7 @@ public class QuizService {
 		this.attemptRepository = attemptRepository;
 		this.topicRepository = topicRepository;
 		this.topicService = topicService;
+		this.topicItemRepository = topicItemRepository;
 		this.userRepository = userRepository;
 		this.contentResolver = contentResolver;
 		this.generator = generator;
@@ -136,6 +141,13 @@ public class QuizService {
 				.orElseThrow(() -> new ResourceNotFoundException("Topic not found with id: " + request.topicId()));
 
 		List<QuizContentResolver.ItemContent> items = contentResolver.resolve(topic, request.mode());
+		// WI-QZ-01: quiz_questions.topic_item_id has no foreign key. Share-lock the words: an admin delete then either
+		// finished first (its words are dropped here) or waits for this quiz and sees it. No schema change needed.
+		if (!items.isEmpty()) {
+			Set<Long> live = new HashSet<>(
+					topicItemRepository.lockForQuiz(items.stream().map(QuizContentResolver.ItemContent::topicItemId).toList()));
+			items = items.stream().filter(item -> live.contains(item.topicItemId())).toList();
+		}
 		Quiz quiz = Quiz.builder()
 				.user(userRepository.getReferenceById(userId))
 				.topicId(topic.getId())

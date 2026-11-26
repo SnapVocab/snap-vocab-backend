@@ -16,6 +16,9 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
+import vn.ptit.snapvocab.common.exception.ResourceNotFoundException;
+import vn.ptit.snapvocab.security.AuthoritiesConstants;
+import vn.ptit.snapvocab.security.SecurityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -69,6 +72,15 @@ public class StoryService {
 			throw new IllegalStateException("You have reached today's AI Story limit (" + quota.getDailyLimit() + "/day).");
 		}
 
+		if (request.getTopicId() != null) {
+			// OQ-CNT-01: no new story from a hidden topic (admins still can).
+			topicRepository.findById(request.getTopicId())
+					.filter(topic -> topic.getHiddenAt() != null
+							&& !SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.ADMIN))
+					.ifPresent(topic -> {
+						throw new ResourceNotFoundException("Topic not found with id: " + topic.getId());
+					});
+		}
 		List<String> words = resolveTargetWords(request);
 		int minWords = Math.max(1, storyProperties.getMinWords());
 		int maxWords = Math.max(minWords, storyProperties.getMaxWords());

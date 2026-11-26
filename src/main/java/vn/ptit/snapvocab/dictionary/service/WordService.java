@@ -88,7 +88,8 @@ public class WordService {
 
 	public void addMyWord(Long wordId) {
 		Long userId = currentUserId();
-		if (!wordRepository.existsById(wordId)) {
+		// A soft-deleted word is not offered anymore; one already saved stays in the list (getMyWords).
+		if (wordRepository.findById(wordId).filter(word -> word.getDeletedAt() == null).isEmpty()) {
 			throw new ResourceNotFoundException("Word not found: " + wordId);
 		}
 		userWordRepository.addWord(userId, wordId);

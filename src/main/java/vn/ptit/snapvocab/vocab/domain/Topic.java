@@ -63,6 +63,19 @@ public class Topic extends BaseTimeEntity {
 	@JoinColumn(name = "active_template_id")
 	private Template activeTemplate;
 
+	/**
+	 * Admin soft delete of a SYSTEM topic (OQ-CNT-01, PO 2026-11-26): gone from the catalog, new cards, Quiz and AI
+	 * stories; cards learners already study keep their review schedule. Kept until an admin restores or purges it.
+	 */
+	@Column(name = "hidden_at")
+	private java.time.Instant hiddenAt;
+
+	@Column(name = "hidden_by", length = 254)
+	private String hiddenBy;
+
+	@Column(name = "hidden_reason", length = 500)
+	private String hiddenReason;
+
 	@ManyToOne(fetch = FetchType.LAZY)
 	@JoinColumn(name = "schema_id")
 	private Schema schema;

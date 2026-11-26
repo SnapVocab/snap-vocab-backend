@@ -5,6 +5,7 @@ import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -158,6 +159,64 @@ public interface TopicItemRepository extends JpaRepository<TopicItem, Long> {
 			@Param("limit") Long limit
 	);
 
+	// WI-04 / WI-QZ-01: the item row is the one lock every writer of data about the item goes through. Inserting an
+	// FSRS card or a daily card takes a shared lock on it (InnoDB foreign key check), and quiz creation takes one
+	// explicitly (quiz_questions has no foreign key). Holding it exclusively keeps all of them out until the delete
+	// ends; the learner reads below run after the lock in READ_COMMITTED, so they see everything committed before.
 
+	@Query(value = "SELECT id FROM topic_items WHERE id = :itemId FOR UPDATE", nativeQuery = true)
+	List<Long> lockForDelete(@Param("itemId") Long itemId);
+
+	@Query(value = "SELECT id FROM topic_items WHERE topic_id = :topicId FOR UPDATE", nativeQuery = true)
+	List<Long> lockTopicItemsForDelete(@Param("topicId") Long topicId);
+
+	/**
+	 * LOCK IN SHARE MODE, not FOR SHARE: MariaDB 10.11 (production) only knows the former. FORCE INDEX (PRIMARY): a
+	 * shared read served from a covering secondary index locks only that index, which the delete's lock on the row
+	 * itself does not conflict with (seen on MySQL 9.1, 2026-11-20).
+	 */
+	@Query(value = "SELECT id FROM topic_items FORCE INDEX (PRIMARY) WHERE id IN (:ids) LOCK IN SHARE MODE", nativeQuery = true)
+	List<Long> lockForQuiz(@Param("ids") java.util.Collection<Long> ids);
+
+	/** Learners with study data on one item: SRS card, daily card, quiz question. */
+	@Query(value = """
+			SELECT user_id FROM fsrs_records WHERE topic_item_id = :itemId
+			UNION SELECT user_id FROM study_daily_cards WHERE topic_item_id = :itemId
+			UNION SELECT q.user_id FROM quiz_questions qq JOIN quizzes q ON q.id = qq.quiz_id WHERE qq.topic_item_id = :itemId
+			""", nativeQuery = true)
+	List<Long> findItemLearners(@Param("itemId") Long itemId);
+
+	/** Learners with study data on a topic: the item rows above, plus quizzes and AI stories made on the topic. */
+	@Query(value = """
+			SELECT f.user_id FROM fsrs_records f JOIN topic_items ti ON ti.id = f.topic_item_id WHERE ti.topic_id = :topicId
+			UNION SELECT d.user_id FROM study_daily_cards d JOIN topic_items ti ON ti.id = d.topic_item_id
+				WHERE ti.topic_id = :topicId
+			UNION SELECT q.user_id FROM quiz_questions qq JOIN quizzes q ON q.id = qq.quiz_id
+				JOIN topic_items ti ON ti.id = qq.topic_item_id WHERE ti.topic_id = :topicId
+			UNION SELECT q.user_id FROM quizzes q WHERE q.topic_id = :topicId
+			UNION SELECT s.user_id FROM ai_stories s WHERE s.topic_id = :topicId
+			""", nativeQuery = true)
+	List<Long> findTopicLearners(@Param("topicId") Long topicId);
+
+	/** Bulk delete of a topic's EAV rows and items, children first (no cascade in the schema). */
+	@Modifying
+	@Query(value = """
+			DELETE v FROM topic_item_attribute_values v
+			JOIN topic_item_attribute_groups g ON g.id = v.group_instance_id
+			JOIN topic_items ti ON ti.id = g.topic_item_id
+			WHERE ti.topic_id = :topicId
+			""", nativeQuery = true)
+	int deleteValuesOfTopic(@Param("topicId") Long topicId);
+
+	@Modifying
+	@Query(value = """
+			DELETE g FROM topic_item_attribute_groups g
+			JOIN topic_items ti ON ti.id = g.topic_item_id
+			WHERE ti.topic_id = :topicId
+			""", nativeQuery = true)
+	int deleteGroupsOfTopic(@Param("topicId") Long topicId);
+
+	@Modifying
+	@Query(value = "DELETE FROM topic_items WHERE topic_id = :topicId", nativeQuery = true)
+	int deleteItemsOfTopic(@Param("topicId") Long topicId);
 }
-

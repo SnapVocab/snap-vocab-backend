@@ -13,6 +13,8 @@ import lombok.Setter;
 @AllArgsConstructor
 @Builder
 public class MeaningDTO {
+    /** word_definitions.id: lets the admin editor keep a meaning it did not change. */
+    private Long id;
 
     private String definition;
 

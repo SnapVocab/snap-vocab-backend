@@ -23,6 +23,7 @@ import vn.ptit.snapvocab.quiz.exception.QuizException;
 import vn.ptit.snapvocab.scan.exception.ScanException;
 import vn.ptit.snapvocab.shop.exception.ShopException;
 import vn.ptit.snapvocab.study.exception.StudyQuotaExceededException;
+import vn.ptit.snapvocab.vocab.exception.ContentException;
 
 @Slf4j
 @RestControllerAdvice
@@ -199,6 +200,19 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<RestResponse<Object>> handleBadge(BadgeException ex) {
 
 		log.info("Badge request rejected with {}: {}", ex.getCode(), ex.getMessage());
+		RestResponse<Object> response = RestResponse.builder()
+				.statusCode(ex.getCode().getStatus().value())
+				.error(ex.getCode().name())
+				.data(ex.getDetails())
+				.build();
+
+		return ResponseEntity.status(ex.getCode().getStatus()).body(response);
+	}
+
+	@ExceptionHandler(ContentException.class)
+	public ResponseEntity<RestResponse<Object>> handleContent(ContentException ex) {
+
+		log.info("Content request rejected with {}: {}", ex.getCode(), ex.getMessage());
 		RestResponse<Object> response = RestResponse.builder()
 				.statusCode(ex.getCode().getStatus().value())
 				.error(ex.getCode().name())

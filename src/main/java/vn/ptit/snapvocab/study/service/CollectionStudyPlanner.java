@@ -94,7 +94,9 @@ public class CollectionStudyPlanner {
         settingsService.accessibleCollection(userId, collectionId);
         Snapshot snapshot = snapshot(userId, List.of(collectionId), Instant.now());
         Budget budget = snapshot.budgets.get(collectionId);
-        List<Topic> topics = topicRepository.findByCollectionId(collectionId);
+        // Hidden topics (OQ-CNT-01) leave the per-topic list; their due reviews still count in the collection total.
+        List<Topic> topics = topicRepository.findByCollectionId(collectionId).stream()
+                .filter(topic -> topic.getHiddenAt() == null).toList();
         Map<Long, List<Long>> children = new HashMap<>();
         for (Topic topic : topics) {
             if (topic.getParent() != null) {

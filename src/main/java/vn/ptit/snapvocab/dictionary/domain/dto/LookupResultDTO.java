@@ -36,5 +36,9 @@ public class LookupResultDTO {
     private List<RelationLookupDTO> relations;
 
     private Instant createdAt;
+    /** Set when an admin soft-deleted the word; only reachable by id then (saved words, Admin). */
+    private Instant deletedAt;
+    /** Admin editor's optimistic lock (PUT /api/admin/words/{id}). */
+    private long version;
 }
 

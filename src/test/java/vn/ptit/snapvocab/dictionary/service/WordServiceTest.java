@@ -74,11 +74,21 @@ class WordServiceTest {
     @Test
     void addUsesAuthenticatedUserAndRejectsMissingDictionaryWord() {
         when(users.getCurrentUserId()).thenReturn(Optional.of(7L));
-        when(words.existsById(10L)).thenReturn(true);
+        when(words.findById(10L)).thenReturn(Optional.of(word(10L, "dog")));
         service.addMyWord(10L);
         verify(saved).addWord(7L, 10L);
         assertThatThrownBy(() -> service.addMyWord(99L)).isInstanceOf(ResourceNotFoundException.class);
         verify(saved, never()).addWord(7L, 99L);
+    }
+
+    @Test
+    void softDeletedWordCannotBeSavedAgain() {
+        when(users.getCurrentUserId()).thenReturn(Optional.of(7L));
+        Word deleted = word(12L, "fox");
+        deleted.setDeletedAt(java.time.Instant.parse("2026-11-25T00:00:00Z"));
+        when(words.findById(12L)).thenReturn(Optional.of(deleted));
+        assertThatThrownBy(() -> service.addMyWord(12L)).isInstanceOf(ResourceNotFoundException.class);
+        verify(saved, never()).addWord(7L, 12L);
     }
 
     @Test

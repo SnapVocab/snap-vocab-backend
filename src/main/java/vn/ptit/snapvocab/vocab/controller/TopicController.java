@@ -39,6 +39,7 @@ public class TopicController {
 	public ResponseEntity<PaginationObject<List<TopicItemData>>> getTopicItems(
 			@PathVariable Long topicId, Pageable pageable) {
 		LOG.info("[GET: /{}/items] Fetching topic items for topicId: {}", topicId, topicId);
+		topicService.ensureVisible(topicId); // outside the cache: a cached page must not reach learners once hidden
 		return ResponseEntity.ok(topicService.getTopicItems(topicId, pageable));
 	}
 
@@ -46,12 +47,15 @@ public class TopicController {
 	public ResponseEntity<TopicItemData> getTopicItem(
 			@PathVariable Long topicId, @PathVariable Long itemId) {
 		LOG.info("[GET: /{}/items/{}] Fetching topic item", topicId, itemId);
+		topicService.ensureVisible(topicId); // outside the cache: a cached page must not reach learners once hidden
 		return ResponseEntity.ok(topicService.getTopicItem(topicId, itemId));
 	}
 
 	@GetMapping("/{topicId}/schema")
 	public ResponseEntity<TopicSchemaDTO> getTopicSchema(@PathVariable Long topicId) {
 		LOG.info("[GET: /{}/schema] Fetching topic schema for topicId: {}", topicId, topicId);
+		// No ensureVisible: the study screen draws every card with its topic's schema, and cards learners already
+		// studied in a hidden topic stay due (OQ-CNT-01). The schema is layout only, no topic content.
 		return ResponseEntity.ok(topicService.getTopicSchema(topicId));
 	}
 
@@ -128,6 +132,7 @@ public class TopicController {
 		LOG.info(
 				"[GET: /{}/cursor] Fetching topic items by cursor for topicId: {}, cursor: {}, limit: {}",
 				topicId, topicId, cursor, limit);
+		topicService.ensureVisible(topicId); // outside the cache: a cached page must not reach learners once hidden
 		return ResponseEntity.ok(topicService.getTopicItemsByCursor(topicId, cursor, limit));
 	}
 }

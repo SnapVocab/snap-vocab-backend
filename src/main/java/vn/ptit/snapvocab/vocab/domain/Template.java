@@ -19,6 +19,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.ColumnDefault;
 import vn.ptit.snapvocab.common.domain.BaseTimeEntity;
 
 @Entity
@@ -63,6 +64,12 @@ public class Template extends BaseTimeEntity {
 	public void setIsDefault(boolean isDefault) {
 		this.isDefault = isDefault;
 	}
+
+	/** Admin editor's optimistic lock (templates_ui.md §8, migration_admin_content_v1), bumped by AdminTemplateService. */
+	@Builder.Default
+	@ColumnDefault("0")
+	@Column(name = "version", nullable = false)
+	private long version = 0L;
 
 	@OneToMany(
 			mappedBy = "template",

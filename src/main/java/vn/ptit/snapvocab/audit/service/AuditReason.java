@@ -16,6 +16,7 @@ public final class AuditReason {
 	public static final String DAILY_REWARD_OVER_CAP = "DAILY_REWARD_OVER_CAP";
 	public static final String ARCHIVE = "ARCHIVE";
 	public static final String BAN = "BAN";
+	public static final String DELETE = "DELETE";
 
 	private AuditReason() {
 	}

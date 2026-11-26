@@ -41,7 +41,7 @@ public class QuizContentResolver {
 		this.valueRepository = valueRepository;
 	}
 
-	static Set<SemanticRole> requiredRoles(QuizMode mode) {
+	public static Set<SemanticRole> requiredRoles(QuizMode mode) {
 		return switch (mode) {
 			case MCQ, MATCHING -> EnumSet.of(SemanticRole.TARGET_WORD, SemanticRole.NATIVE_TRANSLATION);
 			case FILL_BLANK -> EnumSet.of(SemanticRole.TARGET_WORD, SemanticRole.EXAMPLE_SENTENCE);
@@ -118,7 +118,8 @@ public class QuizContentResolver {
 		return items;
 	}
 
-	static Map<SemanticRole, Set<Long>> bindings(List<TemplateField> fields, Set<SemanticRole> required) {
+	/** Also the admin template editor's save rule (AdminTemplateService): one rule for Quiz and for saving. */
+	public static Map<SemanticRole, Set<Long>> bindings(List<TemplateField> fields, Set<SemanticRole> required) {
 		Map<SemanticRole, Set<Long>> result = new EnumMap<>(SemanticRole.class);
 		for (TemplateField field : fields) {
 			if (field.getSemanticRole() != null && required.contains(field.getSemanticRole())) {

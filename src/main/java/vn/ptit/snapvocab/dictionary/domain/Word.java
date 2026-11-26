@@ -13,12 +13,14 @@ import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.time.Instant;
 import java.util.HashSet;
 import java.util.Set;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.ColumnDefault;
 import vn.ptit.snapvocab.common.domain.BaseCreatedAtEntity;
 
 @Entity
@@ -44,6 +46,15 @@ public class Word extends BaseCreatedAtEntity {
 	@Size(min = 2, max = 20)
 	@Column(name = "lang_code", length = 20, nullable = false)
 	private String langCode;
+
+	/** Soft delete (FR-13): hidden from suggest, lookup and scan; a learner's saved word still opens by id. */
+	@Column(name = "deleted_at")
+	private Instant deletedAt;
+
+	/** Admin editor's optimistic lock, compared and bumped by AdminWordService (migration_admin_content_v1). */
+	@ColumnDefault("0")
+	@Column(name = "version", nullable = false)
+	private long version;
 
 	// Ordered by id (import order) so "first meaning/pronunciation" is stable
 	// across

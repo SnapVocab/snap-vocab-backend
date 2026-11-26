@@ -32,12 +32,12 @@ public interface StudyQueueRepository extends JpaRepository<FsrsRecord, Long> {
     /** One grouped read for the entire collection list, including collections never studied. */
     @Query("""
             SELECT ti.topic.id AS topicId, ti.topic.collection.id AS collectionId,
-              SUM(CASE WHEN fr.id IS NULL THEN 1 ELSE 0 END) AS newCount,
+              SUM(CASE WHEN fr.id IS NULL AND ti.topic.hiddenAt IS NULL THEN 1 ELSE 0 END) AS newCount,
               SUM(CASE WHEN fr.due <= :now AND fr.state IN :states THEN 1 ELSE 0 END) AS dueCount,
               SUM(CASE WHEN fr.due <= :now AND fr.state IN :learningStates
                         AND fr.lastReview >= :dayStart THEN 1 ELSE 0 END) AS learningCount,
               SUM(CASE WHEN fr.createdAt >= :from AND fr.createdAt < :to THEN 1 ELSE 0 END) AS newStarted,
-              COUNT(ti) AS wordCount
+              SUM(CASE WHEN fr.id IS NOT NULL OR ti.topic.hiddenAt IS NULL THEN 1 ELSE 0 END) AS wordCount
             FROM TopicItem ti LEFT JOIN FsrsRecord fr ON fr.topicItem = ti AND fr.user.id = :userId
             WHERE ti.topic.collection.id IN :collectionIds
             GROUP BY ti.topic.id, ti.topic.collection.id
@@ -89,7 +89,7 @@ public interface StudyQueueRepository extends JpaRepository<FsrsRecord, Long> {
 
 	@Query("""
 			SELECT ti FROM TopicItem ti
-			WHERE ti.topic.id IN :topicIds
+			WHERE ti.topic.id IN :topicIds AND ti.topic.hiddenAt IS NULL
 			  AND NOT EXISTS (
 				SELECT fr.id FROM FsrsRecord fr
 				WHERE fr.topicItem = ti AND fr.user.id = :userId
@@ -125,7 +125,7 @@ public interface StudyQueueRepository extends JpaRepository<FsrsRecord, Long> {
 
 	@Query("""
 			SELECT COUNT(ti) FROM TopicItem ti
-			WHERE ti.topic.id IN :topicIds
+			WHERE ti.topic.id IN :topicIds AND ti.topic.hiddenAt IS NULL
 			  AND NOT EXISTS (
 				SELECT fr.id FROM FsrsRecord fr
 				WHERE fr.topicItem = ti AND fr.user.id = :userId

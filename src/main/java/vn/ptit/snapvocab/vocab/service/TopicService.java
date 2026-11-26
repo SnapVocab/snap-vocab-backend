@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -14,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -33,6 +35,7 @@ import vn.ptit.snapvocab.audit.domain.enumeration.AuditAction;
 import vn.ptit.snapvocab.audit.domain.enumeration.AuditTargetType;
 import vn.ptit.snapvocab.audit.service.AdminAuditService;
 import vn.ptit.snapvocab.audit.service.AuditDiff;
+import vn.ptit.snapvocab.audit.service.AuditReason;
 import vn.ptit.snapvocab.badge.service.BadgeService;
 import vn.ptit.snapvocab.common.dto.CursorPaginationResponse;
 import vn.ptit.snapvocab.common.dto.Meta;
@@ -79,6 +82,10 @@ import vn.ptit.snapvocab.vocab.domain.dto.topic.TopicDTO;
 import vn.ptit.snapvocab.vocab.domain.dto.topic.TopicItemAttributeRow;
 import vn.ptit.snapvocab.vocab.domain.dto.topic.TopicItemData;
 import vn.ptit.snapvocab.vocab.domain.dto.topic.TopicSchemaDTO;
+import vn.ptit.snapvocab.vocab.domain.dto.topic.HiddenTopicDTO;
+import vn.ptit.snapvocab.vocab.domain.dto.topic.UpdateTopicDTO;
+import vn.ptit.snapvocab.vocab.exception.ContentErrorCode;
+import vn.ptit.snapvocab.vocab.exception.ContentException;
 import vn.ptit.snapvocab.vocab.domain.enumeration.CollectionType;
 import vn.ptit.snapvocab.vocab.domain.mapper.SchemaMapper;
 import vn.ptit.snapvocab.vocab.domain.mapper.SchemaMapperUtils;
@@ -121,6 +128,8 @@ public class TopicService {
 
 	private static final List<String> TOPIC_CREATE_FIELDS = List.of("name", "translation", "description", "schema",
 			"template");
+	private static final List<String> TOPIC_UPDATE_FIELDS = List.of("name", "translation", "description",
+			"descriptionTranslation");
 
 	/**
 	 * Retrieves paginated vocabulary items for a given topic with EAV attributes aggregated into a
@@ -314,7 +323,7 @@ public class TopicService {
 	 */
 	@Cacheable(cacheNames = "topic-schema", key = "#topicId")
 	public TopicSchemaDTO getTopicSchema(Long topicId) {
-		this.validateTopicAccess(topicId);
+		readableTopic(topicId); // not ensureVisible: reviews of a hidden topic's cards still draw with this schema
 		LOG.info("Fetching topic schema for topic ID: {}", topicId);
 		Topic topic = this.topicRepository.findById(topicId)
 				.orElse(null);
@@ -464,6 +473,12 @@ public class TopicService {
 		if (changes.isEmpty()) {
 			return;
 		}
+		audit.record(action, new AuditTarget(AuditTargetType.TOPIC, String.valueOf(topic.getId()), topic.getName(), null,
+				auditParents(topic)), changes, null, null, null);
+	}
+
+	/** Collection id, then the root topic id for a subtopic (admin_audit_log_backend.md §4.4.4). */
+	private static List<Long> auditParents(Topic topic) {
 		List<Long> parents = new ArrayList<>(List.of(topic.getCollection().getId()));
 		if (topic.getParent() != null) {
 			Topic root = topic.getParent();
@@ -472,8 +487,7 @@ public class TopicService {
 			}
 			parents.add(root.getId());
 		}
-		audit.record(action, new AuditTarget(AuditTargetType.TOPIC, String.valueOf(topic.getId()), topic.getName(), null,
-				parents), changes, null, null, null);
+		return parents;
 	}
 
 	private List<AuditChange> renamed(String field, String before, String after) {
@@ -486,9 +500,29 @@ public class TopicService {
 	}
 
 	public void validateTopicAccess(Long topicId) {
+		ensureVisible(readableTopic(topicId));
+	}
+
+	private Topic readableTopic(Long topicId) {
 		Topic topic = this.topicRepository.findById(topicId)
 				.orElseThrow(() -> new ResourceNotFoundException("Topic not found with id: " + topicId));
 		validateCollectionAccess(topic.getCollection());
+		return topic;
+	}
+
+	/**
+	 * A hidden topic (OQ-CNT-01) is not found for learners: no browsing, new Quiz or AI story. Their cards from it are
+	 * served by the study queue (getTopicItemsByIds) and drawn with the topic schema, neither of which comes through
+	 * here. Admins still reach it.
+	 */
+	public void ensureVisible(Long topicId) {
+		topicRepository.findById(topicId).ifPresent(this::ensureVisible);
+	}
+
+	private void ensureVisible(Topic topic) {
+		if (topic.getHiddenAt() != null && !SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.ADMIN)) {
+			throw new ResourceNotFoundException("Topic not found with id: " + topic.getId());
+		}
 	}
 
 	private void validateCollectionAccess(Collection collection) {
@@ -1029,6 +1063,7 @@ public class TopicService {
 				? updateTopicItemDTO.getGroups()
 				: Collections.emptyMap();
 
+		Map<String, String> before = flatValues(topicItem);
 		// Replace all EAV values while retaining the TopicItem row and its ID (and FSRS link).
 		topicItem.getGroupInstances().clear();
 		// Delete old group rows before inserting replacements with the same unique positions.
@@ -1036,6 +1071,9 @@ public class TopicService {
 		Map<String, Object> responseGroups = replaceItemGroups(topicItem, schemaGroups, inputGroups);
 
 		TopicItem savedItem = topicItemRepository.save(topicItem);
+		Map<String, String> after = flatValues(responseGroups);
+		auditTopic(AuditAction.TOPIC_ITEM_UPDATED, topic, () -> changedValues(itemWord(topic, itemId, inputGroups),
+				before, after));
 		return TopicItemData.builder()
 				.topicItemId(savedItem.getId())
 				.createdAt(savedItem.getCreatedAt())
@@ -1043,7 +1081,8 @@ public class TopicService {
 				.build();
 	}
 
-	@Transactional
+	// READ_COMMITTED so the learner reads after the item lock see every transaction that held the lock before us.
+	@Transactional(isolation = Isolation.READ_COMMITTED)
 	@CacheEvict(cacheNames = "topic-items", allEntries = true)
 	public void deleteTopicItem(Long topicId, Long itemId) {
 		Topic topic = topicRepository.findById(topicId)
@@ -1054,9 +1093,227 @@ public class TopicService {
 				.orElseThrow(() -> new ResourceNotFoundException(
 						"Topic item not found with id: " + itemId + " in topic: " + topicId));
 
+		// WI-04 (PO 2026-11-20 "protect learning history"): the deletes below would drop every learner's history on a
+		// shared item, so a SYSTEM item someone studied is refused, with no force. Personal topics are unchanged.
+		if (topic.getCollection() != null && topic.getCollection().getType() == CollectionType.SYSTEM) {
+			topicItemRepository.lockForDelete(itemId);
+			Set<Long> learners = new HashSet<>(topicItemRepository.findItemLearners(itemId));
+			if (!learners.isEmpty()) {
+				throw new ContentException(ContentErrorCode.TOPIC_ITEM_HAS_LEARNING_DATA,
+						learners.size() + " learners have study history on this item", Map.of("learners", learners.size()));
+			}
+		}
+		String word = itemWord(topic, itemId, Map.of("main", flatMain(topicItem)));
+
 		studyQueueRepository.deleteAllByTopicItemId(itemId);
 		studyDailyCardRepository.deleteAllByTopicItemId(itemId);
 		topicItemRepository.delete(topicItem);
+		auditTopic(AuditAction.TOPIC_ITEM_DELETED, topic, () -> List.of(AuditDiff.change(objectMapper, "item", word, null)));
+	}
+
+	/**
+	 * Admin › Chủ đề: rename or re-describe a SYSTEM topic (FR-14.05). Schema, template and parent keep their own
+	 * endpoints; learner topics are out of reach here.
+	 */
+	@Transactional
+	@Caching(evict = {@CacheEvict(cacheNames = "topic-tree", allEntries = true),
+			@CacheEvict(cacheNames = "topic-schema", key = "#topicId")})
+	public TopicDTO updateSystemTopic(Long topicId, UpdateTopicDTO dto) {
+		Topic topic = systemTopic(topicId);
+		Map<String, Object> before = topicFields(topic);
+		topic.setName(dto.name().strip());
+		topic.setTranslation(blankToNull(dto.translation()));
+		topic.setDescription(blankToNull(dto.description()));
+		topic.setDescriptionTranslation(blankToNull(dto.descriptionTranslation()));
+		Topic saved = topicRepository.save(topic);
+		auditTopic(AuditAction.TOPIC_UPDATED, saved,
+				() -> AuditDiff.of(objectMapper, before, topicFields(saved), TOPIC_UPDATE_FIELDS));
+		return topicMapper.toDto(saved);
+	}
+
+	/**
+	 * Deletes a SYSTEM topic nobody has studied (FR-14.05). A topic with subtopics, or with any learner's SRS card,
+	 * daily card, quiz or AI story, is refused with 409 and nothing changes: deleting it would drop their history,
+	 * and hiding a studied topic (soft delete) is a product decision still open for the PO. The topic row and its
+	 * items are locked first, so a learner starting on one of them either finished before (and is counted) or waits
+	 * and then fails on the missing row.
+	 */
+	@Transactional(isolation = Isolation.READ_COMMITTED)
+	@Caching(evict = {@CacheEvict(cacheNames = "topic-tree", allEntries = true),
+			@CacheEvict(cacheNames = "topic-items", allEntries = true),
+			@CacheEvict(cacheNames = "topic-schema", key = "#topicId")})
+	public void deleteSystemTopic(Long topicId, String rawReason) {
+		String reason = AuditReason.check(rawReason, true, AuditReason.DELETE, null);
+		Topic topic = systemTopic(topicId);
+		topicRepository.lockForDelete(topicId);
+		long children = topicRepository.countByParentId(topicId);
+		if (children > 0) {
+			throw new ContentException(ContentErrorCode.TOPIC_HAS_CHILDREN,
+					"Topic " + topicId + " has " + children + " subtopics; delete them first", Map.of("children", children));
+		}
+		int items = topicItemRepository.lockTopicItemsForDelete(topicId).size();
+		Set<Long> learners = new HashSet<>(topicItemRepository.findTopicLearners(topicId));
+		if (!learners.isEmpty()) {
+			throw new ContentException(ContentErrorCode.TOPIC_HAS_LEARNING_DATA,
+					learners.size() + " learners have study data in this topic", Map.of("learners", learners.size()));
+		}
+		List<Long> parents = auditParents(topic);
+		audit.record(AuditAction.TOPIC_DELETED, new AuditTarget(AuditTargetType.TOPIC, String.valueOf(topicId),
+				topic.getName(), null, parents), List.of(AuditDiff.change(objectMapper, "topic",
+						Map.of("name", topic.getName(), "items", items), null)), reason, null, null);
+		topicItemRepository.deleteValuesOfTopic(topicId);
+		topicItemRepository.deleteGroupsOfTopic(topicId);
+		topicItemRepository.deleteItemsOfTopic(topicId);
+		// Prod still has the legacy templates.topic_id foreign key (all NULL, 2026-11-09; not mapped). A template
+		// pointing here would make this fail as 409 CONCURRENT_MODIFICATION and roll back: nothing is lost.
+		topicRepository.deleteRow(topicId);
+	}
+
+	/**
+	 * OQ-CNT-01 (PO 2026-11-26): soft delete. The topic and its subtopics leave the catalog, new cards, Quiz and AI
+	 * stories; learners keep reviewing cards they already study, and their progress stays. Reason 10..500 required.
+	 */
+	@Transactional
+	@Caching(evict = {@CacheEvict(cacheNames = "topic-tree", allEntries = true),
+			@CacheEvict(cacheNames = "topic-items", allEntries = true),
+			@CacheEvict(cacheNames = "topic-schema", allEntries = true)})
+	public HiddenTopicDTO hideSystemTopic(Long topicId, String rawReason) {
+		String reason = AuditReason.check(rawReason, true, AuditReason.DELETE, null);
+		Topic topic = systemTopic(topicId);
+		topicRepository.lockForDelete(topicId);
+		if (topic.getHiddenAt() != null) {
+			throw new ContentException(ContentErrorCode.TOPIC_ALREADY_HIDDEN, "Topic " + topicId + " is already hidden");
+		}
+		java.time.Instant at = java.time.Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
+		List<Long> branch = topicRepository.findDescendantIdsIncludingSelf(topicId);
+		String by = SecurityUtils.getCurrentUserLogin().orElse(null);
+		AuditTarget target = new AuditTarget(AuditTargetType.TOPIC, String.valueOf(topicId), topic.getName(), null,
+				auditParents(topic));
+		int hidden = topicRepository.hide(branch, at, by, reason); // clears the persistence context
+		audit.record(AuditAction.TOPIC_HIDDEN, target, List.of(AuditDiff.change(objectMapper, "status", "VISIBLE",
+						"HIDDEN"), AuditDiff.change(objectMapper, "topicCount", null, hidden)), reason, null, null);
+		return hiddenTopic(topicRepository.findById(topicId).orElseThrow());
+	}
+
+	/** Brings back the topic and the subtopics hidden together with it; a subtopic of a hidden topic waits for it. */
+	@Transactional
+	@Caching(evict = {@CacheEvict(cacheNames = "topic-tree", allEntries = true),
+			@CacheEvict(cacheNames = "topic-items", allEntries = true),
+			@CacheEvict(cacheNames = "topic-schema", allEntries = true)})
+	public TopicDTO restoreSystemTopic(Long topicId, String rawReason) {
+		String reason = AuditReason.check(rawReason, false, AuditReason.DELETE, null);
+		Topic topic = systemTopic(topicId);
+		topicRepository.lockForDelete(topicId);
+		if (topic.getHiddenAt() == null) {
+			throw new ContentException(ContentErrorCode.TOPIC_NOT_HIDDEN, "Topic " + topicId + " is not hidden");
+		}
+		if (topic.getParent() != null && topic.getParent().getHiddenAt() != null) {
+			throw new ContentException(ContentErrorCode.TOPIC_PARENT_HIDDEN, "Restore the parent topic "
+					+ topic.getParent().getId() + " first", Map.of("parentId", topic.getParent().getId()));
+		}
+		AuditTarget target = new AuditTarget(AuditTargetType.TOPIC, String.valueOf(topicId), topic.getName(), null,
+				auditParents(topic));
+		int restored = topicRepository.restore(topicRepository.findDescendantIdsIncludingSelf(topicId), topic.getHiddenAt());
+		audit.record(AuditAction.TOPIC_RESTORED, target, List.of(AuditDiff.change(objectMapper, "status", "HIDDEN",
+						"VISIBLE"), AuditDiff.change(objectMapper, "topicCount", null, restored)), reason, null, null);
+		return topicMapper.toDto(topicRepository.findById(topicId).orElseThrow());
+	}
+
+	/** The collection's hidden topics, newest first, with how many learners have study data in each (and its branch). */
+	@Transactional(readOnly = true)
+	public List<HiddenTopicDTO> hiddenSystemTopics(Long collectionId) {
+		Collection collection = collectionRepository.findById(collectionId)
+				.orElseThrow(() -> new ResourceNotFoundException("Collection not found with id: " + collectionId));
+		if (collection.getType() != CollectionType.SYSTEM) {
+			throw new ResourceNotFoundException("System collection not found with id: " + collectionId);
+		}
+		return topicRepository.findHidden(collectionId).stream().map(this::hiddenTopic).toList();
+	}
+
+	private HiddenTopicDTO hiddenTopic(Topic topic) {
+		Set<Long> learners = new HashSet<>();
+		List<Long> branch = topicRepository.findDescendantIdsIncludingSelf(topic.getId());
+		branch.forEach(id -> learners.addAll(topicItemRepository.findTopicLearners(id)));
+		return new HiddenTopicDTO(topic.getId(), topic.getName(), topic.getTranslation(),
+				topic.getParent() == null ? null : topic.getParent().getId(),
+				topic.getParent() == null ? null : topic.getParent().getName(), topic.getHiddenAt(), topic.getHiddenBy(),
+				topic.getHiddenReason(), branch.size() - 1, learners.size());
+	}
+
+	private Topic systemTopic(Long topicId) {
+		Topic topic = topicRepository.findById(topicId)
+				.orElseThrow(() -> new ResourceNotFoundException("Topic not found with id: " + topicId));
+		if (topic.getCollection() == null || topic.getCollection().getType() != CollectionType.SYSTEM) {
+			// The admin endpoints manage system content only; a learner's topic is theirs.
+			throw new ResourceNotFoundException("System topic not found with id: " + topicId);
+		}
+		return topic;
+	}
+
+	private static Map<String, Object> topicFields(Topic topic) {
+		Map<String, Object> fields = new LinkedHashMap<>();
+		fields.put("name", topic.getName());
+		fields.put("translation", topic.getTranslation());
+		fields.put("description", topic.getDescription());
+		fields.put("descriptionTranslation", topic.getDescriptionTranslation());
+		return fields;
+	}
+
+	private static String blankToNull(String s) {
+		return s == null || s.isBlank() ? null : s.strip();
+	}
+
+	/** "group[i].attribute" → value, so an audit row shows exactly which values an edit changed. */
+	private static Map<String, String> flatValues(TopicItem item) {
+		Map<String, String> flat = new java.util.TreeMap<>();
+		for (var instance : item.getGroupInstances()) {
+			for (var value : instance.getValues()) {
+				flat.put(instance.getGroupDefinition().getName() + "[" + instance.getPosition() + "]."
+						+ value.getAttribute().getName(), value.getValue());
+			}
+		}
+		return flat;
+	}
+
+	private static Map<String, String> flatValues(Map<String, Object> groups) {
+		Map<String, String> flat = new java.util.TreeMap<>();
+		groups.forEach((group, data) -> {
+			List<?> instances = data instanceof List<?> list ? list : List.of(data);
+			for (int i = 0; i < instances.size(); i++) {
+				if (instances.get(i) instanceof Map<?, ?> values) {
+					int position = i + 1;
+					values.forEach((attribute, value) -> {
+						if (value != null) {
+							flat.put(group + "[" + position + "]." + attribute, String.valueOf(value));
+						}
+					});
+				}
+			}
+		});
+		return flat;
+	}
+
+	/** One audit change per item edit: the item's word, then only the values that differ (null = absent). */
+	private List<AuditChange> changedValues(String word, Map<String, String> before, Map<String, String> after) {
+		Map<String, String> b = new LinkedHashMap<>();
+		Map<String, String> a = new LinkedHashMap<>();
+		java.util.TreeSet<String> keys = new java.util.TreeSet<>(before.keySet());
+		keys.addAll(after.keySet());
+		for (String key : keys) {
+			if (!Objects.equals(before.get(key), after.get(key))) {
+				b.put(key, before.get(key));
+				a.put(key, after.get(key));
+			}
+		}
+		return b.isEmpty() ? List.of() : List.of(AuditDiff.change(objectMapper, "item " + word, b, a));
+	}
+
+	private static Map<String, Object> flatMain(TopicItem item) {
+		Map<String, Object> main = new HashMap<>();
+		item.getGroupInstances().stream().filter(g -> "main".equals(g.getGroupDefinition().getName()))
+				.flatMap(g -> g.getValues().stream())
+				.forEach(v -> main.put(v.getAttribute().getName(), v.getValue()));
+		return main;
 	}
 
 	private Map<String, Object> replaceItemGroups(TopicItem topicItem,

@@ -37,6 +37,8 @@ public class TemplateDTO {
 	public void setIsDefault(boolean isDefault) {
 		this.isDefault = isDefault;
 	}
+	/** templates.version; the admin editor sends it back with PUT / default. */
+	private long version;
 	private Instant createdAt;
 	private Instant updatedAt;
 
