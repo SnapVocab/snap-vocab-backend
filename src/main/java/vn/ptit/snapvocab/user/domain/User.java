@@ -128,6 +128,13 @@ public class User extends BaseTimeEntity {
 	@Column(name = "bio", length = 200)
 	private String bio;
 
+	/**
+	 * The topic a word is saved to when the learner has not picked one (buss_mainflow.md BF-07 step 2). A plain id,
+	 * not a foreign key: the learner may delete that topic, and the next save then creates a new one.
+	 */
+	@Column(name = "default_topic_id")
+	private Long defaultTopicId;
+
 	@OneToMany(mappedBy = "owner", cascade = CascadeType.ALL, orphanRemoval = true)
 	@Builder.Default
 	private List<Collection> collections = new ArrayList<>();
