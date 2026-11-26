@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import vn.ptit.snapvocab.common.dto.PaginationObject;
 import vn.ptit.snapvocab.dictionary.domain.dto.BatchLookupRequest;
 import vn.ptit.snapvocab.dictionary.domain.dto.LookupResultDTO;
+import vn.ptit.snapvocab.dictionary.domain.dto.MyWordDTO;
 import vn.ptit.snapvocab.dictionary.domain.dto.WordSuggestDTO;
 import vn.ptit.snapvocab.dictionary.service.WordService;
 
@@ -28,7 +29,7 @@ public class WordController {
 	private final WordService wordService;
 
 	@GetMapping("/my")
-	public ResponseEntity<PaginationObject<List<WordSuggestDTO>>> getMyWords(Pageable pageable) {
+	public ResponseEntity<PaginationObject<List<MyWordDTO>>> getMyWords(Pageable pageable) {
 		return ResponseEntity.ok(wordService.getMyWords(pageable));
 	}
 

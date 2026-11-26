@@ -16,6 +16,17 @@ import vn.ptit.snapvocab.dictionary.domain.dto.WordSuggestDTO;
 @Repository
 public interface WordRepository extends JpaRepository<Word, Long> {
 
+	/** [wordId, translation] in {@code lang}, oldest first, for "Từ của tôi". */
+	@Query("SELECT t.word.id, t.translation FROM Translation t WHERE t.word.id IN :wordIds AND t.langCode = :lang ORDER BY t.id")
+	List<Object[]> findTranslations(@Param("wordIds") Collection<Long> wordIds, @Param("lang") String lang);
+
+	/** [wordId, definition] written in {@code lang}: the meaning when a word has no translation. */
+	@Query("""
+			SELECT wd.word.id, d.definition FROM WordDefinition wd JOIN wd.definition d
+			WHERE wd.word.id IN :wordIds AND d.definitionLang = :lang ORDER BY wd.id
+			""")
+	List<Object[]> findDefinitions(@Param("wordIds") Collection<Long> wordIds, @Param("lang") String lang);
+
 	@Query("""
 			SELECT w FROM Word w
 			LEFT JOIN FETCH w.pronunciations
