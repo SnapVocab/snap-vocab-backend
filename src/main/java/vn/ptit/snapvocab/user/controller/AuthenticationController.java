@@ -15,6 +15,7 @@ import vn.ptit.snapvocab.user.domain.dto.auth.RequestLoginDTO;
 import vn.ptit.snapvocab.user.domain.dto.auth.RequestRegisterDTO;
 import vn.ptit.snapvocab.user.domain.dto.auth.ResendCodeRequest;
 import vn.ptit.snapvocab.user.domain.dto.auth.ResetPasswordRequest;
+import vn.ptit.snapvocab.user.domain.dto.auth.VerifyResetCodeRequest;
 import vn.ptit.snapvocab.user.domain.dto.auth.ResponseLoginDTO;
 import vn.ptit.snapvocab.user.domain.dto.auth.ResponseRegisterDTO;
 import vn.ptit.snapvocab.user.domain.dto.auth.VerifyMailRequest;
@@ -70,6 +71,15 @@ public class AuthenticationController {
 		LOG.info("POST /auth/forgot-password");
 
 		this.authenticationService.forgotPassword(forgotPasswordRequest);
+		return ResponseEntity.ok().build();
+	}
+
+	/** Checks a reset code without consuming it: 200 when valid, 400 INVALID_OR_EXPIRED_CODE otherwise. */
+	@PostMapping("/verify-reset-code")
+	public ResponseEntity<?> verifyResetCode(@Valid @RequestBody VerifyResetCodeRequest request) {
+		LOG.info("POST /auth/verify-reset-code");
+
+		this.authenticationService.verifyResetCode(request);
 		return ResponseEntity.ok().build();
 	}
 

@@ -29,7 +29,7 @@ import vn.ptit.snapvocab.webauthn.repository.WebAuthnCredentialRepository;
 @RequiredArgsConstructor
 public class BiometricAuthService {
 
-	static final String BIOMETRIC_TRANSPORT = "biometric_device";
+	public static final String BIOMETRIC_TRANSPORT = "biometric_device";
 	private static final int SECRET_BYTES = 32;
 
 	private final SecureRandom secureRandom = new SecureRandom();

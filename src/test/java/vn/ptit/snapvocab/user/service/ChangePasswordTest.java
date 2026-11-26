@@ -30,6 +30,11 @@ import vn.ptit.snapvocab.user.domain.mapper.UserMapper;
 import vn.ptit.snapvocab.user.repository.UserRepository;
 import vn.ptit.snapvocab.security.SecurityAuditLogger;
 import vn.ptit.snapvocab.common.exception.BadRequestAlertException;
+import vn.ptit.snapvocab.common.constant.OtpPurpose;
+import vn.ptit.snapvocab.user.domain.dto.auth.ResetPasswordRequest;
+import vn.ptit.snapvocab.user.domain.dto.auth.VerifyResetCodeRequest;
+import vn.ptit.snapvocab.webauthn.repository.WebAuthnCredentialRepository;
+import vn.ptit.snapvocab.webauthn.service.BiometricAuthService;
 
 /** Change password from Settings (MH-PROFILE-03): other devices are signed out. */
 @ExtendWith(MockitoExtension.class)
@@ -51,6 +56,10 @@ class ChangePasswordTest {
 	private JwtEncoder jwtEncoder;
 	@Mock
 	private AvatarUrlService avatarUrlService;
+	@Mock
+	private WebAuthnCredentialRepository webAuthnCredentialRepository;
+	@Mock
+	private OTPService otpService;
 
 	@InjectMocks
 	private AuthenticationService service;
@@ -117,6 +126,32 @@ class ChangePasswordTest {
 		assertThat(response.getAccessToken()).isEqualTo("fresh-access");
 		assertThat(response.getRefreshToken()).isEqualTo("fresh-refresh");
 		verify(securityAuditLogger).success("CHANGE_PASSWORD", 7L);
+		// A fingerprint device token would still sign in without the new password.
+		verify(webAuthnCredentialRepository).deleteByUserIdAndTransports(7L, BiometricAuthService.BIOMETRIC_TRANSPORT);
+	}
+
+	@Test
+	void resetPasswordAlsoEndsFingerprintSignIn() {
+		when(otpService.verifyOtp(EMAIL, "123456", OtpPurpose.FORGOT_PASSWORD)).thenReturn(true);
+		when(userRepository.findOneByEmailIgnoreCase(EMAIL)).thenReturn(java.util.Optional.of(user));
+		when(passwordEncoder.encode("new-pass")).thenReturn("new-hash");
+
+		service.resetPassword(new ResetPasswordRequest(EMAIL, "123456", "new-pass"));
+
+		verify(refreshTokenService).revokeAllTokens(EMAIL);
+		verify(webAuthnCredentialRepository).deleteByUserIdAndTransports(7L, BiometricAuthService.BIOMETRIC_TRANSPORT);
+	}
+
+	@Test
+	void aWrongResetCodeIsRejectedBeforeAnyPasswordIsTyped() {
+		when(otpService.checkOtp(EMAIL, "000000", OtpPurpose.FORGOT_PASSWORD)).thenReturn(false);
+		when(otpService.checkOtp(EMAIL, "123456", OtpPurpose.FORGOT_PASSWORD)).thenReturn(true);
+
+		assertThatThrownBy(() -> service.verifyResetCode(new VerifyResetCodeRequest(EMAIL, "000000")))
+				.isInstanceOf(BadRequestAlertException.class)
+				.hasMessage(AuthenticationService.INVALID_RESET_CODE);
+		service.verifyResetCode(new VerifyResetCodeRequest(EMAIL, "123456"));
+		verify(otpService, never()).verifyOtp(any(), any(), any());
 	}
 
 	@Test
