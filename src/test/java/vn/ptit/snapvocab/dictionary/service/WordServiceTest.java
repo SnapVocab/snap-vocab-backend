@@ -23,17 +23,22 @@ import vn.ptit.snapvocab.dictionary.repository.UserWordRepository;
 import vn.ptit.snapvocab.dictionary.repository.WordRepository;
 import vn.ptit.snapvocab.user.service.UserService;
 import org.mapstruct.factory.Mappers;
+import vn.ptit.snapvocab.dictionary.domain.dto.MyWordDTO;
+import vn.ptit.snapvocab.vocab.domain.enumeration.CollectionType;
+import vn.ptit.snapvocab.vocab.domain.enumeration.SemanticRole;
+import vn.ptit.snapvocab.vocab.repository.TopicItemAttributeValueRepository;
 
 @ExtendWith(MockitoExtension.class)
 class WordServiceTest {
     @Mock private WordRepository words;
     @Mock private UserWordRepository saved;
     @Mock private UserService users;
+    @Mock private TopicItemAttributeValueRepository topicValues;
     private WordService service;
 
     @BeforeEach
     void setUp() {
-        service = new WordService(words, Mappers.getMapper(LookupResultMapper.class), saved, users);
+        service = new WordService(words, Mappers.getMapper(LookupResultMapper.class), saved, users, topicValues);
     }
 
     @Test
@@ -98,9 +103,29 @@ class WordServiceTest {
         when(saved.findMyWords(7L, pageable))
                 .thenReturn(new PageImpl<>(List.of(new WordSuggestDTO(10L, "dog")), pageable, 3));
         var result = service.getMyWords(pageable);
-        assertThat(result.getData()).extracting(WordSuggestDTO::getId).containsExactly(10L);
+        assertThat(result.getData()).extracting(MyWordDTO::id).containsExactly(10L);
         assertThat(result.getMeta().getTotal()).isEqualTo(3);
         assertThat(result.getMeta().getPages()).isEqualTo(3);
+    }
+
+    @Test
+    void myWordsCarryTheMeaningAndTheTopicsAlreadyHoldingThem() {
+        when(users.getCurrentUserId()).thenReturn(Optional.of(7L));
+        var pageable = PageRequest.of(0, 20);
+        when(saved.findMyWords(7L, pageable)).thenReturn(new PageImpl<>(
+                List.of(new WordSuggestDTO(10L, "Dog"), new WordSuggestDTO(11L, "cat")), pageable, 2));
+        when(words.findTranslations(List.of(10L, 11L), "vi"))
+                .thenReturn(List.<Object[]>of(new Object[] {10L, " con chó "}, new Object[] {10L, "chó"}));
+        when(words.findDefinitions(List.of(11L), "vi")).thenReturn(List.<Object[]>of(new Object[] {11L, "con mèo"}));
+        when(topicValues.findOwnTopicsContaining(7L, CollectionType.USER, SemanticRole.TARGET_WORD, List.of("dog", "cat")))
+                .thenReturn(List.<Object[]>of(new Object[] {"dog", 5L, "Animals", 2L, "Mine"}));
+
+        var data = service.getMyWords(pageable).getData();
+
+        assertThat(data.get(0).meaning()).isEqualTo("con chó");
+        assertThat(data.get(0).topics()).containsExactly(new MyWordDTO.Topic(5L, "Animals", 2L, "Mine"));
+        assertThat(data.get(1).meaning()).isEqualTo("con mèo");
+        assertThat(data.get(1).topics()).isEmpty();
     }
 
     @Test

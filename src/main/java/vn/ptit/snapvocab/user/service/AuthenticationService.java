@@ -39,6 +39,9 @@ import vn.ptit.snapvocab.user.domain.dto.auth.ResetPasswordRequest;
 import vn.ptit.snapvocab.user.domain.dto.auth.ResponseLoginDTO;
 import vn.ptit.snapvocab.user.domain.dto.auth.ResponseRegisterDTO;
 import vn.ptit.snapvocab.user.domain.dto.auth.VerifyMailRequest;
+import vn.ptit.snapvocab.user.domain.dto.auth.VerifyResetCodeRequest;
+import vn.ptit.snapvocab.webauthn.repository.WebAuthnCredentialRepository;
+import vn.ptit.snapvocab.webauthn.service.BiometricAuthService;
 import vn.ptit.snapvocab.user.domain.dto.user.ChangePasswordRequest;
 import vn.ptit.snapvocab.user.domain.dto.user.UserDTO;
 import vn.ptit.snapvocab.common.exception.ResourceNotFoundException;
@@ -72,6 +75,7 @@ public class AuthenticationService {
 	private final MailService mailService;
 	private final PasswordEncoder passwordEncoder;
 	private final AvatarUrlService avatarUrlService;
+	private final WebAuthnCredentialRepository webAuthnCredentialRepository;
 	private final CollectionService collectionService;
 	@Value("${jwt.access-expiration:900}")
 	private long accessTokenValidityInSeconds;
@@ -310,6 +314,17 @@ public class AuthenticationService {
 		securityAuditLogger.success("PASSWORD_RESET_REQUEST", u.getId());
 	}
 
+	/** Error of a reset code that is wrong, expired or burnt by too many wrong guesses. */
+	public static final String INVALID_RESET_CODE = "INVALID_OR_EXPIRED_CODE";
+
+	/** The reset screen asks this before the new password is typed; the code stays valid for resetPassword. */
+	public void verifyResetCode(VerifyResetCodeRequest request) {
+		if (!otpService.checkOtp(request.email(), request.code(), OtpPurpose.FORGOT_PASSWORD)) {
+			securityAuditLogger.failure("PASSWORD_RESET_CODE_CHECK", request.email(), INVALID_RESET_CODE);
+			throw new BadRequestAlertException(INVALID_RESET_CODE);
+		}
+	}
+
 	@Transactional
 	public void resetPassword(ResetPasswordRequest resetPasswordRequest) {
 		LOG.info("Reset password attempt");
@@ -320,7 +335,7 @@ public class AuthenticationService {
 		if (!valid) {
 			securityAuditLogger.failure(
 					"PASSWORD_RESET", resetPasswordRequest.email(), "INVALID_OR_EXPIRED_CODE");
-			throw new BadRequestAlertException("Reset code is invalid or has expired.");
+			throw new BadRequestAlertException(INVALID_RESET_CODE);
 		}
 
 		User u = userRepository.findOneByEmailIgnoreCase(resetPasswordRequest.email())
@@ -334,6 +349,7 @@ public class AuthenticationService {
 		u.setPassword(passwordEncoder.encode(resetPasswordRequest.newPassword()));
 		userRepository.save(u);
 		refreshTokenService.revokeAllTokens(u.getEmail()); // sessions opened with the old password end here
+		revokeFingerprintDevices(u.getId());
 		securityAuditLogger.success("PASSWORD_RESET", u.getId());
 	}
 
@@ -389,9 +405,21 @@ public class AuthenticationService {
 		userRepository.save(user);
 
 		refreshTokenService.revokeAllTokens(email);
+		revokeFingerprintDevices(user.getId());
 		ResponseLoginDTO response = generateAuthResponse(user);
 		securityAuditLogger.success("CHANGE_PASSWORD", user.getId());
 		return response;
 	}
-}
 
+	/**
+	 * A device token signs in without the password, so it ends with the password: someone who changes or resets it
+	 * because the account may be known to others must not leave a fingerprint login open on another phone.
+	 * The learner turns fingerprint sign-in on again in Settings.
+	 */
+	private void revokeFingerprintDevices(Long userId) {
+		long revoked = webAuthnCredentialRepository.deleteByUserIdAndTransports(userId, BiometricAuthService.BIOMETRIC_TRANSPORT);
+		if (revoked > 0) {
+			securityAuditLogger.success("BIOMETRIC_REVOKED_ON_PASSWORD_CHANGE", userId);
+		}
+	}
+}

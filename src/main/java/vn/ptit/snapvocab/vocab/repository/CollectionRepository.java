@@ -1,6 +1,7 @@
 package vn.ptit.snapvocab.vocab.repository;
 
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -21,5 +22,7 @@ public interface CollectionRepository extends JpaRepository<Collection, Long> {
 	boolean existsByNameAndType(String name, CollectionType type);
 
 	boolean existsByNameAndOwnerId(String name, Long ownerId);
+
+	Optional<Collection> findFirstByNameAndOwnerId(String name, Long ownerId);
 }
 

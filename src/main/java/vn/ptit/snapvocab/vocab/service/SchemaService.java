@@ -1,5 +1,6 @@
 package vn.ptit.snapvocab.vocab.service;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -7,6 +8,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -22,9 +24,11 @@ import vn.ptit.snapvocab.vocab.domain.TemplateElement;
 import vn.ptit.snapvocab.vocab.domain.TemplateField;
 import vn.ptit.snapvocab.user.domain.User;
 import vn.ptit.snapvocab.vocab.domain.dto.template.CreateTemplateDTO;
+import vn.ptit.snapvocab.vocab.domain.dto.template.MyTemplateDTO;
 import vn.ptit.snapvocab.vocab.domain.dto.template.TemplateDTO;
 import vn.ptit.snapvocab.vocab.domain.dto.topic.CreateSchemaDTO;
 import vn.ptit.snapvocab.vocab.domain.dto.topic.SchemaDTO;
+import vn.ptit.snapvocab.vocab.domain.enumeration.CardSide;
 import vn.ptit.snapvocab.vocab.domain.enumeration.DataType;
 import vn.ptit.snapvocab.vocab.domain.enumeration.TemplateElementType;
 import vn.ptit.snapvocab.vocab.domain.mapper.SchemaMapper;
@@ -38,6 +42,8 @@ import vn.ptit.snapvocab.vocab.repository.TopicRepository;
 import vn.ptit.snapvocab.user.repository.UserRepository;
 import vn.ptit.snapvocab.security.AuthoritiesConstants;
 import vn.ptit.snapvocab.security.SecurityUtils;
+import vn.ptit.snapvocab.common.exception.BadRequestAlertException;
+import vn.ptit.snapvocab.common.exception.ResourceAlreadyExistException;
 import vn.ptit.snapvocab.common.exception.ResourceNotFoundException;
 
 @Service
@@ -193,6 +199,21 @@ public class SchemaService {
 		deleteSchema(schemaId, null);
 	}
 
+	/** Error code: a template still shown by a topic cannot be deleted. */
+	public static final String TEMPLATE_IN_USE = "TEMPLATE_IN_USE";
+
+	/** Error code: a template field names an attribute the schema does not have, and no name to create one. */
+	public static final String UNKNOWN_ATTRIBUTE = "UNKNOWN_ATTRIBUTE";
+
+	/**
+	 * Code of the single personal copy a learner gets of a schema they do not own. Every template they build on
+	 * that schema lands in the same copy, so it can be reused for the next topic (a topic only shows templates of
+	 * its own schema).
+	 */
+	static String personalCopyCode(Long userId, Long baseSchemaId) {
+		return "CUSTOM_" + userId + "_BASE_" + baseSchemaId;
+	}
+
 	@Transactional
 	public TemplateDTO createTemplate(Long schemaId, CreateTemplateDTO dto, Long userId) {
 		LOG.info("Creating new template '{}' on schema {} for userId {}", dto.getName(), schemaId, userId);
@@ -210,78 +231,33 @@ public class SchemaService {
 		List<SchemaAttributeGroup> baseGroups = this.schemaAttributeGroupRepository
 				.findBySchemaIdWithAttributes(baseSchema.getId());
 
-		Schema targetSchema = baseSchema;
-		Map<Long, SchemaAttribute> oldAttrToNewAttr = new HashMap<>();
+		Schema targetSchema;
 		List<SchemaAttributeGroup> targetGroups;
+		Map<Long, SchemaAttribute> oldAttrToNewAttr = new HashMap<>();
 
-		// Never mutate a system/shared schema directly for a normal user: clone a personal schema copy first.
-		boolean ownsBaseSchema = !baseSchema.isSystem()
-				&& baseSchema.getUser() != null
-				&& baseSchema.getUser().getId().equals(userId);
-		if (!ownsBaseSchema) {
-			Schema cloned = Schema.builder()
-					.code("CUSTOM_" + userId + "_" + System.currentTimeMillis())
-					.isSystem(false)
-					.user(currentUser)
-					.name(dto.getName().trim())
-					.description(baseSchema.getDescription())
-					.attributeGroups(new LinkedHashSet<>())
-					.templates(new ArrayList<>())
-					.build();
-
-			for (SchemaAttributeGroup oldGroup : baseGroups) {
-				SchemaAttributeGroup newGroup = SchemaAttributeGroup.builder()
-						.schema(cloned)
-						.name(oldGroup.getName())
-						.label(oldGroup.getLabel())
-						.multiple(oldGroup.isMultiple())
-						.position(oldGroup.getPosition())
-						.attributes(new ArrayList<>())
-						.build();
-				if (oldGroup.getAttributes() != null) {
-					for (SchemaAttribute oldAttr : oldGroup.getAttributes()) {
-						SchemaAttribute newAttr = SchemaAttribute.builder()
-								.group(newGroup)
-								.name(oldAttr.getName())
-								.label(oldAttr.getLabel())
-								.dataType(oldAttr.getDataType())
-								.required(oldAttr.isRequired())
-								.position(oldAttr.getPosition())
-								.build();
-						newGroup.getAttributes().add(newAttr);
-						if (oldAttr.getId() != null) {
-							oldAttrToNewAttr.put(oldAttr.getId(), newAttr);
-						}
-					}
-				}
-				cloned.getAttributeGroups().add(newGroup);
-			}
-
-			targetSchema = this.schemaRepository.saveAndFlush(cloned);
-			targetGroups = new ArrayList<>(targetSchema.getAttributeGroups());
+		// Never mutate a system/shared schema directly for a normal user: use their personal copy of it.
+		if (owns(baseSchema, userId)) {
+			targetSchema = baseSchema;
+			targetGroups = new ArrayList<>(baseGroups);
 		} else {
-			targetGroups = baseGroups;
-		}
-
-		Map<Long, SchemaAttribute> attrById = new HashMap<>();
-		Map<String, SchemaAttribute> attrByName = new HashMap<>();
-		for (SchemaAttributeGroup group : targetGroups) {
-			if (group.getAttributes() != null) {
-				for (SchemaAttribute attr : group.getAttributes()) {
-					if (attr.getId() != null) {
-						attrById.put(attr.getId(), attr);
-					}
-					if (attr.getName() != null) {
-						attrByName.put(attr.getName().trim().toLowerCase(Locale.ROOT), attr);
-					}
-				}
+			String code = personalCopyCode(userId, baseSchema.getId());
+			Optional<Schema> existingCopy = this.schemaRepository.findByCode(code).filter(s -> owns(s, userId));
+			if (existingCopy.isPresent()) {
+				targetSchema = existingCopy.get();
+				targetGroups = new ArrayList<>(this.schemaAttributeGroupRepository
+						.findBySchemaIdWithAttributes(targetSchema.getId()));
+				mapAttributesByName(baseGroups, targetGroups, oldAttrToNewAttr);
+			} else {
+				targetSchema = this.schemaRepository.saveAndFlush(
+						cloneSchema(baseSchema, baseGroups, currentUser, code, oldAttrToNewAttr));
+				targetGroups = new ArrayList<>(targetSchema.getAttributeGroups());
 			}
 		}
 
-		boolean makeDefault = Boolean.TRUE.equals(dto.getIsDefault()) || !ownsBaseSchema;
-		if (makeDefault && ownsBaseSchema) {
-			List<Template> existingTemplates = this.templateRepository.findBySchemaId(targetSchema.getId());
-			for (Template existing : existingTemplates) {
+		List<Template> schemaTemplates = this.templateRepository.findBySchemaId(targetSchema.getId());
+		boolean makeDefault = Boolean.TRUE.equals(dto.getIsDefault()) || schemaTemplates.isEmpty();
+		if (makeDefault) {
+			for (Template existing : schemaTemplates) {
 				if (existing.isDefault()) {
 					existing.setIsDefault(false);
 					this.templateRepository.save(existing);
@@ -297,11 +273,207 @@ public class SchemaService {
 				.elements(new ArrayList<>())
 				.build();
 
+		if (applyElements(template, dto.getElements(), targetSchema, targetGroups, oldAttrToNewAttr)) {
+			this.schemaRepository.saveAndFlush(targetSchema);
+		}
+
+		Template saved = this.templateRepository.save(template);
+		LOG.info("Created template {} on schema {} for userId {}", saved.getId(), targetSchema.getId(), userId);
+		return this.templateMapper.toDto(saved);
+	}
+
+	/**
+	 * "Cập nhật mẫu này": the learner's own template is rewritten in place, so every topic showing it changes. A
+	 * system template is never edited here; the client offers "save as new" instead.
+	 */
+	@Transactional
+	public TemplateDTO updateTemplate(Long schemaId, Long templateId, CreateTemplateDTO dto, Long userId) {
+		Template template = ownedTemplate(schemaId, templateId, userId);
+		Schema schema = template.getSchema();
+
+		template.setName(dto.getName().trim());
+		template.getElements().clear();
+		// Remove the old elements first: the rebuilt ones reuse the same positions.
+		this.templateRepository.saveAndFlush(template);
+
+		List<SchemaAttributeGroup> groups = new ArrayList<>(
+				this.schemaAttributeGroupRepository.findBySchemaIdWithAttributes(schema.getId()));
+		if (applyElements(template, dto.getElements(), schema, groups, new HashMap<>())) {
+			this.schemaRepository.saveAndFlush(schema);
+		}
+
+		Template saved = this.templateRepository.saveAndFlush(template);
+		// Moves it to the top of "Mẫu thẻ của tôi" even when only its fields changed.
+		this.templateRepository.touch(saved.getId(), Instant.now());
+		LOG.info("Updated template {} on schema {} for userId {}", saved.getId(), schema.getId(), userId);
+		return this.templateMapper.toDto(saved);
+	}
+
+	/** Only a template no topic shows: deleting one in use would leave those topics without a card layout. */
+	@Transactional
+	public void deleteTemplate(Long schemaId, Long templateId, Long userId) {
+		Template template = ownedTemplate(schemaId, templateId, userId);
+		if (this.topicRepository.countByActiveTemplateId(templateId) > 0) {
+			throw new ResourceAlreadyExistException(TEMPLATE_IN_USE);
+		}
+		this.templateRepository.delete(template);
+		LOG.info("Deleted template {} for userId {}", templateId, userId);
+	}
+
+	/**
+	 * "Mẫu thẻ của tôi": the templates the learner built in Template Builder (code {@code TPL_}), newest first, with
+	 * how many topics show each one. Copies made when a topic's schema was forked are not listed.
+	 */
+	public List<MyTemplateDTO> getMyTemplates(Long userId) {
+		if (userId == null) {
+			throw new AccessDeniedException("Authentication required");
+		}
+		List<Template> templates = this.templateRepository.findLibraryTemplates(userId);
+		Map<Long, Long> usage = new HashMap<>();
+		if (!templates.isEmpty()) {
+			for (Object[] row : this.topicRepository.countByActiveTemplateIds(
+					templates.stream().map(Template::getId).toList())) {
+				usage.put((Long) row[0], (Long) row[1]);
+			}
+		}
+		return templates.stream().map(template -> new MyTemplateDTO(
+				template.getId(),
+				template.getSchema().getId(),
+				template.getName(),
+				usage.getOrDefault(template.getId(), 0L),
+				fieldLabels(template, CardSide.FRONT),
+				fieldLabels(template, CardSide.BACK),
+				template.getUpdatedAt())).toList();
+	}
+
+	private static List<String> fieldLabels(Template template, CardSide side) {
+		return template.getElements().stream()
+				.filter(element -> element.getType() == TemplateElementType.FIELD && element.getField() != null
+						&& element.getSide() == side)
+				.map(element -> {
+					TemplateField field = element.getField();
+					if (field.getFieldLabel() != null && !field.getFieldLabel().isBlank()) {
+						return field.getFieldLabel();
+					}
+					return field.getSchemaAttribute() == null ? "" : field.getSchemaAttribute().getLabel();
+				})
+				.filter(label -> label != null && !label.isBlank())
+				.toList();
+	}
+
+	private Template ownedTemplate(Long schemaId, Long templateId, Long userId) {
+		if (userId == null) {
+			throw new AccessDeniedException("Authentication required");
+		}
+		Template template = this.templateRepository.findById(templateId)
+				.filter(t -> t.getSchema() != null && t.getSchema().getId().equals(schemaId))
+				.orElseThrow(() -> new ResourceNotFoundException(
+						"Template " + templateId + " not found on schema " + schemaId));
+		if (!owns(template.getSchema(), userId)) {
+			throw new AccessDeniedException("Only the owner can change this template; save it as a new one instead");
+		}
+		return template;
+	}
+
+	private static boolean owns(Schema schema, Long userId) {
+		return !schema.isSystem() && schema.getUser() != null && schema.getUser().getId().equals(userId);
+	}
+
+	private static Schema cloneSchema(Schema baseSchema, List<SchemaAttributeGroup> baseGroups, User owner, String code,
+			Map<Long, SchemaAttribute> oldAttrToNewAttr) {
+		Schema cloned = Schema.builder()
+				.code(code)
+				.isSystem(false)
+				.user(owner)
+				.name(baseSchema.getName())
+				.description(baseSchema.getDescription())
+				.attributeGroups(new LinkedHashSet<>())
+				.templates(new ArrayList<>())
+				.build();
+
+		for (SchemaAttributeGroup oldGroup : baseGroups) {
+			SchemaAttributeGroup newGroup = SchemaAttributeGroup.builder()
+					.schema(cloned)
+					.name(oldGroup.getName())
+					.label(oldGroup.getLabel())
+					.multiple(oldGroup.isMultiple())
+					.position(oldGroup.getPosition())
+					.attributes(new ArrayList<>())
+					.build();
+			if (oldGroup.getAttributes() != null) {
+				for (SchemaAttribute oldAttr : oldGroup.getAttributes()) {
+					SchemaAttribute newAttr = SchemaAttribute.builder()
+							.group(newGroup)
+							.name(oldAttr.getName())
+							.label(oldAttr.getLabel())
+							.dataType(oldAttr.getDataType())
+							.required(oldAttr.isRequired())
+							.position(oldAttr.getPosition())
+							.build();
+					newGroup.getAttributes().add(newAttr);
+					if (oldAttr.getId() != null) {
+						oldAttrToNewAttr.put(oldAttr.getId(), newAttr);
+					}
+				}
+			}
+			cloned.getAttributeGroups().add(newGroup);
+		}
+		return cloned;
+	}
+
+	/** Base attribute id -> the copy's attribute with the same group and attribute name. */
+	private static void mapAttributesByName(List<SchemaAttributeGroup> baseGroups, List<SchemaAttributeGroup> copyGroups,
+			Map<Long, SchemaAttribute> oldAttrToNewAttr) {
+		Map<String, SchemaAttribute> copyByKey = new HashMap<>();
+		for (SchemaAttributeGroup group : copyGroups) {
+			if (group.getAttributes() != null) {
+				for (SchemaAttribute attr : group.getAttributes()) {
+					copyByKey.put(attributeKey(group, attr), attr);
+				}
+			}
+		}
+		for (SchemaAttributeGroup group : baseGroups) {
+			if (group.getAttributes() != null) {
+				for (SchemaAttribute attr : group.getAttributes()) {
+					SchemaAttribute copy = copyByKey.get(attributeKey(group, attr));
+					if (copy != null && attr.getId() != null) {
+						oldAttrToNewAttr.put(attr.getId(), copy);
+					}
+				}
+			}
+		}
+	}
+
+	private static String attributeKey(SchemaAttributeGroup group, SchemaAttribute attr) {
+		return (group.getName() + "/" + attr.getName()).toLowerCase(Locale.ROOT);
+	}
+
+	/**
+	 * Builds the template's elements from the request. A field naming an attribute the schema lacks (a field added in
+	 * Template Builder) adds that attribute to the schema. Returns whether any attribute was added.
+	 */
+	private static boolean applyElements(Template template, List<CreateTemplateDTO.CreateTemplateElementDTO> elements,
+			Schema targetSchema, List<SchemaAttributeGroup> targetGroups, Map<Long, SchemaAttribute> oldAttrToNewAttr) {
+		Map<Long, SchemaAttribute> attrById = new HashMap<>();
+		Map<String, SchemaAttribute> attrByName = new HashMap<>();
+		for (SchemaAttributeGroup group : targetGroups) {
+			if (group.getAttributes() != null) {
+				for (SchemaAttribute attr : group.getAttributes()) {
+					if (attr.getId() != null) {
+						attrById.put(attr.getId(), attr);
+					}
+					if (attr.getName() != null) {
+						attrByName.put(attr.getName().trim().toLowerCase(Locale.ROOT), attr);
+					}
+				}
+			}
+		}
+
 		SchemaAttributeGroup customTargetGroup = targetGroups.isEmpty() ? null : targetGroups.get(0);
 		boolean addedCustomAttributes = false;
 		int pos = 0;
 
-		for (CreateTemplateDTO.CreateTemplateElementDTO elDto : dto.getElements()) {
+		for (CreateTemplateDTO.CreateTemplateElementDTO elDto : elements) {
 			TemplateElement element = TemplateElement.builder()
 					.template(template)
 					.position(pos++)
@@ -326,8 +498,13 @@ public class SchemaService {
 				if (resolvedAttr == null && fDto.getAttributeName() != null && !fDto.getAttributeName().isBlank()) {
 					resolvedAttr = attrByName.get(fDto.getAttributeName().trim().toLowerCase(Locale.ROOT));
 				}
+				if (resolvedAttr == null && (fDto.getAttributeName() == null || fDto.getAttributeName().isBlank())) {
+					// A field of another schema, or a stale id: refuse it rather than invent an unnamed attribute
+					// (it showed up as a duplicate "Từ vựng" field in the add-word form).
+					throw new BadRequestAlertException(UNKNOWN_ATTRIBUTE);
+				}
 				if (resolvedAttr == null) {
-					// Brand-new custom field created in Template Builder: attach it to the target schema.
+					// Brand-new custom field created in Template Builder (it carries a new attributeName): attach it.
 					if (customTargetGroup == null) {
 						customTargetGroup = SchemaAttributeGroup.builder()
 								.schema(targetSchema)
@@ -376,14 +553,7 @@ public class SchemaService {
 
 			template.addElement(element);
 		}
-
-		if (addedCustomAttributes) {
-			this.schemaRepository.saveAndFlush(targetSchema);
-		}
-
-		Template saved = this.templateRepository.save(template);
-		LOG.info("Created template {} on schema {} for userId {}", saved.getId(), targetSchema.getId(), userId);
-		return this.templateMapper.toDto(saved);
+		return addedCustomAttributes;
 	}
 
 	private void validateSchemaAccess(Schema schema, Long userId) {

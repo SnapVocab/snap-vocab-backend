@@ -13,7 +13,8 @@ public record ResetPasswordRequest(
 		@NotBlank(message = "code must not be blank")
 		String code,
 
-		@Size(min = 8, max = 100, message = "password must be between 8 and 100 characters")
+		// Same rule as sign-up and change-password (5-60): the app checks one rule everywhere.
+		@Size(min = 5, max = 60, message = "password must be between 5 and 60 characters")
 		@NotBlank(message = "newPassword must not be blank")
 		String newPassword
 ) {

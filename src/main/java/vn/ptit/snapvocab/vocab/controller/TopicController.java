@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -20,10 +21,13 @@ import org.springframework.web.bind.annotation.RestController;
 import vn.ptit.snapvocab.common.dto.CursorPaginationResponse;
 import vn.ptit.snapvocab.common.dto.PaginationObject;
 import vn.ptit.snapvocab.vocab.domain.dto.topic.CreateTopicItemDTO;
+import vn.ptit.snapvocab.user.service.UserService;
 import vn.ptit.snapvocab.vocab.domain.dto.topic.CreateTopicSchemaDTO;
+import vn.ptit.snapvocab.vocab.domain.dto.topic.DefaultTopicDTO;
 import vn.ptit.snapvocab.vocab.domain.dto.topic.TopicDTO;
 import vn.ptit.snapvocab.vocab.domain.dto.topic.TopicItemData;
 import vn.ptit.snapvocab.vocab.domain.dto.topic.TopicSchemaDTO;
+import vn.ptit.snapvocab.vocab.service.DefaultTopicService;
 import vn.ptit.snapvocab.vocab.service.TopicService;
 
 @RestController
@@ -34,6 +38,20 @@ public class TopicController {
 	private final Logger LOG = LoggerFactory.getLogger(TopicController.class);
 
 	private final TopicService topicService;
+	private final DefaultTopicService defaultTopicService;
+	private final UserService userService;
+
+	/**
+	 * The learner's default topic, created on first call (buss_mainflow.md BF-07 step 2). POST because it may create;
+	 * calling it again returns the same topic.
+	 */
+	@PostMapping("/default")
+	public ResponseEntity<DefaultTopicDTO> getOrCreateDefaultTopic() {
+		Long userId = userService.getCurrentUserId()
+				.orElseThrow(() -> new AccessDeniedException("Authentication required"));
+		LOG.info("[POST: /default] Resolving default topic for userId: {}", userId);
+		return ResponseEntity.ok(defaultTopicService.getOrCreate(userId));
+	}
 
 	@GetMapping("/{topicId}")
 	public ResponseEntity<PaginationObject<List<TopicItemData>>> getTopicItems(

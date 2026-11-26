@@ -36,6 +36,8 @@ import vn.ptit.snapvocab.study.domain.StudyDailyCard;
 import vn.ptit.snapvocab.study.domain.dto.ReviewResultDTO;
 import vn.ptit.snapvocab.study.domain.dto.SrsReviewCompletedEvent;
 import vn.ptit.snapvocab.study.domain.dto.StudyCardDTO;
+import vn.ptit.snapvocab.study.domain.CollectionStudySettings;
+import vn.ptit.snapvocab.study.domain.dto.LibraryStudySettingsDTO;
 import vn.ptit.snapvocab.study.domain.dto.StudyCollectionDTO;
 import vn.ptit.snapvocab.study.domain.dto.StudyQueueDTO;
 import vn.ptit.snapvocab.study.domain.dto.StudyTodayDTO;
@@ -220,6 +222,34 @@ public class StudyService {
     private static boolean intradayLearning(FsrsRecord record, LocalDateTime dayStart) {
         return record != null && CollectionStudyPlanner.LEARNING_STATES.contains(record.getState())
                 && record.getLastReview() != null && !record.getLastReview().isBefore(dayStart);
+    }
+
+    /**
+     * Settings → "Giới hạn học theo bộ": the library's collections with their daily limits in one call, so the screen
+     * does not open the collection list and make the learner find each collection's ⋮ menu (UX audit #12).
+     */
+    @Transactional(readOnly = true)
+    public List<LibraryStudySettingsDTO> getLibrarySettings(Long userId) {
+        List<Collection> collections = activeLibraryCollections(userId);
+        if (collections.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, CollectionStudySettings> custom = collectionSettingsRepository
+                .findByUserIdAndCollectionIdIn(userId, collections.stream().map(Collection::getId).toList()).stream()
+                .collect(Collectors.toMap(s -> s.getCollection().getId(), Function.identity()));
+        return collections.stream()
+                .map(collection -> {
+                    CollectionStudySettings settings = custom.get(collection.getId());
+                    return new LibraryStudySettingsDTO(collection.getId(), collection.getName(), collection.getTranslation(),
+                            collection.getType(),
+                            settings == null ? CollectionStudySettingsService.DEFAULT_NEW_PER_DAY : settings.getNewCardsPerDay(),
+                            settings == null ? CollectionStudySettingsService.DEFAULT_REVIEW_PER_DAY : settings.getReviewCardsPerDay(),
+                            settings != null);
+                })
+                // Own collections first, then system ones; each by name.
+                .sorted(Comparator.comparing((LibraryStudySettingsDTO row) -> row.type() != CollectionType.USER)
+                        .thenComparing(LibraryStudySettingsDTO::name, String.CASE_INSENSITIVE_ORDER))
+                .toList();
     }
 
     private List<Collection> activeLibraryCollections(Long userId) {

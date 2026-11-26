@@ -15,6 +15,28 @@ public interface TopicItemAttributeValueRepository extends JpaRepository<TopicIt
 
 	long countByAttributeId(Long attributeId);
 
+	/**
+	 * [lowercased word, topicId, topicName, collectionId, collectionName] for each of the learner's own topics that
+	 * holds one of {@code words} as its TARGET_WORD (bound by the topic's active template).
+	 */
+	@Query("""
+			SELECT DISTINCT LOWER(TRIM(v.value)), t.id, t.name, c.id, c.name
+			FROM TopicItemAttributeValue v
+			JOIN v.groupInstance gi
+			JOIN gi.item ti
+			JOIN ti.topic t
+			JOIN t.collection c
+			JOIN TemplateField f ON f.schemaAttribute.id = v.attribute.id
+			JOIN f.element e
+			WHERE c.owner.id = :userId AND c.type = :userType
+			  AND e.template.id = t.activeTemplate.id AND f.semanticRole = :role
+			  AND LOWER(TRIM(v.value)) IN :words
+			""")
+	List<Object[]> findOwnTopicsContaining(@Param("userId") Long userId,
+			@Param("userType") vn.ptit.snapvocab.vocab.domain.enumeration.CollectionType userType,
+			@Param("role") vn.ptit.snapvocab.vocab.domain.enumeration.SemanticRole role,
+			@Param("words") Collection<String> words);
+
 	@Query("""
 			SELECT new vn.ptit.snapvocab.vocab.domain.dto.topic.TopicItemValueRow(
 			    ti.id, v.attribute.id, v.value)
