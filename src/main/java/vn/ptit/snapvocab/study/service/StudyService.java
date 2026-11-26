@@ -28,6 +28,7 @@ import vn.ptit.snapvocab.common.exception.ResourceNotFoundException;
 import vn.ptit.snapvocab.mission.domain.enumeration.MissionTriggerEvent;
 import vn.ptit.snapvocab.mission.service.MissionFacts;
 import vn.ptit.snapvocab.mission.service.MissionTracker;
+import vn.ptit.snapvocab.progress.repository.LearningEventRepository;
 import vn.ptit.snapvocab.progress.service.ProgressService;
 import vn.ptit.snapvocab.security.AuthoritiesConstants;
 import vn.ptit.snapvocab.shop.service.Economy;
@@ -85,6 +86,7 @@ public class StudyService {
 	private final TopicService topicService;
 	private final XpService xpService;
 	private final MissionTracker missionTracker;
+	private final LearningEventRepository learningEventRepository;
 	private final ApplicationEventPublisher eventPublisher;
 	private final Scheduler scheduler = Scheduler.builder().build();
 
@@ -256,40 +258,68 @@ public class StudyService {
 
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public ReviewResultDTO submitRating(Long userId, Long rootTopicId, Long topicItemId, Rating rating) {
+		return submitRating(userId, rootTopicId, topicItemId, rating, null);
+	}
+
+	@Transactional(isolation = Isolation.READ_COMMITTED)
+	public ReviewResultDTO submitRating(Long userId, Long rootTopicId, Long topicItemId, Rating rating,
+			String idempotencyKey) {
 		Topic root = getAccessibleTopic(userId, rootTopicId);
 		List<Long> topicIds = topicRepository.findDescendantIdsIncludingSelf(root.getId());
 		TopicItem item = getItem(topicItemId);
 		if (!topicIds.contains(item.getTopic().getId())) {
 			throw new AccessDeniedException("Topic item is outside the selected study topic");
 		}
-		return review(userId, root.getCollection(), item, rating);
+		return review(userId, root.getCollection(), item, rating, idempotencyKey);
 	}
 
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public ReviewResultDTO submitCollectionRating(Long userId, Long collectionId, Long topicItemId,
 			Rating rating) {
+		return submitCollectionRating(userId, collectionId, topicItemId, rating, null);
+	}
+
+	@Transactional(isolation = Isolation.READ_COMMITTED)
+	public ReviewResultDTO submitCollectionRating(Long userId, Long collectionId, Long topicItemId,
+			Rating rating, String idempotencyKey) {
 		Collection collection = getAccessibleCollection(userId, collectionId);
 		TopicItem item = getItem(topicItemId);
 		if (!collection.getId().equals(item.getTopic().getCollection().getId())) {
 			throw new AccessDeniedException("Topic item is outside the selected collection");
 		}
-		return review(userId, collection, item, rating);
+		return review(userId, collection, item, rating, idempotencyKey);
+	}
+
+	@Transactional(isolation = Isolation.READ_COMMITTED)
+	public ReviewResultDTO submitTodayRating(Long userId, Long topicItemId, Rating rating) {
+		return submitTodayRating(userId, topicItemId, rating, null);
 	}
 
 	/** Review from the Learn tab's session, where cards come from any collection in the library. */
 	@Transactional(isolation = Isolation.READ_COMMITTED)
-	public ReviewResultDTO submitTodayRating(Long userId, Long topicItemId, Rating rating) {
+	public ReviewResultDTO submitTodayRating(Long userId, Long topicItemId, Rating rating, String idempotencyKey) {
 		TopicItem item = getItem(topicItemId);
 		Collection collection = item.getTopic().getCollection();
 		ensureAccessible(userId, collection);
-		return review(userId, collection, item, rating);
+		return review(userId, collection, item, rating, idempotencyKey);
 	}
 
-	private ReviewResultDTO review(Long userId, Collection collection, TopicItem item, Rating rating) {
+	/**
+	 * {@code idempotencyKey} is optional (older apps send none). With one, a retried POST whose first attempt
+	 * committed finds its learning event and gets the card's current state back without a second rating.
+	 */
+	private ReviewResultDTO review(Long userId, Collection collection, TopicItem item, Rating rating,
+			String idempotencyKey) {
+		String key = idempotencyKey == null ? null : Economy.requireKey(idempotencyKey);
 		// READ_COMMITTED ensures the quota query sees the previous writer after waiting for this lock,
 		// even when collection access was checked before the lock (MariaDB defaults to REPEATABLE_READ).
 		// Keep the same writer lock order as quizzes, progress and mission rewards.
 		Economy.lockUser(userRepository, userId);
+		if (key != null && learningEventRepository.existsBySourceKey(SrsReviewCompletedEvent.keyedSourceKey(userId, key))) {
+			FsrsRecord done = studyQueueRepository.findForUpdate(userId, item.getId()).orElseThrow();
+			return new ReviewResultDTO(item.getId(), done.getState(), done.getDue(), done.getStability(),
+					done.getDifficulty(), done.getReps(), done.getLapses(), 0, false);
+		}
 		Instant reviewedAt = Economy.now();
 		LocalDate today = LocalDate.ofInstant(reviewedAt, STUDY_ZONE);
 		missionTracker.ensureAssigned(userId, today, reviewedAt);
@@ -346,7 +376,7 @@ public class StudyService {
 		}
 		// Every accepted rating is one study action (master 2026-10-31): learning event via ProgressEventListener.
 		SrsReviewCompletedEvent event = new SrsReviewCompletedEvent(userId, collection.getId(), item.getId(),
-				record.getReps(), rating, reviewedAt);
+				record.getReps(), rating, reviewedAt, key);
 		eventPublisher.publishEvent(event);
 		if (!alreadyCounted) {
 			// STUDY_N_CARDS counts distinct cards per study day, like review XP (daily_mission.md §5.1).

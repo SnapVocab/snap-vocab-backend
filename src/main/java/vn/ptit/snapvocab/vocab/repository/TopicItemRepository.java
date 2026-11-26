@@ -66,6 +66,19 @@ public interface TopicItemRepository extends JpaRepository<TopicItem, Long> {
 		return countOwnedBy(userId) > 0;
 	}
 
+	/**
+	 * Words in the learner's study library, the same set as StudyService.libraryCollections: own collections plus
+	 * system collections already studied or configured. Every fsrs_record falls inside it, so learned <= total.
+	 */
+	@Query("""
+			SELECT COUNT(ti) FROM TopicItem ti JOIN ti.topic t JOIN t.collection c
+			WHERE c.owner.id = :userId
+			   OR (c.type = vn.ptit.snapvocab.vocab.domain.enumeration.CollectionType.SYSTEM
+			       AND (EXISTS (SELECT 1 FROM FsrsRecord fr WHERE fr.user.id = :userId AND fr.topicItem.topic.collection = c)
+			            OR EXISTS (SELECT 1 FROM CollectionStudySettings s WHERE s.user.id = :userId AND s.collection = c)))
+			""")
+	long countLibraryWords(@Param("userId") Long userId);
+
 	@Query("""
 			SELECT DISTINCT ti
 			FROM TopicItem ti

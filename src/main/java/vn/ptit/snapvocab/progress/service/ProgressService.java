@@ -61,7 +61,7 @@ public class ProgressService {
 		QuizRepository.CompletedTotals quiz = quizRepository.completedTotals(userId);
 		Double accuracy = quiz.getTotalUnits() == 0 ? null : (double) quiz.getCorrectCount() / quiz.getTotalUnits();
 		return new ProgressSummaryDTO(
-				topicItemRepository.countOwnedBy(userId),
+				topicItemRepository.countLibraryWords(userId),
 				learnedCount(userId),
 				fsrsRecordRepository.countByUserIdAndStateAndStabilityLessThan(userId, CardState.REVIEW, MASTERED_STABILITY),
 				masteredCount(userId),
@@ -99,7 +99,7 @@ public class ProgressService {
 		User user = findUser(userId);
 		LocalDate today = today();
 		return new HomeWidgetDTO(
-				topicItemRepository.countOwnedBy(userId),
+				topicItemRepository.countLibraryWords(userId),
 				learnedCount(userId),
 				masteredCount(userId),
 				dueCount(userId),

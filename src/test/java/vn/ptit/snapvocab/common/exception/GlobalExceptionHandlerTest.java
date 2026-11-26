@@ -2,6 +2,7 @@ package vn.ptit.snapvocab.common.exception;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.sql.SQLIntegrityConstraintViolationException;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -23,11 +24,24 @@ class GlobalExceptionHandlerTest {
 	}
 
 	@Test
-	void constraintViolationsKeepTheirConcurrentModificationMapping() {
-		var response = handler.handleDataIntegrity(new DataIntegrityViolationException("Duplicate entry 'x'"));
+	void duplicateKeysKeepTheirConcurrentModificationMapping() {
+		var cause = new SQLIntegrityConstraintViolationException("Duplicate entry 'x'", "23000", 1062);
+		var response = handler.handleDataIntegrity(new DataIntegrityViolationException("x", cause),
+				new MockHttpServletRequest("POST", "/api/x"));
 
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
 		assertThat(response.getBody().getError()).isEqualTo("CONCURRENT_MODIFICATION");
+	}
+
+	@Test
+	void otherConstraintViolationsAreServerErrorsNotRetryableConflicts() {
+		// 3819 = CHECK constraint violated (the CARD_FRAME incident), same SQLState as a duplicate.
+		var cause = new SQLIntegrityConstraintViolationException("Check constraint violated", "23000", 3819);
+		var response = handler.handleDataIntegrity(new DataIntegrityViolationException("x", cause),
+				new MockHttpServletRequest("POST", "/api/x"));
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+		assertThat(response.getBody().getError()).isEqualTo("INTERNAL_ERROR");
 	}
 
 	@Test
