@@ -49,6 +49,19 @@ public interface TopicItemRepository extends JpaRepository<TopicItem, Long> {
 		Long getTotal();
 	}
 
+	interface TopicWordCount {
+		Long getTopicId();
+
+		Long getTotal();
+	}
+
+	@Query("""
+			SELECT ti.topic.id AS topicId, COUNT(ti) AS total FROM TopicItem ti
+			WHERE ti.topic.id IN :topicIds
+			GROUP BY ti.topic.id
+			""")
+	List<TopicWordCount> countByTopicIds(@Param("topicIds") List<Long> topicIds);
+
 	@Query("""
 			SELECT ti.topic.collection.id AS collectionId, COUNT(ti) AS total FROM TopicItem ti
 			WHERE ti.topic.collection.id IN :collectionIds

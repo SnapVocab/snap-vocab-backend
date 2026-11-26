@@ -3,6 +3,7 @@ package vn.ptit.snapvocab.story.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +18,8 @@ import org.springframework.web.bind.annotation.RestController;
 import vn.ptit.snapvocab.story.domain.dto.GenerateStoryRequest;
 import vn.ptit.snapvocab.story.domain.dto.StoryDTO;
 import vn.ptit.snapvocab.story.domain.dto.StoryListResponse;
+import vn.ptit.snapvocab.story.domain.dto.StoryTopicSummaryDTO;
+import vn.ptit.snapvocab.story.domain.dto.StoryTopicWordsResponse;
 import vn.ptit.snapvocab.story.domain.dto.SubmitStoryClozeRequest;
 import vn.ptit.snapvocab.story.domain.dto.SubmitStoryClozeResponse;
 import vn.ptit.snapvocab.story.service.StoryService;
@@ -31,8 +34,22 @@ public class StoryController {
 	private final StoryService storyService;
 	private final UserService userService;
 
+	@GetMapping("/topics")
+	@Operation(summary = "List curated system topics available for AI Context Stories")
+	public ResponseEntity<List<StoryTopicSummaryDTO>> listTopics() {
+		requireCurrentUserId();
+		return ResponseEntity.ok(storyService.listSystemTopics());
+	}
+
+	@GetMapping("/topics/{topicId}/words")
+	@Operation(summary = "List curated English vocabulary words inside a system topic")
+	public ResponseEntity<StoryTopicWordsResponse> getTopicWords(@PathVariable Long topicId) {
+		requireCurrentUserId();
+		return ResponseEntity.ok(storyService.getSystemTopicWords(topicId));
+	}
+
 	@PostMapping("/generate")
-	@Operation(summary = "Generate a new AI Context Story (Blended Macaronic or Full English) from 3-20 words")
+	@Operation(summary = "Generate a new Vietnamese-English Blended Context Story (Truyện Chêm) from 3-20 words")
 	public ResponseEntity<StoryDTO> generate(@Valid @RequestBody GenerateStoryRequest request) {
 		Long userId = requireCurrentUserId();
 		return ResponseEntity.status(HttpStatus.CREATED).body(storyService.generateStory(userId, request));
