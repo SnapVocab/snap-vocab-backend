@@ -5,6 +5,8 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -15,10 +17,18 @@ import vn.ptit.snapvocab.scan.domain.enumeration.ScanStatus;
 @Repository
 public interface ScanRequestRepository extends JpaRepository<ScanRequest, String> {
 
-	long countByUser_IdAndStatusInAndCreatedAtGreaterThanEqual(
-			Long userId, Collection<ScanStatus> statuses, Instant since);
+	/** Scans of {@code userId} in one of {@code statuses} created at or after {@code since}. */
+	@Query("""
+			SELECT COUNT(s) FROM ScanRequest s
+			WHERE s.user.id = :userId AND s.status IN :statuses AND s.createdAt >= :since
+			""")
+	long countUsedSince(@Param("userId") Long userId, @Param("statuses") Collection<ScanStatus> statuses,
+			@Param("since") Instant since);
 
 	Optional<ScanRequest> findByIdAndUser_Id(String id, Long userId);
+
+	/** "Lịch sử scan": the learner's scans, newest first. */
+	Page<ScanRequest> findByUser_IdOrderByCreatedAtDesc(Long userId, Pageable pageable);
 
 	List<ScanRequest> findByStatusIn(Collection<ScanStatus> statuses);
 

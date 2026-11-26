@@ -141,7 +141,7 @@ class ScanQuotaServiceTest {
 	}
 
 	private void givenUsedToday(long used) {
-		when(scanRequestRepository.countByUser_IdAndStatusInAndCreatedAtGreaterThanEqual(
+		when(scanRequestRepository.countUsedSince(
 				7L, ScanStatus.COUNTED, VN_MIDNIGHT_TODAY)).thenReturn(used);
 	}
 }

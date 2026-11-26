@@ -1,6 +1,9 @@
 package vn.ptit.snapvocab.scan.service;
 
+import java.util.List;
 import org.springframework.web.multipart.MultipartFile;
+import vn.ptit.snapvocab.common.dto.PaginationObject;
+import vn.ptit.snapvocab.scan.domain.dto.scan.ScanHistoryItemDTO;
 import vn.ptit.snapvocab.scan.domain.dto.scan.ScanQuotaDTO;
 import vn.ptit.snapvocab.scan.domain.dto.scan.ScanResultDTO;
 import vn.ptit.snapvocab.scan.domain.dto.scan.ScanStatusDTO;
@@ -27,5 +30,8 @@ public interface ScanService {
 	ScanStatusDTO getStatus(String requestId);
 
 	ScanQuotaDTO getQuota();
+
+	/** The caller's scans, newest first (0-based {@code page}). */
+	PaginationObject<List<ScanHistoryItemDTO>> getHistory(int page, int size);
 }
 

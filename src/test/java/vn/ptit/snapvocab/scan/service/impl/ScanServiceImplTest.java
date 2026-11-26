@@ -163,6 +163,45 @@ class ScanServiceImplTest {
 	}
 
 	@Test
+	void historyListsTheCallersScansWithAPreviewOfTheirWords() throws Exception {
+		ScanRequest done = job(ScanStatus.DONE);
+		done.setResultJson(objectMapper.writeValueAsString(new ScanDetectionsDTO(640, 480, List.of(
+				detection(), new DetectionDTO("Mug", "mug", 0.8, "od", "HIGH", new BoundingBoxDTO(1, 2, 3, 4))))));
+		done.setDetectionCount(2);
+		ScanRequest failed = ScanRequest.builder().id("req-2").objectKey(KEY).status(ScanStatus.FAILED)
+				.errorCode(ScanErrorCode.AI_TIMEOUT).build();
+		ScanRequest corrupt = ScanRequest.builder().id("req-3").objectKey(KEY).status(ScanStatus.DONE)
+				.resultJson("{not json").build();
+		when(scanRequestRepository.findByUser_IdOrderByCreatedAtDesc(eq(USER_ID), any()))
+				.thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(done, failed, corrupt),
+						org.springframework.data.domain.PageRequest.of(0, 20), 3));
+		when(storageService.createDownloadUrl(KEY)).thenReturn("https://storage/signed");
+
+		var history = service.getHistory(0, 20);
+
+		assertThat(history.getMeta().getTotal()).isEqualTo(3L);
+		assertThat(history.getData()).hasSize(3);
+		var first = history.getData().get(0);
+		assertThat(first.words()).containsExactly("cup", "mug");
+		assertThat(first.imageUrl()).isEqualTo("https://storage/signed");
+		assertThat(first.detectionCount()).isEqualTo(2);
+		var second = history.getData().get(1);
+		assertThat(second.errorCode()).isEqualTo(ScanErrorCode.AI_TIMEOUT);
+		assertThat(second.imageUrl()).isNull();
+		assertThat(second.words()).isEmpty();
+		// An unreadable result keeps the row, without words.
+		assertThat(history.getData().get(2).words()).isEmpty();
+	}
+
+	@Test
+	void historyPageSizeIsCapped() {
+		when(scanRequestRepository.findByUser_IdOrderByCreatedAtDesc(eq(USER_ID), any()))
+				.thenReturn(org.springframework.data.domain.Page.empty());
+
+		assertThat(service.getHistory(-1, 1000).getMeta().getSize()).isEqualTo(50L);
+	}
+
+	@Test
 	void statusOfFailedScanCarriesErrorCodeAndNoResult() {
 		ScanRequest failed = job(ScanStatus.FAILED);
 		failed.setErrorCode(ScanErrorCode.AI_TIMEOUT);
