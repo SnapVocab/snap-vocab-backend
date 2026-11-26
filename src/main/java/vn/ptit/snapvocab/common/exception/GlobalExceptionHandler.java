@@ -18,6 +18,7 @@ import vn.ptit.snapvocab.audit.exception.AuditException;
 import vn.ptit.snapvocab.badge.exception.BadgeException;
 import vn.ptit.snapvocab.common.dto.RestResponse;
 import vn.ptit.snapvocab.mission.exception.MissionException;
+import vn.ptit.snapvocab.mnemonic.exception.MnemonicException;
 import vn.ptit.snapvocab.notification.exception.NotificationException;
 import vn.ptit.snapvocab.quiz.exception.QuizException;
 import vn.ptit.snapvocab.scan.exception.ScanException;
@@ -173,6 +174,19 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<RestResponse<Object>> handleQuiz(QuizException ex) {
 
 		log.info("Quiz request rejected with {}: {}", ex.getCode(), ex.getMessage());
+		RestResponse<Object> response = RestResponse.builder()
+				.statusCode(ex.getCode().getStatus().value())
+				.error(ex.getCode().name())
+				.data(ex.getDetails())
+				.build();
+
+		return ResponseEntity.status(ex.getCode().getStatus()).body(response);
+	}
+
+	@ExceptionHandler(MnemonicException.class)
+	public ResponseEntity<RestResponse<Object>> handleMnemonic(MnemonicException ex) {
+
+		log.info("Mnemonic request rejected with {}: {}", ex.getCode(), ex.getMessage());
 		RestResponse<Object> response = RestResponse.builder()
 				.statusCode(ex.getCode().getStatus().value())
 				.error(ex.getCode().name())
