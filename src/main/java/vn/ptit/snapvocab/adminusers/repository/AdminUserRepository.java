@@ -20,8 +20,8 @@ public interface AdminUserRepository extends Repository<User, Long> {
 	String ISO = "'%Y-%m-%dT%H:%i:%sZ'";
 
 	/**
-	 * One row of the directory. The streak is the stored chain while it reaches yesterday, else 1 (the app's floor).
-	 * ponytail: ignores Streak Freeze cover, so a frozen chain shows 1 here until the learner studies again; the
+	 * One row of the directory. The streak is the stored chain while it reaches yesterday, else 0.
+	 * ponytail: ignores Streak Freeze cover, so a frozen chain shows 0 here until the learner studies again; the
 	 * profile uses ProgressService.getStreak, which applies it.
 	 */
 	String ROW = """
@@ -32,7 +32,7 @@ public interface AdminUserRepository extends Repository<User, Long> {
 			) AS createdAt,
 			       DATE_FORMAT(u.last_studied_at, """ + ISO + """
 			) AS lastStudiedAt,
-			       CAST(CASE WHEN u.last_studied_at >= :yesterdayStart THEN GREATEST(u.streak_days, 1) ELSE 1 END AS SIGNED) AS streakDays,
+			       CAST(CASE WHEN u.last_studied_at >= :yesterdayStart AND u.streak_days > 0 THEN u.streak_days ELSE 0 END AS SIGNED) AS streakDays,
 			       CAST(u.longest_streak_days AS SIGNED) AS longestStreakDays,
 			       (SELECT COUNT(*) FROM topic_items ti JOIN topics t ON t.id = ti.topic_id
 			          JOIN collections c ON c.id = t.collection_id WHERE c.owner_id = u.id) AS wordsSaved,

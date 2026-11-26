@@ -60,5 +60,16 @@ public interface TopicItemAttributeValueRepository extends JpaRepository<TopicIt
 			""")
 	List<TopicItemValueRow> findValuesOfItem(@Param("itemId") Long itemId,
 			@Param("attributeIds") Collection<Long> attributeIds);
+
+	@Query("""
+			SELECT ti.id, sa.id, sa.name, v.value
+			FROM TopicItemAttributeValue v
+			JOIN v.groupInstance gi
+			JOIN gi.item ti
+			JOIN v.attribute sa
+			WHERE ti.topic.id IN :topicIds
+			ORDER BY ti.id, gi.position, sa.position, v.id
+			""")
+	List<Object[]> findFlatValuesByTopicIds(@Param("topicIds") Collection<Long> topicIds);
 }
 

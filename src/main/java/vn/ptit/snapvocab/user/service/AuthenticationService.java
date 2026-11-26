@@ -56,6 +56,7 @@ import vn.ptit.snapvocab.common.constant.OtpPurpose;
 import vn.ptit.snapvocab.common.exception.BadRequestAlertException;
 import vn.ptit.snapvocab.common.exception.ResourceAlreadyExistException;
 import vn.ptit.snapvocab.common.exception.UserNotActivatedException;
+import vn.ptit.snapvocab.vocab.service.CollectionService;
 
 @Service
 @RequiredArgsConstructor
@@ -75,6 +76,7 @@ public class AuthenticationService {
 	private final PasswordEncoder passwordEncoder;
 	private final AvatarUrlService avatarUrlService;
 	private final WebAuthnCredentialRepository webAuthnCredentialRepository;
+	private final CollectionService collectionService;
 	@Value("${jwt.access-expiration:900}")
 	private long accessTokenValidityInSeconds;
 
@@ -185,7 +187,7 @@ public class AuthenticationService {
 		User u = User.builder()
 				.exp(0L)
 				.coin(0L)
-				.streakDays(1)
+				.streakDays(0)
 				.activated(false)
 				.email(requestRegisterDTO.getEmail())
 				.authorities(Set.of(userAuthority))
@@ -195,6 +197,7 @@ public class AuthenticationService {
 				.build();
 
 		User createdUser = userRepository.save(u);
+		collectionService.ensureDefaultUserCollection(createdUser);
 
 		ResponseRegisterDTO responseRegisterDTO = ResponseRegisterDTO.builder()
 				.isActivated(createdUser.isActivated())
@@ -243,6 +246,7 @@ public class AuthenticationService {
 
 		u.setActivated(true);
 		this.userRepository.save(u);
+		collectionService.ensureDefaultUserCollection(u);
 
 		ResponseLoginDTO response = this.generateAuthResponse(u);
 		securityAuditLogger.success("EMAIL_VERIFICATION", u.getId());

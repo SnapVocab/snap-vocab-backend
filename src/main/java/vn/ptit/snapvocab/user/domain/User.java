@@ -95,10 +95,10 @@ public class User extends BaseTimeEntity {
 	@Builder.Default
 	private Long coin = 0L;
 
-	@Min(value = 1, message = "Streak days must be greater than or equal to 1")
-	@Column(name = "streak_days", nullable = false, columnDefinition = "INT NOT NULL DEFAULT 1")
+	@Min(value = 0, message = "Streak days must be greater than or equal to 0")
+	@Column(name = "streak_days", nullable = false, columnDefinition = "INT NOT NULL DEFAULT 0")
 	@Builder.Default
-	private Integer streakDays = 1;
+	private Integer streakDays = 0;
 
 	@Min(value = 0, message = "Longest streak days must be greater than or equal to 0")
 	@Column(name = "longest_streak_days", nullable = false, columnDefinition = "INT NOT NULL DEFAULT 0")
@@ -149,10 +149,10 @@ public class User extends BaseTimeEntity {
 	}
 
 	public Integer getStreakDays() {
-		return streakDays == null ? 1 : Math.max(1, streakDays);
+		return streakDays == null ? 0 : Math.max(0, streakDays);
 	}
 
-	/** Normalize legacy 0/null counters before Hibernate validates an updated user. */
+	/** Normalize legacy null/negative counters before Hibernate validates an updated user. */
 	@PrePersist
 	@PreUpdate
 	void normalizeStreak() {

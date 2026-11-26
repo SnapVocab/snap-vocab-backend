@@ -19,8 +19,6 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import vn.ptit.snapvocab.common.domain.BaseTimeEntity;
 import vn.ptit.snapvocab.story.domain.enumeration.StoryGenre;
-import vn.ptit.snapvocab.story.domain.enumeration.StoryLevel;
-import vn.ptit.snapvocab.story.domain.enumeration.StoryMode;
 import vn.ptit.snapvocab.user.domain.User;
 
 @Entity
@@ -46,15 +44,13 @@ public class AiStory extends BaseTimeEntity {
 	@Column(nullable = false, length = 180)
 	private String title;
 
-	@Enumerated(EnumType.STRING)
 	@Builder.Default
 	@Column(name = "story_mode", nullable = false, length = 20)
-	private StoryMode storyMode = StoryMode.BLENDED;
+	private String storyMode = "BLENDED";
 
-	@Enumerated(EnumType.STRING)
 	@Builder.Default
 	@Column(nullable = false, length = 10)
-	private StoryLevel level = StoryLevel.A2;
+	private String level = "A2";
 
 	@Enumerated(EnumType.STRING)
 	@Builder.Default

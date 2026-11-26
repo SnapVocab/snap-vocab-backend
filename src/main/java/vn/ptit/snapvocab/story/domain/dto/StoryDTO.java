@@ -8,8 +8,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import vn.ptit.snapvocab.story.domain.enumeration.StoryGenre;
-import vn.ptit.snapvocab.story.domain.enumeration.StoryLevel;
-import vn.ptit.snapvocab.story.domain.enumeration.StoryMode;
 
 @Getter
 @Setter
@@ -21,8 +19,6 @@ public class StoryDTO {
 	private Long id;
 	private Long topicId;
 	private String title;
-	private StoryMode mode;
-	private StoryLevel level;
 	private StoryGenre genre;
 	private String providerName;
 	private String modelName;
@@ -55,7 +51,6 @@ public class StoryDTO {
 		private int index;
 		private int paragraph;
 		private String text;
-		private String translation;
 		private List<StoryBlankDTO> blanks;
 	}
 
@@ -70,4 +65,3 @@ public class StoryDTO {
 		private String displayWord;
 	}
 }
-
