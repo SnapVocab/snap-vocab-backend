@@ -56,8 +56,8 @@ class DefaultTopicServiceTest {
 	}
 
 	private static Collection collection(Long id, User owner) {
-		return Collection.builder().id(id).name(DefaultTopicService.COLLECTION_NAME)
-				.translation(DefaultTopicService.COLLECTION_TRANSLATION).type(CollectionType.USER).owner(owner).build();
+		return Collection.builder().id(id).name(CollectionService.DEFAULT_USER_COLLECTION_NAME)
+				.translation(CollectionService.DEFAULT_USER_COLLECTION_TRANSLATION).type(CollectionType.USER).owner(owner).build();
 	}
 
 	private void defaultSchema() {
@@ -84,7 +84,7 @@ class DefaultTopicServiceTest {
 	@Test
 	void createsCollectionAndTopicOnFirstCallAndRemembersIt() {
 		User user = user(null);
-		when(collectionRepository.findFirstByNameAndOwnerId(DefaultTopicService.COLLECTION_NAME, USER_ID))
+		when(collectionRepository.findFirstByNameAndOwnerId(CollectionService.DEFAULT_USER_COLLECTION_NAME, USER_ID))
 				.thenReturn(Optional.empty());
 		when(collectionRepository.save(any())).thenAnswer(inv -> {
 			Collection saved = inv.getArgument(0);
@@ -115,7 +115,7 @@ class DefaultTopicServiceTest {
 	void replacesADeletedTopicInsideTheExistingCollection() {
 		User user = user(50L);
 		when(topicRepository.findById(50L)).thenReturn(Optional.empty());
-		when(collectionRepository.findFirstByNameAndOwnerId(DefaultTopicService.COLLECTION_NAME, USER_ID))
+		when(collectionRepository.findFirstByNameAndOwnerId(CollectionService.DEFAULT_USER_COLLECTION_NAME, USER_ID))
 				.thenReturn(Optional.of(collection(7L, user)));
 		when(topicRepository.save(any())).thenAnswer(inv -> {
 			Topic saved = inv.getArgument(0);
@@ -138,7 +138,7 @@ class DefaultTopicServiceTest {
 		User other = User.builder().id(99L).email("other@test.local").firstName("O").password("x").build();
 		when(topicRepository.findById(60L))
 				.thenReturn(Optional.of(Topic.builder().id(60L).collection(collection(8L, other)).build()));
-		when(collectionRepository.findFirstByNameAndOwnerId(DefaultTopicService.COLLECTION_NAME, USER_ID))
+		when(collectionRepository.findFirstByNameAndOwnerId(CollectionService.DEFAULT_USER_COLLECTION_NAME, USER_ID))
 				.thenReturn(Optional.of(collection(7L, user)));
 		when(topicRepository.save(any())).thenAnswer(inv -> {
 			Topic saved = inv.getArgument(0);
@@ -149,5 +149,24 @@ class DefaultTopicServiceTest {
 
 		assertThat(service.getOrCreate(USER_ID).topicId()).isEqualTo(53L);
 		assertThat(List.of(user.getDefaultTopicId())).containsExactly(53L);
+	}
+
+	@Test
+	void keepsUsingTheMyVocabularyCollectionOfOlderAccounts() {
+		User user = user(null);
+		when(collectionRepository.findFirstByNameAndOwnerId(CollectionService.DEFAULT_USER_COLLECTION_NAME, USER_ID))
+				.thenReturn(Optional.empty());
+		when(collectionRepository.findFirstByNameAndOwnerId(DefaultTopicService.LEGACY_COLLECTION_NAME, USER_ID))
+				.thenReturn(Optional.of(collection(9L, user)));
+		when(topicRepository.save(any())).thenAnswer(inv -> {
+			Topic saved = inv.getArgument(0);
+			saved.setId(54L);
+			return saved;
+		});
+		when(schemaRepository.findByCode(any())).thenReturn(Optional.empty());
+
+		// No "Bộ từ của tôi" (made at sign-up since master a28f213), but the earlier default collection exists.
+		assertThat(service.getOrCreate(USER_ID).collectionId()).isEqualTo(9L);
+		verify(collectionRepository, never()).save(any());
 	}
 }

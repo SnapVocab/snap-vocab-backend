@@ -32,8 +32,8 @@ import vn.ptit.snapvocab.vocab.repository.TopicRepository;
 @RequiredArgsConstructor
 public class DefaultTopicService {
 
-	static final String COLLECTION_NAME = "My vocabulary";
-	static final String COLLECTION_TRANSLATION = "Từ vựng của tôi";
+	/** Accounts that got their default topic before sign-up created "Bộ từ của tôi" keep using this collection. */
+	static final String LEGACY_COLLECTION_NAME = "My vocabulary";
 	static final String TOPIC_NAME = "New words";
 	static final String TOPIC_TRANSLATION = "Từ mới";
 	static final String DEFAULT_SCHEMA_CODE = "DEFAULT_ENGLISH";
@@ -60,12 +60,14 @@ public class DefaultTopicService {
 			return toDto(existing.get());
 		}
 
-		Collection collection = collectionRepository.findFirstByNameAndOwnerId(COLLECTION_NAME, userId)
-				.filter(c -> c.getType() == CollectionType.USER)
+		// The collection sign-up creates (CollectionService.ensureDefaultUserCollection), so the default topic does
+		// not bring a second "my words" collection.
+		Collection collection = findUserCollection(CollectionService.DEFAULT_USER_COLLECTION_NAME, userId)
+				.or(() -> findUserCollection(LEGACY_COLLECTION_NAME, userId))
 				.orElseGet(() -> {
 					Collection created = collectionRepository.save(Collection.builder()
-							.name(COLLECTION_NAME)
-							.translation(COLLECTION_TRANSLATION)
+							.name(CollectionService.DEFAULT_USER_COLLECTION_NAME)
+							.translation(CollectionService.DEFAULT_USER_COLLECTION_TRANSLATION)
 							.type(CollectionType.USER)
 							.owner(user)
 							.build());
@@ -92,6 +94,11 @@ public class DefaultTopicService {
 		userRepository.save(user);
 		LOG.info("Created default topic {} in collection {} for userId {}", topic.getId(), collection.getId(), userId);
 		return toDto(topic);
+	}
+
+	private Optional<Collection> findUserCollection(String name, Long userId) {
+		return collectionRepository.findFirstByNameAndOwnerId(name, userId)
+				.filter(c -> c.getType() == CollectionType.USER);
 	}
 
 	private static boolean ownsUserTopic(Topic topic, Long userId) {
