@@ -31,6 +31,7 @@ class CollectionStudyQueueTest {
     @Mock CollectionRepository collections;
     @Mock TopicRepository topics;
     @Mock TopicService topicService;
+    @Mock vn.ptit.snapvocab.mnemonic.service.MnemonicService mnemonicService;
     @InjectMocks StudyService service;
 
     @Test

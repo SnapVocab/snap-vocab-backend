@@ -13,11 +13,13 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import vn.ptit.snapvocab.common.exception.BadRequestAlertException;
+import vn.ptit.snapvocab.progress.domain.dto.ForecastDTO;
 import vn.ptit.snapvocab.progress.domain.dto.HomeWidgetDTO;
 import vn.ptit.snapvocab.progress.domain.dto.ProgressHistoryDTO;
 import vn.ptit.snapvocab.progress.domain.dto.ProgressSummaryDTO;
 import vn.ptit.snapvocab.progress.domain.dto.StreakDTO;
 import vn.ptit.snapvocab.progress.domain.enumeration.HistoryPeriod;
+import vn.ptit.snapvocab.progress.service.ForecastService;
 import vn.ptit.snapvocab.progress.service.ProgressService;
 import vn.ptit.snapvocab.security.SecurityUtils;
 
@@ -28,6 +30,7 @@ import vn.ptit.snapvocab.security.SecurityUtils;
 public class ProgressController {
 
 	private final ProgressService progressService;
+	private final ForecastService forecastService;
 
 	@GetMapping("/summary")
 	@Operation(summary = "Learning-state counts, due workload, accuracy and completed quizzes (MH-STATS-01)")
@@ -47,6 +50,12 @@ public class ProgressController {
 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
 		return ResponseEntity.ok(progressService.getHistory(currentUserId(), parsePeriod(period), from, to));
+	}
+
+	@GetMapping("/forecast")
+	@Operation(summary = "7-day forgetting forecast and the time of day that sticks best")
+	public ResponseEntity<ForecastDTO> forecast() {
+		return ResponseEntity.ok(forecastService.forecast(currentUserId()));
 	}
 
 	@GetMapping("/home-widget")

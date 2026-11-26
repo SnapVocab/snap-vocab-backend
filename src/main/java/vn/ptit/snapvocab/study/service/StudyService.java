@@ -25,6 +25,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Isolation;
 import vn.ptit.snapvocab.common.exception.ResourceNotFoundException;
+import vn.ptit.snapvocab.mnemonic.dto.MnemonicDTO;
+import vn.ptit.snapvocab.mnemonic.service.MnemonicService;
 import vn.ptit.snapvocab.mission.domain.enumeration.MissionTriggerEvent;
 import vn.ptit.snapvocab.mission.service.MissionFacts;
 import vn.ptit.snapvocab.mission.service.MissionTracker;
@@ -88,6 +90,7 @@ public class StudyService {
 	private final XpService xpService;
 	private final MissionTracker missionTracker;
 	private final ApplicationEventPublisher eventPublisher;
+	private final MnemonicService mnemonicService;
 	private final Scheduler scheduler = Scheduler.builder().build();
 
 	@Transactional
@@ -206,15 +209,18 @@ public class StudyService {
         if (itemIds.isEmpty()) return new StudyQueueDTO(limit, List.of());
         Map<Long, TopicItemData> dataById = topicService.getTopicItemsByIds(itemIds).stream()
                 .collect(Collectors.toMap(TopicItemData::getTopicItemId, Function.identity()));
+        Map<Long, MnemonicDTO> mnemonics = mnemonicService.mnemonicsOf(userId, itemIds);
         List<StudyCardDTO> cards = new ArrayList<>();
         for (FsrsRecord record : dueRecords) {
             Topic topic = record.getTopicItem().getTopic();
             cards.add(new StudyCardDTO(dataById.get(record.getTopicItem().getId()), topic.getId(),
-                    topic.getCollection().getName(), record.getState(), record.getDue()));
+                    topic.getCollection().getName(), record.getState(), record.getDue(),
+                    record.getForgetCount() == null ? 0 : record.getForgetCount(),
+                    mnemonics.get(record.getTopicItem().getId())));
         }
         for (TopicItem item : newItems) {
             cards.add(new StudyCardDTO(dataById.get(item.getId()), item.getTopic().getId(),
-                    item.getTopic().getCollection().getName(), CardState.NEW, null));
+                    item.getTopic().getCollection().getName(), CardState.NEW, null, 0, null));
         }
         return new StudyQueueDTO(limit, cards);
     }
@@ -345,7 +351,7 @@ public class StudyService {
 
 		if (record == null) {
 			User user = userRepository.getReferenceById(userId);
-			record = FsrsRecord.builder().user(user).topicItem(item).reps(0).lapses(0).build();
+			record = FsrsRecord.builder().user(user).topicItem(item).reps(0).lapses(0).forgetCount(0).build();
 		}
 		int reps = record.getReps() == null ? 0 : record.getReps();
 		int lapses = record.getLapses() == null ? 0 : record.getLapses();
@@ -360,6 +366,9 @@ public class StudyService {
 		record.setLastReview(LocalDateTime.ofInstant(reviewedAt, FSRS_ZONE));
 		record.setReps(reps + 1);
 		record.setLapses(lapses);
+		if (rating == Rating.AGAIN) {
+			record.setForgetCount((record.getForgetCount() == null ? 0 : record.getForgetCount()) + 1);
+		}
 		studyQueueRepository.save(record);
 
 		int xpAwarded = 0;
@@ -385,7 +394,7 @@ public class StudyService {
 		}
 		return new ReviewResultDTO(item.getId(), record.getState(), record.getDue(),
 				record.getStability(), record.getDifficulty(), record.getReps(), record.getLapses(),
-				xpAwarded, !wasMastered && isMastered(record));
+				xpAwarded, !wasMastered && isMastered(record), record.getForgetCount());
 	}
 
 	private static boolean isMastered(FsrsRecord record) {

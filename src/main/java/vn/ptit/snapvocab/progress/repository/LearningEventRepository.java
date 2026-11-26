@@ -1,5 +1,6 @@
 package vn.ptit.snapvocab.progress.repository;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -15,6 +16,10 @@ public interface LearningEventRepository extends JpaRepository<LearningEvent, Lo
 	boolean existsBySourceKey(String sourceKey);
 
 	long countByUserIdAndEventType(Long userId, LearningEventType eventType);
+
+	/** The learner's events of one type since {@code from}, oldest first (best study time analysis). */
+	List<LearningEvent> findByUser_IdAndEventTypeAndCreatedAtGreaterThanEqualOrderByCreatedAtAsc(Long userId,
+			LearningEventType eventType, Instant from);
 
 	@Query("""
 			SELECT e.learningDate AS learningDate, COUNT(e) AS eventCount

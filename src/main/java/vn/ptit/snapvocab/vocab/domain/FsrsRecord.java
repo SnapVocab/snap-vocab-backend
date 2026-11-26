@@ -80,5 +80,13 @@ public class FsrsRecord extends BaseTimeEntity {
 	@Builder.Default
 	@Column(nullable = false)
 	private Integer lapses = 0;
+
+	/**
+	 * Every "Quên" (AGAIN), also while the card is still being learned, unlike {@code lapses}. Two or more make
+	 * the word a leech that may get an AI mnemonic.
+	 */
+	@Builder.Default
+	@Column(name = "forget_count", nullable = false, columnDefinition = "int not null default 0")
+	private Integer forgetCount = 0;
 }
 
