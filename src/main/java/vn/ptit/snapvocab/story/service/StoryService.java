@@ -9,10 +9,12 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
@@ -27,11 +29,11 @@ import vn.ptit.snapvocab.story.domain.AiStory;
 import vn.ptit.snapvocab.story.domain.dto.GenerateStoryRequest;
 import vn.ptit.snapvocab.story.domain.dto.StoryDTO;
 import vn.ptit.snapvocab.story.domain.dto.StoryListResponse;
+import vn.ptit.snapvocab.story.domain.dto.StoryTopicSummaryDTO;
+import vn.ptit.snapvocab.story.domain.dto.StoryTopicWordsResponse;
 import vn.ptit.snapvocab.story.domain.dto.SubmitStoryClozeRequest;
 import vn.ptit.snapvocab.story.domain.dto.SubmitStoryClozeResponse;
 import vn.ptit.snapvocab.story.domain.enumeration.StoryGenre;
-import vn.ptit.snapvocab.story.domain.enumeration.StoryLevel;
-import vn.ptit.snapvocab.story.domain.enumeration.StoryMode;
 import vn.ptit.snapvocab.story.repository.AiStoryRepository;
 import vn.ptit.snapvocab.user.domain.User;
 import vn.ptit.snapvocab.user.repository.UserRepository;
@@ -41,6 +43,7 @@ import vn.ptit.snapvocab.vocab.domain.enumeration.CollectionType;
 import vn.ptit.snapvocab.vocab.domain.enumeration.SemanticRole;
 import vn.ptit.snapvocab.vocab.repository.TemplateFieldRepository;
 import vn.ptit.snapvocab.vocab.repository.TopicItemAttributeValueRepository;
+import vn.ptit.snapvocab.vocab.repository.TopicItemRepository;
 import vn.ptit.snapvocab.vocab.repository.TopicRepository;
 
 @Service
@@ -50,10 +53,11 @@ public class StoryService {
 	private static final Logger LOG = LoggerFactory.getLogger(StoryService.class);
 	private static final Pattern BLANK_PATTERN = Pattern.compile("\\[\\[([^\\[\\]]+)\\]\\]");
 	private static final Pattern BOLD_MARKER_PATTERN = Pattern.compile("\\*\\*([^*\\[\\]\\n]{1,50})\\*\\*");
-	private static final int DEFAULT_TOPIC_AUTO_PICK = 7;
+	private static final int DEFAULT_TOPIC_AUTO_PICK = 6;
 
 	private final AiStoryRepository storyRepository;
 	private final TopicItemAttributeValueRepository topicValueRepository;
+	private final TopicItemRepository topicItemRepository;
 	private final TemplateFieldRepository templateFieldRepository;
 	private final TopicRepository topicRepository;
 	private final UserRepository userRepository;
@@ -81,12 +85,10 @@ public class StoryService {
 			words = new ArrayList<>(words.subList(0, maxWords));
 		}
 
-		StoryMode mode = request.getMode() != null ? request.getMode() : StoryMode.BLENDED;
-		StoryLevel level = request.getLevel() != null ? request.getLevel() : StoryLevel.A2;
 		StoryGenre genre = request.getGenre() != null ? request.getGenre() : StoryGenre.DAILY;
 
-		String systemPrompt = buildSystemPrompt(mode);
-		String userPrompt = buildUserPrompt(words, mode, level, genre);
+		String systemPrompt = buildSystemPrompt();
+		String userPrompt = buildUserPrompt(words, genre);
 
 		final List<String> finalWords = List.copyOf(words);
 		LlmGatewayService.ValidatedGeneration<ParsedStory> generation = llmGatewayService.generateAndParse(
@@ -100,8 +102,6 @@ public class StoryService {
 				.user(user)
 				.topicId(request.getTopicId())
 				.title(parsed.title())
-				.storyMode(mode)
-				.level(level)
 				.genre(genre)
 				.providerName(generation.providerName())
 				.modelName(generation.modelName())
@@ -238,7 +238,185 @@ public class StoryService {
 				.build();
 	}
 
+	@Transactional(readOnly = true)
+	public List<StoryTopicSummaryDTO> listSystemTopics() {
+		List<Topic> systemTopics = topicRepository.findAllSystemTopics();
+		if (systemTopics.isEmpty()) {
+			return List.of();
+		}
+
+		List<Long> allIds = systemTopics.stream().map(Topic::getId).toList();
+		Map<Long, Long> directCounts = new HashMap<>();
+		for (TopicItemRepository.TopicWordCount row : topicItemRepository.countByTopicIds(allIds)) {
+			directCounts.put(row.getTopicId(), row.getTotal() != null ? row.getTotal() : 0L);
+		}
+
+		Map<Long, List<Long>> childrenByParent = new HashMap<>();
+		for (Topic t : systemTopics) {
+			if (t.getParent() != null && t.getParent().getId() != null) {
+				childrenByParent.computeIfAbsent(t.getParent().getId(), k -> new ArrayList<>()).add(t.getId());
+			}
+		}
+
+		int minWords = Math.max(1, storyProperties.getMinWords());
+		Map<Long, Long> totalCountMemo = new HashMap<>();
+		List<StoryTopicSummaryDTO> result = new ArrayList<>();
+
+		for (Topic t : systemTopics) {
+			long count = computeRecursiveWordCount(t.getId(), directCounts, childrenByParent, totalCountMemo, new HashSet<>());
+			if (count < minWords) {
+				continue;
+			}
+			result.add(StoryTopicSummaryDTO.builder()
+					.id(t.getId())
+					.name(t.getName())
+					.translation(t.getTranslation())
+					.collectionId(t.getCollection().getId())
+					.collectionName(t.getCollection().getName())
+					.parentId(t.getParent() != null ? t.getParent().getId() : null)
+					.parentName(t.getParent() != null ? t.getParent().getName() : null)
+					.wordCount((int) Math.min(Integer.MAX_VALUE, count))
+					.build());
+		}
+
+		return result;
+	}
+
+	@Transactional(readOnly = true)
+	public StoryTopicWordsResponse getSystemTopicWords(Long topicId) {
+		Topic topic = requireSystemTopic(topicId);
+		List<StoryTopicWordsResponse.TopicWordItem> words = extractTopicWordItems(topic);
+		return StoryTopicWordsResponse.builder()
+				.topicId(topic.getId())
+				.topicName(topic.getName())
+				.topicTranslation(topic.getTranslation())
+				.words(words)
+				.build();
+	}
+
+	private long computeRecursiveWordCount(
+			Long topicId,
+			Map<Long, Long> directCounts,
+			Map<Long, List<Long>> childrenByParent,
+			Map<Long, Long> memo,
+			Set<Long> visiting
+	) {
+		if (memo.containsKey(topicId)) {
+			return memo.get(topicId);
+		}
+		if (!visiting.add(topicId)) {
+			return 0L;
+		}
+		long sum = directCounts.getOrDefault(topicId, 0L);
+		for (Long childId : childrenByParent.getOrDefault(topicId, List.of())) {
+			sum += computeRecursiveWordCount(childId, directCounts, childrenByParent, memo, visiting);
+		}
+		visiting.remove(topicId);
+		memo.put(topicId, sum);
+		return sum;
+	}
+
+	private Topic requireSystemTopic(Long topicId) {
+		Topic topic = topicRepository.findById(topicId)
+				.orElseThrow(() -> new IllegalArgumentException("System topic not found"));
+		if (topic.getCollection() == null || topic.getCollection().getType() != CollectionType.SYSTEM) {
+			throw new IllegalArgumentException("Only curated system topics are supported for AI Stories");
+		}
+		return topic;
+	}
+
+	private List<StoryTopicWordsResponse.TopicWordItem> extractTopicWordItems(Topic rootTopic) {
+		List<Topic> topicTree = new ArrayList<>();
+		collectTopics(rootTopic, topicTree);
+		if (topicTree.isEmpty()) {
+			return List.of();
+		}
+
+		Set<Long> targetAttrIds = new HashSet<>();
+		Set<Long> translationAttrIds = new HashSet<>();
+		Set<Long> visitedTemplateIds = new HashSet<>();
+
+		for (Topic t : topicTree) {
+			if (t.getActiveTemplate() == null || t.getActiveTemplate().getId() == null) {
+				continue;
+			}
+			Long templateId = t.getActiveTemplate().getId();
+			if (!visitedTemplateIds.add(templateId)) {
+				continue;
+			}
+			for (TemplateField f : templateFieldRepository.findByTemplateId(templateId)) {
+				if (f.getSchemaAttribute() == null || f.getSchemaAttribute().getId() == null) {
+					continue;
+				}
+				if (f.getSemanticRole() == SemanticRole.TARGET_WORD) {
+					targetAttrIds.add(f.getSchemaAttribute().getId());
+				} else if (f.getSemanticRole() == SemanticRole.NATIVE_TRANSLATION) {
+					translationAttrIds.add(f.getSchemaAttribute().getId());
+				}
+			}
+		}
+
+		List<Long> topicIds = topicTree.stream().map(Topic::getId).toList();
+		List<Object[]> flatRows = topicValueRepository.findFlatValuesByTopicIds(topicIds);
+
+		Map<Long, String> primaryWordByItem = new LinkedHashMap<>();
+		Map<Long, String> fallbackWordByItem = new LinkedHashMap<>();
+		Map<Long, String> translationByItem = new LinkedHashMap<>();
+
+		for (Object[] row : flatRows) {
+			Long itemId = (Long) row[0];
+			Long attrId = (Long) row[1];
+			String attrName = row[2] != null ? ((String) row[2]).toLowerCase(Locale.ROOT) : "";
+			String val = row[3] != null ? ((String) row[3]).trim() : "";
+			if (val.isEmpty()) {
+				continue;
+			}
+
+			if (targetAttrIds.contains(attrId)) {
+				primaryWordByItem.putIfAbsent(itemId, val);
+			} else if (translationAttrIds.contains(attrId)) {
+				translationByItem.putIfAbsent(itemId, val);
+			} else {
+				if (!primaryWordByItem.containsKey(itemId)
+						&& (attrName.equals("word") || attrName.contains("word") || attrName.contains("term")
+						|| attrName.contains("vocab") || attrName.contains("front"))) {
+					primaryWordByItem.put(itemId, val);
+				} else if (!translationByItem.containsKey(itemId)
+						&& (attrName.contains("translation") || attrName.contains("meaning")
+						|| attrName.contains("vietnamese") || attrName.equals("vi") || attrName.contains("back"))) {
+					translationByItem.put(itemId, val);
+				}
+			}
+			fallbackWordByItem.putIfAbsent(itemId, val);
+		}
+
+		List<StoryTopicWordsResponse.TopicWordItem> items = new ArrayList<>();
+		Set<String> seenWords = new HashSet<>();
+		for (Long itemId : fallbackWordByItem.keySet()) {
+			String rawWord = primaryWordByItem.getOrDefault(itemId, fallbackWordByItem.get(itemId));
+			if (rawWord == null) {
+				continue;
+			}
+			String cleaned = rawWord.trim().replaceAll("\\s+", " ");
+			if (cleaned.isEmpty() || cleaned.length() > 60) {
+				continue;
+			}
+			String key = cleaned.toLowerCase(Locale.ROOT);
+			if (!seenWords.add(key)) {
+				continue;
+			}
+			items.add(StoryTopicWordsResponse.TopicWordItem.builder()
+					.itemId(itemId)
+					.word(cleaned)
+					.translation(translationByItem.getOrDefault(itemId, ""))
+					.build());
+		}
+
+		return items;
+	}
+
 	private List<String> resolveTargetWords(Long userId, GenerateStoryRequest request) {
+		Topic systemTopic = request.getTopicId() != null ? requireSystemTopic(request.getTopicId()) : null;
 		Map<String, String> deduped = new LinkedHashMap<>();
 
 		if (request.getWords() != null) {
@@ -247,52 +425,15 @@ public class StoryService {
 			}
 		}
 
-		if (deduped.isEmpty() && request.getTopicId() != null) {
-			Topic topic = topicRepository.findById(request.getTopicId())
-					.orElseThrow(() -> new IllegalArgumentException("Topic not found"));
-
-			if (topic.getCollection() != null
-					&& topic.getCollection().getType() == CollectionType.USER
-					&& (topic.getCollection().getOwner() == null
-					|| !topic.getCollection().getOwner().getId().equals(userId))) {
-				throw new IllegalArgumentException("Topic not found");
-			}
-
+		if (deduped.isEmpty() && systemTopic != null) {
 			int desiredCount = request.getWordCount() != null
 					? Math.min(storyProperties.getMaxWords(), Math.max(storyProperties.getMinWords(), request.getWordCount()))
 					: DEFAULT_TOPIC_AUTO_PICK;
 
-			Long targetWordAttrId = resolveTargetWordAttributeId(topic);
-			List<Long> topicIds = new ArrayList<>();
-			collectTopicIds(topic, topicIds);
-
-			List<Object[]> flatRows = topicValueRepository.findFlatValuesByTopicIds(topicIds);
-			Map<Long, String> primaryByItem = new LinkedHashMap<>();
-			Map<Long, String> fallbackByItem = new LinkedHashMap<>();
-
-			for (Object[] row : flatRows) {
-				Long itemId = (Long) row[0];
-				Long attrId = (Long) row[1];
-				String attrName = row[2] != null ? ((String) row[2]).toLowerCase(Locale.ROOT) : "";
-				String val = row[3] != null ? ((String) row[3]).trim() : "";
-				if (val.isEmpty()) {
-					continue;
-				}
-				if (targetWordAttrId != null && targetWordAttrId.equals(attrId)) {
-					primaryByItem.putIfAbsent(itemId, val);
-				} else if (!primaryByItem.containsKey(itemId)
-						&& (attrName.equals("word") || attrName.contains("word") || attrName.contains("term")
-						|| attrName.contains("vocab") || attrName.contains("front"))) {
-					primaryByItem.put(itemId, val);
-				}
-				fallbackByItem.putIfAbsent(itemId, val);
-			}
-
-			List<Long> itemIds = new ArrayList<>(fallbackByItem.keySet());
-			Collections.shuffle(itemIds);
-			for (Long itemId : itemIds) {
-				String chosen = primaryByItem.getOrDefault(itemId, fallbackByItem.get(itemId));
-				addWord(deduped, chosen);
+			List<StoryTopicWordsResponse.TopicWordItem> topicItems = new ArrayList<>(extractTopicWordItems(systemTopic));
+			Collections.shuffle(topicItems);
+			for (StoryTopicWordsResponse.TopicWordItem item : topicItems) {
+				addWord(deduped, item.getWord());
 				if (deduped.size() >= desiredCount) {
 					break;
 				}
@@ -302,27 +443,14 @@ public class StoryService {
 		return new ArrayList<>(deduped.values());
 	}
 
-	private Long resolveTargetWordAttributeId(Topic topic) {
-		if (topic.getActiveTemplate() == null || topic.getActiveTemplate().getId() == null) {
-			return null;
-		}
-		List<TemplateField> fields = templateFieldRepository.findByTemplateId(topic.getActiveTemplate().getId());
-		for (TemplateField f : fields) {
-			if (f.getSemanticRole() == SemanticRole.TARGET_WORD && f.getSchemaAttribute() != null) {
-				return f.getSchemaAttribute().getId();
-			}
-		}
-		return null;
-	}
-
-	private void collectTopicIds(Topic topic, List<Long> ids) {
-		if (topic == null || topic.getId() == null || ids.size() >= 100) {
+	private void collectTopics(Topic topic, List<Topic> acc) {
+		if (topic == null || topic.getId() == null || acc.size() >= 100) {
 			return;
 		}
-		ids.add(topic.getId());
+		acc.add(topic);
 		if (topic.getChildren() != null) {
 			for (Topic child : topic.getChildren()) {
-				collectTopicIds(child, ids);
+				collectTopics(child, acc);
 			}
 		}
 	}
@@ -339,16 +467,7 @@ public class StoryService {
 		deduped.putIfAbsent(key, cleaned);
 	}
 
-	private String buildSystemPrompt(StoryMode mode) {
-		if (mode == StoryMode.ENGLISH) {
-			return """
-					You are an engaging English storyteller for Vietnamese learners.
-					Write a vivid, coherent short story in natural English that weaves ALL target English vocabulary words naturally into the plot.
-					Wrap EVERY occurrence of each target vocabulary word in double square brackets like [[word]]. Never use **word**.
-					Include a concise Vietnamese translation for each sentence.
-					Always return strictly valid JSON with NO markdown fences and NO extra text.
-					""";
-		}
+	private String buildSystemPrompt() {
 		return """
 				You are a creative Vietnamese-English "Truyện Chêm" (Macaronic storytelling) author.
 				Write a lively, relatable, natural Vietnamese short story where EVERY target English vocabulary word is seamlessly woven directly into the Vietnamese sentences in English, wrapped in double square brackets like [[word]]. Never use **word**.
@@ -357,34 +476,14 @@ public class StoryService {
 				""";
 	}
 
-	private String buildUserPrompt(List<String> words, StoryMode mode, StoryLevel level, StoryGenre genre) {
+	private String buildUserPrompt(List<String> words, StoryGenre genre) {
 		String wordList = String.join(", ", words);
 		int minSentences = Math.max(5, Math.min(9, (int) Math.ceil(words.size() * 0.55) + 2));
 		int maxSentences = minSentences + 2;
 
-		if (mode == StoryMode.ENGLISH) {
-			return """
-					Create an English context story:
-					- CEFR Level: %s, Genre: %s
-					- Target English words (%d words — MUST use ALL wrapped in [[word]]): %s
-					- Length: %d to %d concise sentences across 2-3 paragraphs ( multiple target words may share a sentence ).
-
-					Return strictly valid JSON:
-					{
-					  "title": "Short catchy English title",
-					  "targetWords": [
-					    {"word": "exact word", "meaning": "ngắn gọn tiếng Việt", "phonetic": "/IPA/", "partOfSpeech": "n./v./adj./adv."}
-					  ],
-					  "sentences": [
-					    {"index": 1, "paragraph": 1, "text": "Sentence with [[word]]...", "translation": "Bản dịch tiếng Việt tự nhiên"}
-					  ]
-					}
-					""".formatted(level.name(), genre.name(), words.size(), wordList, minSentences, maxSentences);
-		}
-
 		return """
 				Create a Vietnamese-English "Truyện Chêm" story:
-				- Level: %s, Genre: %s
+				- Setting / Vibe: %s
 				- Target English words (%d words — MUST use ALL wrapped in [[word]]): %s
 				- Length: %d to %d concise Vietnamese sentences across 2-3 paragraphs (2-3 target words may naturally share one sentence).
 
@@ -398,7 +497,7 @@ public class StoryService {
 				    {"index": 1, "paragraph": 1, "text": "Câu tiếng Việt chêm [[word]] tự nhiên..."}
 				  ]
 				}
-				""".formatted(level.name(), genre.name(), words.size(), wordList, minSentences, maxSentences);
+				""".formatted(genre.name(), words.size(), wordList, minSentences, maxSentences);
 	}
 
 	private ParsedStory parseStoryJson(String rawContent, List<String> fallbackWords) {
@@ -446,7 +545,6 @@ public class StoryService {
 					}
 					String normalizedText = normalizeMarkers(rawText, fallbackWords);
 					int paragraph = n.path("paragraph").asInt(1);
-					String translation = n.path("translation").asText("").trim();
 
 					List<StoryDTO.StoryBlankDTO> blanks = new ArrayList<>();
 					Matcher matcher = BLANK_PATTERN.matcher(normalizedText);
@@ -466,7 +564,6 @@ public class StoryService {
 							.index(n.path("index").asInt(idx))
 							.paragraph(Math.max(1, paragraph))
 							.text(normalizedText)
-							.translation(translation)
 							.blanks(blanks)
 							.build());
 					idx++;
@@ -551,8 +648,6 @@ public class StoryService {
 				.id(story.getId())
 				.topicId(story.getTopicId())
 				.title(story.getTitle())
-				.mode(story.getStoryMode())
-				.level(story.getLevel())
 				.genre(story.getGenre())
 				.providerName(story.getProviderName())
 				.modelName(story.getModelName())

@@ -46,9 +46,9 @@ public class StreakFreezeService {
 					? stored : 0;
 		}
 
-		/** What the app shows: never below 1, also for a new learner or a broken chain (master 2026-10-31). */
+		/** What the app shows: 0 for a new learner or a broken chain, else the active chain. */
 		public int shownStreak(int stored, LocalDate today) {
-			return Math.max(streak(stored, today), 1);
+			return streak(stored, today);
 		}
 	}
 
@@ -62,9 +62,7 @@ public class StreakFreezeService {
 		LocalDate covered = lastFrozen != null && (lastStudied == null || lastFrozen.isAfter(lastStudied))
 				? lastFrozen : lastStudied;
 		long missed = covered == null ? 0 : ChronoUnit.DAYS.between(covered, today) - 1;
-		// ponytail: stored streak never drops below 1 since master 2026-10-31, so 1 doubles as "chain closed" and a
-		// 1-day chain is never frozen; add a chain-closed column if a 1-day chain must spend a unit.
-		if (stored <= 1 || lastStudied == null || missed <= 0) {
+		if (stored <= 0 || lastStudied == null || missed <= 0) {
 			return new Settlement(0, false, covered, held, lastFrozen);
 		}
 		int consumed = (int) Math.min(missed, held);
@@ -93,7 +91,7 @@ public class StreakFreezeService {
 			userItemRepository.saveAllAndFlush(units);
 		}
 		if (s.broken()) {
-			user.setStreakDays(1);
+			user.setStreakDays(0);
 		}
 		return s;
 	}

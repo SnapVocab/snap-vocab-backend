@@ -33,10 +33,10 @@ class ProgressServiceTest {
 	}
 
 	@Test
-	void missedDaysAndNewLearnersShowABaselineOfOne() {
+	void missedDaysAndNewLearnersResetShownStreakToZero() {
 		assertThat(StreakFreezeService.settle(4, TODAY.minusDays(1), null, 0, TODAY).shownStreak(4, TODAY)).isEqualTo(4);
-		assertThat(StreakFreezeService.settle(4, TODAY.minusDays(2), null, 0, TODAY).shownStreak(4, TODAY)).isEqualTo(1);
-		assertThat(StreakFreezeService.settle(0, null, null, 0, TODAY).shownStreak(0, TODAY)).isEqualTo(1);
+		assertThat(StreakFreezeService.settle(4, TODAY.minusDays(2), null, 0, TODAY).shownStreak(4, TODAY)).isZero();
+		assertThat(StreakFreezeService.settle(0, null, null, 0, TODAY).shownStreak(0, TODAY)).isZero();
 	}
 
 	@Test

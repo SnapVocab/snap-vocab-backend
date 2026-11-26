@@ -39,6 +39,16 @@ public interface TopicRepository extends JpaRepository<Topic, Long> {
 			+ "WHERE t.collection.id = :collectionId")
 	List<Topic> findByCollectionId(@Param("collectionId") Long collectionId);
 
+	@Query("""
+			SELECT t FROM Topic t
+			JOIN FETCH t.collection c
+			LEFT JOIN FETCH t.parent
+			LEFT JOIN FETCH t.activeTemplate
+			WHERE c.type = vn.ptit.snapvocab.vocab.domain.enumeration.CollectionType.SYSTEM
+			ORDER BY c.id ASC, t.id ASC
+			""")
+	List<Topic> findAllSystemTopics();
+
 	long countBySchemaId(Long schemaId);
 
 	@Query(value = """
