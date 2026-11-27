@@ -110,7 +110,7 @@ public class ScanQuotaService {
 	}
 
 	private long countToday(Long userId) {
-		return scanRequestRepository.countByUser_IdAndStatusInAndCreatedAtGreaterThanEqual(
+		return scanRequestRepository.countUsedSince(
 				userId, ScanStatus.COUNTED, startOfDay(0));
 	}
 

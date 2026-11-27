@@ -71,6 +71,7 @@ class StudyServiceTest {
 	@Mock private MissionTracker missionTracker;
 	@Mock private ApplicationEventPublisher eventPublisher;
 	@Mock private XpService xpService;
+	@Mock private vn.ptit.snapvocab.mnemonic.service.MnemonicService mnemonicService;
 	@InjectMocks private StudyService service;
 	private Collection collection;
 	private TopicItem item;
@@ -118,6 +119,28 @@ class StudyServiceTest {
 		// Missions count the card once per study day, not every rating (daily_mission.md §5.1).
 		verify(missionTracker).apply(7L, STUDY_DAY, MissionTriggerEvent.SRS_REVIEW_COMPLETED,
 				"SRS_CARD_DAY:7:21:" + STUDY_DAY, MissionFacts.NONE, REVIEWED_AT);
+	}
+
+	@Test
+	void everyForgetCountsTowardsALeechEvenWhileLearning() {
+		when(collectionRepository.findById(3L)).thenReturn(Optional.of(collection));
+		try (MockedStatic<Economy> clock = Mockito.mockStatic(Economy.class, Mockito.CALLS_REAL_METHODS)) {
+			clock.when(Economy::now).thenReturn(REVIEWED_AT);
+			var first = service.submitCollectionRating(7L, 3L, 21L, Rating.AGAIN);
+			ArgumentCaptor<FsrsRecord> saved = ArgumentCaptor.forClass(FsrsRecord.class);
+			verify(studyQueueRepository).save(saved.capture());
+			when(studyQueueRepository.findForUpdate(7L, 21L)).thenReturn(Optional.of(saved.getValue()));
+			clock.when(Economy::now).thenReturn(REVIEWED_AT.plusSeconds(120));
+			var second = service.submitCollectionRating(7L, 3L, 21L, Rating.AGAIN);
+			clock.when(Economy::now).thenReturn(REVIEWED_AT.plusSeconds(600));
+			var third = service.submitCollectionRating(7L, 3L, 21L, Rating.GOOD);
+
+			// Learning-step forgets are not lapses, but they do make the word a leech (AI mnemonic from 2).
+			assertThat(first.forgetCount()).isEqualTo(1);
+			assertThat(second.forgetCount()).isEqualTo(2);
+			assertThat(second.lapses()).isZero();
+			assertThat(third.forgetCount()).isEqualTo(2);
+		}
 	}
 
 	@Test

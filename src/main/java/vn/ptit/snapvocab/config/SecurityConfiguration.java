@@ -52,6 +52,7 @@ public class SecurityConfiguration {
 				"/api/auth/resend-code",
 				"/api/auth/forgot-password",
 				"/api/auth/reset-password",
+				"/api/auth/verify-reset-code",
 				"/api/auth/refresh",
 				"/api/auth/webauthn/login/options",
 				"/api/auth/webauthn/login/verify",

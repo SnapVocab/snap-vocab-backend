@@ -6,6 +6,7 @@ import vn.ptit.snapvocab.vocab.domain.enumeration.CardState;
 /**
  * {@code xpAwarded} includes any booster bonus and is 0 when the card was already reviewed today.
  * {@code becameMastered} is true only on the review that first lifts the card to Mastered.
+ * {@code forgetCount} counts every "Quên"; from 2 the app offers an AI mnemonic.
  */
 public record ReviewResultDTO(
 		Long topicItemId,
@@ -16,6 +17,7 @@ public record ReviewResultDTO(
 		Integer reps,
 		Integer lapses,
 		int xpAwarded,
-		boolean becameMastered
+		boolean becameMastered,
+		int forgetCount
 ) {
 }

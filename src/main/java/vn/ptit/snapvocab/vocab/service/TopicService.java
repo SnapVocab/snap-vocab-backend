@@ -11,10 +11,13 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -80,6 +83,7 @@ import vn.ptit.snapvocab.vocab.domain.dto.topic.TopicItemAttributeRow;
 import vn.ptit.snapvocab.vocab.domain.dto.topic.TopicItemData;
 import vn.ptit.snapvocab.vocab.domain.dto.topic.TopicSchemaDTO;
 import vn.ptit.snapvocab.vocab.domain.enumeration.CollectionType;
+import vn.ptit.snapvocab.vocab.domain.enumeration.SemanticRole;
 import vn.ptit.snapvocab.vocab.domain.mapper.SchemaMapper;
 import vn.ptit.snapvocab.vocab.domain.mapper.SchemaMapperUtils;
 import vn.ptit.snapvocab.vocab.domain.mapper.TopicMapper;
@@ -89,6 +93,7 @@ import vn.ptit.snapvocab.vocab.repository.SchemaAttributeGroupRepository;
 import vn.ptit.snapvocab.vocab.repository.SchemaRepository;
 import vn.ptit.snapvocab.vocab.repository.TemplateFieldRepository;
 import vn.ptit.snapvocab.vocab.repository.TemplateRepository;
+import vn.ptit.snapvocab.vocab.repository.TopicItemAttributeValueRepository;
 import vn.ptit.snapvocab.vocab.repository.TopicItemRepository;
 import vn.ptit.snapvocab.vocab.repository.TopicRepository;
 
@@ -106,6 +111,7 @@ public class TopicService {
 	private final SchemaAttributeGroupRepository schemaAttributeGroupRepository;
 	private final TemplateRepository templateRepository;
 	private final TemplateFieldRepository templateFieldRepository;
+	private final TopicItemAttributeValueRepository topicItemAttributeValueRepository;
 	private final UserRepository userRepository;
 	private final TopicMapper topicMapper;
 	private final TopicSchemaMapper topicSchemaMapper;
@@ -938,6 +944,10 @@ public class TopicService {
 			}
 		}
 
+		if (learnerId != null) {
+			rejectDuplicateWord(topic, topicItem);
+		}
+
 		Instant actionInstant = Economy.now();
 		LocalDate missionDate = MissionTracker.missionDate(actionInstant);
 		if (learnerId != null) {
@@ -974,6 +984,47 @@ public class TopicService {
 				.createdAt(savedItem.getCreatedAt())
 				.groups(responseGroups)
 				.build();
+	}
+
+	/** Error code of a word saved twice into one topic (buss_mainflow.md BF-07 AF-07.1). */
+	public static final String WORD_ALREADY_IN_TOPIC = "WORD_ALREADY_IN_TOPIC";
+
+	/**
+	 * AF-07.1: one learner does not save the same word twice into one topic. The word is whatever the active template
+	 * binds to TARGET_WORD, compared trimmed and case-insensitively; a template with no such binding cannot tell, so
+	 * it saves as before.
+	 */
+	void rejectDuplicateWord(Topic topic, TopicItem newItem) {
+		if (topic.getActiveTemplate() == null) {
+			return;
+		}
+		Set<Long> targetAttributeIds = templateFieldRepository.findByTemplateId(topic.getActiveTemplate().getId())
+				.stream()
+				.filter(field -> field.getSemanticRole() == SemanticRole.TARGET_WORD && field.getSchemaAttribute() != null)
+				.map(field -> field.getSchemaAttribute().getId())
+				.collect(Collectors.toSet());
+		if (targetAttributeIds.isEmpty()) {
+			return;
+		}
+		Set<String> newWords = newItem.getGroupInstances().stream()
+				.flatMap(group -> group.getValues().stream())
+				.filter(value -> value.getAttribute() != null && targetAttributeIds.contains(value.getAttribute().getId()))
+				.map(value -> normalizeWord(value.getValue()))
+				.filter(word -> !word.isEmpty())
+				.collect(Collectors.toSet());
+		if (newWords.isEmpty()) {
+			return;
+		}
+		boolean duplicate = topicItemAttributeValueRepository.findItemValues(List.of(topic.getId()), targetAttributeIds)
+				.stream()
+				.anyMatch(row -> newWords.contains(normalizeWord(row.value())));
+		if (duplicate) {
+			throw new ResourceAlreadyExistException(WORD_ALREADY_IN_TOPIC);
+		}
+	}
+
+	private static String normalizeWord(String value) {
+		return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
 	}
 
 	/** The word the audit row shows: the Quiz target, else main.word as sent, else "#id" (§4.4.4). */
@@ -1231,11 +1282,15 @@ public class TopicService {
 		// Lấy nextCursor
 		Long nextCursor = targetIds.isEmpty() ? null : targetIds.get(targetIds.size() - 1);
 
+		// The first page also says how many items the topic holds; later pages skip the count.
+		Long total = cursor == null ? this.topicItemRepository.countByTopicIdIn(List.of(topicId)) : null;
+
 		if (targetIds.isEmpty()) {
 			return CursorPaginationResponse.<List<TopicItemData>>builder()
 					.data(Collections.emptyList())
 					.nextCursor(null)
 					.hasNext(false)
+					.total(total)
 					.build();
 		}
 
@@ -1243,6 +1298,7 @@ public class TopicService {
 				.hasNext(hasMore)
 				.nextCursor(nextCursor)
 				.data(this.buildTopicItemDataList(targetIds))
+				.total(total)
 				.build();
 	}
 }

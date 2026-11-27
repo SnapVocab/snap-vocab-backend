@@ -13,6 +13,9 @@ public interface WebAuthnCredentialRepository extends JpaRepository<WebAuthnCred
 
 	List<WebAuthnCredential> findAllByUserIdOrderByCreatedAtDesc(Long userId);
 
+	/** Revokes every credential of one kind (e.g. fingerprint device tokens) for a learner. */
+	long deleteByUserIdAndTransports(Long userId, String transports);
+
 	Optional<WebAuthnCredential> findByCredentialId(String credentialId);
 
 	@Query("""

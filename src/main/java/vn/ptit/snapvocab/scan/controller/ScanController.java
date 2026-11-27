@@ -1,6 +1,7 @@
 package vn.ptit.snapvocab.scan.controller;
 
 import jakarta.validation.Valid;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -13,6 +14,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import vn.ptit.snapvocab.common.dto.PaginationObject;
+import vn.ptit.snapvocab.scan.domain.dto.scan.ScanHistoryItemDTO;
 import vn.ptit.snapvocab.scan.domain.dto.scan.ScanQuotaDTO;
 import vn.ptit.snapvocab.scan.domain.dto.scan.ScanResultDTO;
 import vn.ptit.snapvocab.scan.domain.dto.scan.ScanStatusDTO;
@@ -59,6 +62,14 @@ public class ScanController {
 	@GetMapping("/quota")
 	public ResponseEntity<ScanQuotaDTO> quota() {
 		return ResponseEntity.ok(scanService.getQuota());
+	}
+
+	/** "Lịch sử scan": the caller's scans, newest first, so a scan left before it finished can be found again. */
+	@GetMapping("/history")
+	public ResponseEntity<PaginationObject<List<ScanHistoryItemDTO>>> history(
+			@RequestParam(defaultValue = "0") int page,
+			@RequestParam(defaultValue = "20") int size) {
+		return ResponseEntity.ok(scanService.getHistory(page, size));
 	}
 
 	@GetMapping("/{requestId}")

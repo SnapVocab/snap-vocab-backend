@@ -25,6 +25,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Isolation;
 import vn.ptit.snapvocab.common.exception.ResourceNotFoundException;
+import vn.ptit.snapvocab.mnemonic.dto.MnemonicDTO;
+import vn.ptit.snapvocab.mnemonic.service.MnemonicService;
 import vn.ptit.snapvocab.mission.domain.enumeration.MissionTriggerEvent;
 import vn.ptit.snapvocab.mission.service.MissionFacts;
 import vn.ptit.snapvocab.mission.service.MissionTracker;
@@ -36,6 +38,8 @@ import vn.ptit.snapvocab.study.domain.StudyDailyCard;
 import vn.ptit.snapvocab.study.domain.dto.ReviewResultDTO;
 import vn.ptit.snapvocab.study.domain.dto.SrsReviewCompletedEvent;
 import vn.ptit.snapvocab.study.domain.dto.StudyCardDTO;
+import vn.ptit.snapvocab.study.domain.CollectionStudySettings;
+import vn.ptit.snapvocab.study.domain.dto.LibraryStudySettingsDTO;
 import vn.ptit.snapvocab.study.domain.dto.StudyCollectionDTO;
 import vn.ptit.snapvocab.study.domain.dto.StudyQueueDTO;
 import vn.ptit.snapvocab.study.domain.dto.StudyTodayDTO;
@@ -86,6 +90,7 @@ public class StudyService {
 	private final XpService xpService;
 	private final MissionTracker missionTracker;
 	private final ApplicationEventPublisher eventPublisher;
+	private final MnemonicService mnemonicService;
 	private final Scheduler scheduler = Scheduler.builder().build();
 
 	@Transactional
@@ -204,15 +209,18 @@ public class StudyService {
         if (itemIds.isEmpty()) return new StudyQueueDTO(limit, List.of());
         Map<Long, TopicItemData> dataById = topicService.getTopicItemsByIds(itemIds).stream()
                 .collect(Collectors.toMap(TopicItemData::getTopicItemId, Function.identity()));
+        Map<Long, MnemonicDTO> mnemonics = mnemonicService.mnemonicsOf(userId, itemIds);
         List<StudyCardDTO> cards = new ArrayList<>();
         for (FsrsRecord record : dueRecords) {
             Topic topic = record.getTopicItem().getTopic();
             cards.add(new StudyCardDTO(dataById.get(record.getTopicItem().getId()), topic.getId(),
-                    topic.getCollection().getName(), record.getState(), record.getDue()));
+                    topic.getCollection().getName(), record.getState(), record.getDue(),
+                    record.getForgetCount() == null ? 0 : record.getForgetCount(),
+                    mnemonics.get(record.getTopicItem().getId())));
         }
         for (TopicItem item : newItems) {
             cards.add(new StudyCardDTO(dataById.get(item.getId()), item.getTopic().getId(),
-                    item.getTopic().getCollection().getName(), CardState.NEW, null));
+                    item.getTopic().getCollection().getName(), CardState.NEW, null, 0, null));
         }
         return new StudyQueueDTO(limit, cards);
     }
@@ -220,6 +228,34 @@ public class StudyService {
     private static boolean intradayLearning(FsrsRecord record, LocalDateTime dayStart) {
         return record != null && CollectionStudyPlanner.LEARNING_STATES.contains(record.getState())
                 && record.getLastReview() != null && !record.getLastReview().isBefore(dayStart);
+    }
+
+    /**
+     * Settings → "Giới hạn học theo bộ": the library's collections with their daily limits in one call, so the screen
+     * does not open the collection list and make the learner find each collection's ⋮ menu (UX audit #12).
+     */
+    @Transactional(readOnly = true)
+    public List<LibraryStudySettingsDTO> getLibrarySettings(Long userId) {
+        List<Collection> collections = activeLibraryCollections(userId);
+        if (collections.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, CollectionStudySettings> custom = collectionSettingsRepository
+                .findByUserIdAndCollectionIdIn(userId, collections.stream().map(Collection::getId).toList()).stream()
+                .collect(Collectors.toMap(s -> s.getCollection().getId(), Function.identity()));
+        return collections.stream()
+                .map(collection -> {
+                    CollectionStudySettings settings = custom.get(collection.getId());
+                    return new LibraryStudySettingsDTO(collection.getId(), collection.getName(), collection.getTranslation(),
+                            collection.getType(),
+                            settings == null ? CollectionStudySettingsService.DEFAULT_NEW_PER_DAY : settings.getNewCardsPerDay(),
+                            settings == null ? CollectionStudySettingsService.DEFAULT_REVIEW_PER_DAY : settings.getReviewCardsPerDay(),
+                            settings != null);
+                })
+                // Own collections first, then system ones; each by name.
+                .sorted(Comparator.comparing((LibraryStudySettingsDTO row) -> row.type() != CollectionType.USER)
+                        .thenComparing(LibraryStudySettingsDTO::name, String.CASE_INSENSITIVE_ORDER))
+                .toList();
     }
 
     private List<Collection> activeLibraryCollections(Long userId) {
@@ -315,7 +351,7 @@ public class StudyService {
 
 		if (record == null) {
 			User user = userRepository.getReferenceById(userId);
-			record = FsrsRecord.builder().user(user).topicItem(item).reps(0).lapses(0).build();
+			record = FsrsRecord.builder().user(user).topicItem(item).reps(0).lapses(0).forgetCount(0).build();
 		}
 		int reps = record.getReps() == null ? 0 : record.getReps();
 		int lapses = record.getLapses() == null ? 0 : record.getLapses();
@@ -330,6 +366,9 @@ public class StudyService {
 		record.setLastReview(LocalDateTime.ofInstant(reviewedAt, FSRS_ZONE));
 		record.setReps(reps + 1);
 		record.setLapses(lapses);
+		if (rating == Rating.AGAIN) {
+			record.setForgetCount((record.getForgetCount() == null ? 0 : record.getForgetCount()) + 1);
+		}
 		studyQueueRepository.save(record);
 
 		int xpAwarded = 0;
@@ -355,7 +394,7 @@ public class StudyService {
 		}
 		return new ReviewResultDTO(item.getId(), record.getState(), record.getDue(),
 				record.getStability(), record.getDifficulty(), record.getReps(), record.getLapses(),
-				xpAwarded, !wasMastered && isMastered(record));
+				xpAwarded, !wasMastered && isMastered(record), record.getForgetCount());
 	}
 
 	private static boolean isMastered(FsrsRecord record) {

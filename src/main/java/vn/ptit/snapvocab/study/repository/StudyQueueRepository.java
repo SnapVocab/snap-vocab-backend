@@ -165,4 +165,26 @@ public interface StudyQueueRepository extends JpaRepository<FsrsRecord, Long> {
 	Optional<FsrsRecord> findForUpdate(
 			@Param("userId") Long userId,
 			@Param("topicItemId") Long topicItemId);
+
+	Optional<FsrsRecord> findByUser_IdAndTopicItem_Id(Long userId, Long topicItemId);
+
+	/** "Từ hay quên": the learner's cards forgotten at least {@code minForgetCount} times, most forgotten first. */
+	@Query("""
+			SELECT fr FROM FsrsRecord fr JOIN FETCH fr.topicItem
+			WHERE fr.user.id = :userId AND fr.forgetCount >= :minForgetCount AND fr.state <> :suspended
+			ORDER BY fr.forgetCount DESC, fr.lastReview DESC, fr.id DESC
+			""")
+	List<FsrsRecord> findLeeches(@Param("userId") Long userId, @Param("minForgetCount") int minForgetCount,
+			@Param("suspended") CardState suspended, Pageable pageable);
+
+	@Query("""
+			SELECT COUNT(fr) FROM FsrsRecord fr
+			WHERE fr.user.id = :userId AND fr.forgetCount >= :minForgetCount AND fr.state <> :suspended
+			""")
+	long countLeeches(@Param("userId") Long userId, @Param("minForgetCount") int minForgetCount,
+			@Param("suspended") CardState suspended);
+
+	/** Cards the forecast projects: everything the learner has started, except suspended ones. */
+	@Query("SELECT fr FROM FsrsRecord fr WHERE fr.user.id = :userId AND fr.state IN :states")
+	List<FsrsRecord> findForForecast(@Param("userId") Long userId, @Param("states") List<CardState> states);
 }

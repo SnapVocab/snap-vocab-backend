@@ -17,6 +17,7 @@ import vn.ptit.snapvocab.study.domain.dto.StudyCountsDTO;
 import vn.ptit.snapvocab.vocab.domain.enumeration.CollectionType;
 import vn.ptit.snapvocab.security.SecurityUtils;
 import vn.ptit.snapvocab.study.domain.dto.ReviewResultDTO;
+import vn.ptit.snapvocab.study.domain.dto.LibraryStudySettingsDTO;
 import vn.ptit.snapvocab.study.domain.dto.StudyCollectionDTO;
 import vn.ptit.snapvocab.study.domain.dto.StudyQueueDTO;
 import vn.ptit.snapvocab.study.domain.dto.StudyTodayDTO;
@@ -35,6 +36,12 @@ public class TodayStudyController {
     public ResponseEntity<List<StudyCountsDTO>> counts(@RequestParam(required = false) CollectionType type) {
         return ResponseEntity.ok(planner.allCounts(currentUserId(), type));
     }
+
+	/** Daily limits of every collection in the library (Settings → "Giới hạn học theo bộ"). */
+	@GetMapping("/settings")
+	public ResponseEntity<List<LibraryStudySettingsDTO>> getLibrarySettings() {
+		return ResponseEntity.ok(studyService.getLibrarySettings(currentUserId()));
+	}
 
 	@GetMapping("/today")
 	public ResponseEntity<StudyTodayDTO> getToday() {

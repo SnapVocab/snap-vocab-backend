@@ -51,6 +51,12 @@ public interface TopicRepository extends JpaRepository<Topic, Long> {
 
 	long countBySchemaId(Long schemaId);
 
+	long countByActiveTemplateId(Long templateId);
+
+	/** [templateId, topic count] for each of {@code templateIds} shown by at least one topic. */
+	@Query("SELECT t.activeTemplate.id, COUNT(t) FROM Topic t WHERE t.activeTemplate.id IN :templateIds GROUP BY t.activeTemplate.id")
+	List<Object[]> countByActiveTemplateIds(@Param("templateIds") java.util.Collection<Long> templateIds);
+
 	@Query(value = """
 			SELECT new vn.ptit.snapvocab.vocab.domain.dto.topic.TopicDTO(
 				t.id,
