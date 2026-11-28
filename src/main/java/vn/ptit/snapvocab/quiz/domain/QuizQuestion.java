@@ -60,6 +60,10 @@ public class QuizQuestion {
 	@Column(name = "correct_answer", nullable = false, columnDefinition = "TEXT")
 	private String correctAnswer;
 
+	/** LISTENING: the word's meaning, shown only once the question is answered (it would give the answer away). */
+	@Column(columnDefinition = "TEXT")
+	private String meaning;
+
 	@Column(name = "correct_option_key", length = 64)
 	private String correctOptionKey;
 

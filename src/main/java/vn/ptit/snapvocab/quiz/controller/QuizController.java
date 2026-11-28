@@ -53,7 +53,7 @@ public class QuizController {
 	}
 
 	@PostMapping("/questions/{questionId}/check")
-	@Operation(summary = "Grade one MCQ ({optionKey}) or FILL_BLANK ({answer}) question immediately")
+	@Operation(summary = "Grade one MCQ or LISTENING ({optionKey}) or FILL_BLANK ({answer}) question immediately")
 	public ResponseEntity<QuestionCheckDTO> check(@PathVariable Long questionId,
 			@RequestBody CheckQuestionRequest request,
 			@RequestHeader(value = IDEMPOTENCY_KEY, required = false) String idempotencyKey) {

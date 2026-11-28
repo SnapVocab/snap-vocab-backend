@@ -235,6 +235,47 @@ class QuizGeneratorTest {
 				.isEqualTo(QuizErrorCode.QUIZ_INSUFFICIENT_ELIGIBLE_ITEMS);
 	}
 
+	private static final List<String> SOUND_POOL = List.of("chip", "shop", "sheep", "shape", "chop", "cat", "cut",
+			"cot", "kit", "pen", "pin", "pan", "pun", "bed", "bad", "bid", "bud", "hat", "hut", "hot", "hit");
+
+	private static List<ItemContent> listeningTopic() {
+		return List.of(item(1, "ship", "con tàu"), item(2, "cap", "mũ lưỡi trai"), item(3, "pet", "thú cưng"),
+				item(4, "bat", "con dơi"), item(5, "hen", "gà mái"), item(6, "Ship", "con tàu (trùng)"));
+	}
+
+	@Test
+	void listeningAsksTheSpellingAmongSoundAlikesAndKeepsTheMeaningForLater() {
+		Quiz quiz = new Quiz();
+		generator.populateListening(quiz, listeningTopic(), SOUND_POOL, 5);
+
+		assertThat(quiz.getQuestions()).hasSize(5).allSatisfy(q -> {
+			assertThat(q.getOptions()).hasSize(4);
+			assertThat(q.getOptions().stream().map(QuizOption::getLabel).distinct()).hasSize(4);
+			assertThat(q.getCorrectAnswer()).isEqualTo(q.getPrompt());
+			QuizOption correct = q.getOptions().stream()
+					.filter(o -> o.getOptionKey().equals(q.getCorrectOptionKey())).findFirst().orElseThrow();
+			assertThat(correct.getLabel()).isEqualTo(q.getPrompt());
+			assertThat(q.getMeaning()).isNotBlank();
+		});
+		// "Ship" and "ship" are one word: asked once.
+		assertThat(quiz.getQuestions().stream().map(q -> q.getPrompt().toLowerCase()).distinct()).hasSize(5);
+	}
+
+	@Test
+	void listeningNeedsOnlyEnoughWordsInTheTopicNotFourDistinctMeanings() {
+		List<ItemContent> sameMeaning = List.of(item(1, "ship", "tàu"), item(2, "boat", "tàu"),
+				item(3, "vessel", "tàu"), item(4, "liner", "tàu"), item(5, "ferry", "tàu"));
+		Quiz quiz = new Quiz();
+		generator.populateListening(quiz, sameMeaning, SOUND_POOL, 5);
+		assertThat(quiz.getQuestions()).hasSize(5);
+	}
+
+	@Test
+	void listeningRefusesATopicWithTooFewWords() {
+		assertThat(codeOf(() -> generator.populateListening(new Quiz(), listeningTopic().subList(0, 3),
+				SOUND_POOL, 5))).isEqualTo(QuizErrorCode.QUIZ_INSUFFICIENT_ELIGIBLE_ITEMS);
+	}
+
 	@Test
 	void normalizeTrimsCollapsesWhitespaceAndIgnoresCase() {
 		assertThat(QuizGenerator.normalize("  Look   AFTER ")).isEqualTo("look after");

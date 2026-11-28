@@ -83,6 +83,7 @@ import vn.ptit.snapvocab.quiz.domain.enumeration.QuizDirection;
 import vn.ptit.snapvocab.quiz.domain.enumeration.QuizMode;
 import vn.ptit.snapvocab.quiz.repository.QuizRepository;
 import vn.ptit.snapvocab.quiz.service.QuizContentResolver;
+import vn.ptit.snapvocab.quiz.service.ListeningWordPool;
 import vn.ptit.snapvocab.quiz.service.QuizGenerator;
 import vn.ptit.snapvocab.quiz.service.QuizService;
 import vn.ptit.snapvocab.shop.domain.ShopItem;
@@ -124,7 +125,7 @@ import vn.ptit.snapvocab.xp.service.XpService;
  */
 @LocalMySqlJpaTest
 @Import({ DataInitializer.class, SemanticBindingMigration.class, QuizService.class, QuizContentResolver.class,
-		QuizGenerator.class, XpService.class, TopicService.class, ShopService.class, InventoryService.class,
+		QuizGenerator.class, ListeningWordPool.class, XpService.class, TopicService.class, ShopService.class, InventoryService.class,
 		WalletService.class, ShopRewardService.class, ShopMapper.class, MissionTracker.class, DailyMissionService.class,
 		ProgressService.class, StreakFreezeService.class, ProgressEventListener.class, BadgeService.class,
 		DailyMissionIntegrationTest.Beans.class })

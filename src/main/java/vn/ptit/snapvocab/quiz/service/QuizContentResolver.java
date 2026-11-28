@@ -43,7 +43,8 @@ public class QuizContentResolver {
 
 	static Set<SemanticRole> requiredRoles(QuizMode mode) {
 		return switch (mode) {
-			case MCQ, MATCHING -> EnumSet.of(SemanticRole.TARGET_WORD, SemanticRole.NATIVE_TRANSLATION);
+			// LISTENING asks for the spelling, but reveals the meaning afterwards.
+			case MCQ, MATCHING, LISTENING -> EnumSet.of(SemanticRole.TARGET_WORD, SemanticRole.NATIVE_TRANSLATION);
 			case FILL_BLANK -> EnumSet.of(SemanticRole.TARGET_WORD, SemanticRole.EXAMPLE_SENTENCE);
 		};
 	}
