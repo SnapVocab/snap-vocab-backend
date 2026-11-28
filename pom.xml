@@ -171,6 +171,11 @@
       <artifactId>fsrs</artifactId>
       <version>0.5.1</version>
     </dependency>
+    <!-- Double Metaphone: listening quiz picks wrong answers that sound like the word. -->
+    <dependency>
+      <groupId>commons-codec</groupId>
+      <artifactId>commons-codec</artifactId>
+    </dependency>
     <dependency>
       <groupId>com.webauthn4j</groupId>
       <artifactId>webauthn4j-core</artifactId>

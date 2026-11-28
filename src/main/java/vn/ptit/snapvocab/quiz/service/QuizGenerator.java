@@ -3,6 +3,7 @@ package vn.ptit.snapvocab.quiz.service;
 import java.security.SecureRandom;
 import java.text.Normalizer;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.HexFormat;
@@ -91,6 +92,58 @@ public class QuizGenerator {
 			for (int order = 0; order < labels.size(); order++) {
 				String key = newKey("o", keys);
 				if (labels.get(order).equals(answer.apply(item)) && question.getCorrectOptionKey() == null) {
+					question.setCorrectOptionKey(key);
+				}
+				question.addOption(QuizOption.builder().optionKey(key).label(labels.get(order))
+						.displayOrder(order + 1).build());
+			}
+			quiz.addQuestion(question);
+		}
+		requirePool(position - 1, count);
+	}
+
+	/**
+	 * One question per word: the app reads {@code prompt} aloud and hides it; the options are the word and three
+	 * words that sound like it. They come from {@code wordPool} (curated system vocabulary) and this topic, so a small
+	 * topic still gets good wrong answers. The meaning is kept for the reveal after answering.
+	 */
+	public void populateListening(Quiz quiz, List<ItemContent> items, Collection<String> wordPool, int count) {
+		List<ItemContent> eligible = items.stream()
+				.filter(i -> i.targetWord() != null && i.nativeTranslation() != null)
+				.toList();
+		requirePool(eligible.size(), count);
+		List<String> pool = new ArrayList<>(wordPool);
+		eligible.forEach(i -> pool.add(i.targetWord()));
+		Set<String> topicWords = SoundAlike.lower(eligible.stream().map(ItemContent::targetWord).toList());
+
+		Set<String> usedWords = new HashSet<>();
+		int position = 1;
+		for (ItemContent item : shuffled(eligible)) {
+			if (position > count) {
+				break;
+			}
+			String word = item.targetWord().trim();
+			if (!usedWords.add(normalize(word))) {
+				continue;
+			}
+			List<String> distractors = SoundAlike.distractors(word, pool, topicWords, MCQ_OPTIONS - 1, random);
+			if (distractors.size() < MCQ_OPTIONS - 1) {
+				continue;
+			}
+			QuizQuestion question = QuizQuestion.builder()
+					.position(position++)
+					.topicItemId(item.topicItemId())
+					.prompt(word)
+					.correctAnswer(word)
+					.meaning(item.nativeTranslation())
+					.build();
+			List<String> labels = new ArrayList<>(distractors);
+			labels.add(word);
+			Collections.shuffle(labels, random);
+			Set<String> keys = new HashSet<>();
+			for (int order = 0; order < labels.size(); order++) {
+				String key = newKey("o", keys);
+				if (labels.get(order).equals(word) && question.getCorrectOptionKey() == null) {
 					question.setCorrectOptionKey(key);
 				}
 				question.addOption(QuizOption.builder().optionKey(key).label(labels.get(order))

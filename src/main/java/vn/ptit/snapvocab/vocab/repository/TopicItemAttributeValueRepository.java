@@ -37,6 +37,22 @@ public interface TopicItemAttributeValueRepository extends JpaRepository<TopicIt
 			@Param("role") vn.ptit.snapvocab.vocab.domain.enumeration.SemanticRole role,
 			@Param("words") Collection<String> words);
 
+	/** Every word bound as {@code role} in collections of {@code type}, e.g. the curated system vocabulary. */
+	@Query("""
+			SELECT DISTINCT TRIM(v.value)
+			FROM TopicItemAttributeValue v
+			JOIN v.groupInstance gi
+			JOIN gi.item ti
+			JOIN ti.topic t
+			JOIN t.collection c
+			JOIN TemplateField f ON f.schemaAttribute.id = v.attribute.id
+			JOIN f.element e
+			WHERE c.type = :type AND e.template.id = t.activeTemplate.id AND f.semanticRole = :role
+			""")
+	List<String> findValuesByCollectionTypeAndRole(
+			@Param("type") vn.ptit.snapvocab.vocab.domain.enumeration.CollectionType type,
+			@Param("role") vn.ptit.snapvocab.vocab.domain.enumeration.SemanticRole role);
+
 	@Query("""
 			SELECT new vn.ptit.snapvocab.vocab.domain.dto.topic.TopicItemValueRow(
 			    ti.id, v.attribute.id, v.value)

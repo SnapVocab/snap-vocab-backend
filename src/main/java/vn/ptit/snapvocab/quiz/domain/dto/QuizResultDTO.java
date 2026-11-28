@@ -29,7 +29,7 @@ public record QuizResultDTO(
 	}
 
 	public record Item(Long questionId, int position, Integer roundNo, String prompt, String learnerAnswer,
-			String correctAnswer, QuizOutcome outcome, boolean resolved, int attemptCount) {
+			String correctAnswer, QuizOutcome outcome, boolean resolved, int attemptCount, String meaning) {
 	}
 }
 

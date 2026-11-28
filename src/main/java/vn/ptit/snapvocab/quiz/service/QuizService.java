@@ -79,6 +79,7 @@ public class QuizService {
 	private final UserRepository userRepository;
 	private final QuizContentResolver contentResolver;
 	private final QuizGenerator generator;
+	private final ListeningWordPool listeningWordPool;
 	private final ApplicationEventPublisher eventPublisher;
 	private final XpService xpService;
 	private final ExperienceLogRepository experienceLogRepository;
@@ -89,7 +90,8 @@ public class QuizService {
 	public QuizService(QuizRepository quizRepository, QuizQuestionRepository questionRepository,
 			QuizMatchingAttemptRepository attemptRepository, TopicRepository topicRepository,
 			TopicService topicService, UserRepository userRepository, QuizContentResolver contentResolver,
-			QuizGenerator generator, ApplicationEventPublisher eventPublisher, XpService xpService,
+			QuizGenerator generator, ListeningWordPool listeningWordPool, ApplicationEventPublisher eventPublisher,
+			XpService xpService,
 			ExperienceLogRepository experienceLogRepository, MissionTracker missionTracker,
 			PlatformTransactionManager transactionManager) {
 		this.missionTracker = missionTracker;
@@ -103,6 +105,7 @@ public class QuizService {
 		this.userRepository = userRepository;
 		this.contentResolver = contentResolver;
 		this.generator = generator;
+		this.listeningWordPool = listeningWordPool;
 		this.eventPublisher = eventPublisher;
 		this.transactionTemplate = new TransactionTemplate(transactionManager);
 		this.expiryTransaction = new TransactionTemplate(transactionManager);
@@ -141,7 +144,7 @@ public class QuizService {
 				.topicId(topic.getId())
 				.topicName(topic.getName())
 				.mode(request.mode())
-				.direction(request.direction())
+				.direction(hasDirection(request.mode()) ? request.direction() : null)
 				.status(QuizStatus.IN_PROGRESS)
 				.requestedCount(request.requestedCount())
 				.createIdempotencyKey(key)
@@ -150,6 +153,8 @@ public class QuizService {
 			case MCQ -> generator.populateMcq(quiz, items, request.direction(), request.requestedCount());
 			case MATCHING -> generator.populateMatching(quiz, items, request.direction(), request.requestedCount());
 			case FILL_BLANK -> generator.populateFillBlank(quiz, items, request.requestedCount());
+			case LISTENING -> generator.populateListening(quiz, items, listeningWordPool.words(),
+					request.requestedCount());
 		}
 		Quiz saved = quizRepository.saveAndFlush(quiz);
 		LOG.info("Created quiz {} for user {} (topic {}, {}, {} units)", saved.getId(), userId, topic.getId(),
@@ -166,9 +171,19 @@ public class QuizService {
 			throw new QuizException(QuizErrorCode.INVALID_REQUEST, "requestedCount must be 5, 10 or 20",
 					Map.of("allowedCounts", List.of(5, 10, 20)));
 		}
-		if (request.mode() != QuizMode.FILL_BLANK && request.direction() == null) {
+		if (hasDirection(request.mode()) && request.direction() == null) {
 			throw new QuizException(QuizErrorCode.INVALID_REQUEST, "direction is required for " + request.mode());
 		}
+	}
+
+	/** FILL_BLANK always shows English sentences; LISTENING always plays English and answers in English. */
+	private static boolean hasDirection(QuizMode mode) {
+		return mode == QuizMode.MCQ || mode == QuizMode.MATCHING;
+	}
+
+	/** Answered by picking one of the presented options. */
+	private static boolean isChoice(QuizMode mode) {
+		return mode == QuizMode.MCQ || mode == QuizMode.LISTENING;
 	}
 
 	@Transactional(readOnly = true)
@@ -242,10 +257,10 @@ public class QuizService {
 
 		boolean correct;
 		String learnerAnswer;
-		if (quiz.getMode() == QuizMode.MCQ) {
+		if (isChoice(quiz.getMode())) {
 			String optionKey = request == null ? null : request.optionKey();
 			if (optionKey == null || optionKey.isBlank()) {
-				throw new QuizException(QuizErrorCode.INVALID_REQUEST, "optionKey is required for MCQ");
+				throw new QuizException(QuizErrorCode.INVALID_REQUEST, "optionKey is required for " + quiz.getMode());
 			}
 			boolean presented = question.getOptions().stream().anyMatch(o -> o.getOptionKey().equals(optionKey));
 			if (!presented) {
@@ -480,7 +495,7 @@ public class QuizService {
 
 	private static QuestionCheckDTO toCheck(QuizQuestion q) {
 		return new QuestionCheckDTO(q.getId(), q.getOutcome(), q.getOutcome() == QuizOutcome.CORRECT,
-				q.getCorrectAnswer(), q.getCorrectOptionKey());
+				q.getCorrectAnswer(), q.getCorrectOptionKey(), q.getMeaning());
 	}
 
 	private static MatchingAttemptDTO toAttempt(QuizMatchingAttempt a) {
@@ -506,7 +521,7 @@ public class QuizService {
 		List<QuizResultDTO.Item> items = quiz.getQuestions().stream()
 				.map(q -> new QuizResultDTO.Item(q.getId(), q.getPosition(), q.getRoundNo(), q.getPrompt(),
 						learnerAnswerLabel(quiz, q), q.getCorrectAnswer(), q.getOutcome(), q.isResolved(),
-						q.getAttemptCount()))
+						q.getAttemptCount(), q.getMeaning()))
 				.toList();
 		return new QuizResultDTO(quiz.getId(), quiz.getStatus(), quiz.getMode(), quiz.getDirection(),
 				quiz.getTopicId(), quiz.getTopicName(), summary, quiz.getCompletedAt(), quiz.getCancelledAt(),
@@ -521,7 +536,7 @@ public class QuizService {
 	}
 
 	private static String learnerAnswerLabel(Quiz quiz, QuizQuestion q) {
-		if (quiz.getMode() == QuizMode.MCQ && q.getLearnerAnswer() != null) {
+		if (isChoice(quiz.getMode()) && q.getLearnerAnswer() != null) {
 			return q.getOptions().stream()
 					.filter(o -> o.getOptionKey().equals(q.getLearnerAnswer()))
 					.map(QuizOption::getLabel)
